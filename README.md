@@ -1,17 +1,35 @@
 <div align="center">
 
-# Immodex
+# Immodex+
 
-**Extension Chrome qui révèle l'adresse réelle d'une annonce immobilière (Leboncoin, Bienici, SeLoger) à partir des registres publics ADEME et IGN. Gratuite et open source.**
+**Extension Chrome qui révèle l'adresse réelle d'une annonce immobilière (Leboncoin, Bienici, SeLoger, portails et agences du Lillois) à partir des registres publics ADEME et IGN. Gratuite et open source.**
+
+*Fork de [tonoid/immodex](https://github.com/tonoid/immodex) maintenu par Nathan Gourdin (Releaf Carbon).*
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Chrome Web Store](https://img.shields.io/chrome-web-store/v/jeaigijadohgaaciphheaignoibieemg?label=chrome%20web%20store)](https://chromewebstore.google.com/detail/jeaigijadohgaaciphheaignoibieemg)
 [![Chrome Web Store users](https://img.shields.io/chrome-web-store/users/jeaigijadohgaaciphheaignoibieemg?label=installs)](https://chromewebstore.google.com/detail/jeaigijadohgaaciphheaignoibieemg)
 [![Made by tonoïd](https://img.shields.io/badge/made%20by-tono%C3%AFd-dc2626.svg)](https://www.tonoid.com/fr)
 
-[Installation](#installation) · [Utilisation](#utilisation) · [Comment ça marche](#comment-ça-marche) · [FAQ](#faq) · [Made by tonoïd](#made-by-tonoïd)
+[Nouveautés d'Immodex+](#nouveautés-dimmodex) · [Installation](#installation) · [Utilisation](#utilisation) · [Comment ça marche](#comment-ça-marche) · [FAQ](#faq) · [Made by tonoïd](#made-by-tonoïd)
 
 </div>
+
+---
+
+## Nouveautés d'Immodex+
+
+| | Immodex (original) | Immodex+ |
+| --- | --- | --- |
+| Sites lus | Leboncoin, Bienici, SeLoger | + 15 sites retenus pour la métropole lilloise (voir [Utilisation](#utilisation)), et n'importe quelle annonce via « Analyser cette page » |
+| Résultats après changement d'onglet | perdus | **historique 7 jours** (50 recherches), réaffiché à la réouverture du popup et sur l'annonce |
+| Liens des autres candidats (popup) | aucun | Google Maps et fiche ADEME pour chaque candidat |
+| Ville sans code postal (« Lille ») | impossible | codes postaux de la commune retrouvés automatiquement |
+| Consommation (kWh/m²/an) affichée sur l'annonce | ignorée | **filtre précis** dans le registre ADEME, souvent décisif en ville dense |
+| Lecture du registre | 20 lignes, ordre quelconque | 50 lignes, DPE les plus récents d'abord |
+| DPE affiché en image | rien | la carte demande les lettres lues sur l'étiquette |
+
+Détails techniques et choix : [docs/plans/2026-10-25-historique-et-sites-nord.md](docs/plans/2026-10-25-historique-et-sites-nord.md).
 
 ---
 
@@ -31,28 +49,23 @@ Investisseurs locatifs, acheteurs, chasseurs immobiliers, professionnels de l'im
 
 Gratuite, open source sous licence MIT. Aucun compte, aucun pistage, aucune affiliation cachée. L'extension n'utilise que des APIs publiques de l'État français (`data.gouv.fr`, `data.ademe.fr`).
 
-> 🇬🇧 **In English** — Immodex is a free, open-source Chrome extension that reveals the real address behind a French real-estate listing (Leboncoin, Bienici, SeLoger) using the public ADEME and IGN registries. For a dwelling, it cross-references the visible DPE data (energy class, GHG class, surface, postal code) with the national ADEME registry. For a parcel of land, it queries the IGN cadastre and the national address database (BAN). No account, no backend, no tracking.
+> 🇬🇧 **In English**: Immodex is a free, open-source Chrome extension that reveals the real address behind a French real-estate listing (Leboncoin, Bienici, SeLoger) using the public ADEME and IGN registries. For a dwelling, it cross-references the visible DPE data (energy class, GHG class, surface, postal code) with the national ADEME registry. For a parcel of land, it queries the IGN cadastre and the national address database (BAN). No account, no backend, no tracking.
 
 ---
 
 ## Installation
 
-### Depuis le Chrome Web Store (recommandé)
-
-**→ [Installer Immodex sur le Chrome Web Store](https://chromewebstore.google.com/detail/jeaigijadohgaaciphheaignoibieemg)**
-
-Identifiant : `jeaigijadohgaaciphheaignoibieemg`
-
-### En mode développeur
+Immodex+ n'est pas publié sur le Chrome Web Store : il se charge en mode développeur.
 
 ```bash
-git clone https://github.com/tonoid/immodex
+git clone https://github.com/NathanGourdinRC/immodex
 ```
 1. Va sur `chrome://extensions/`
-2. Active le **mode développeur** (toggle en haut à droite)
+2. Active le **mode développeur** (interrupteur en haut à droite)
 3. Clique sur **Charger l'extension non empaquetée** et sélectionne le dossier `immodex/`
+4. Si l'Immodex original du Chrome Web Store est installé, désactive-le pour éviter deux boutons sur les annonces
 
-L'icône Immodex apparaît dans la barre d'outils.
+L'icône Immodex+ apparaît dans la barre d'outils. Pour une mise à jour : `git pull`, puis le bouton ↻ de la carte Immodex+ dans `chrome://extensions/`.
 
 ---
 
@@ -67,15 +80,35 @@ Ouvre n'importe quelle annonce sur :
 | [Leboncoin](https://www.leboncoin.fr/) | ✓ | ✓ |
 | [Bienici](https://www.bienici.com/) | ✓ | ✓ |
 | [SeLoger](https://www.seloger.com/) | ✓ | ✓ |
+| [Figaro Immobilier](https://immobilier.lefigaro.fr/), [PAP](https://www.pap.fr/), [ParuVendu](https://www.paruvendu.fr/), [Notaires](https://www.immobilier.notaires.fr/) | ✓ | ✓ |
+| Réseaux : [IAD](https://www.iadfrance.fr/), [Orpi](https://www.orpi.com/), [Safti](https://www.safti.fr/), [Century 21](https://www.century21.fr/), [Laforêt](https://www.laforet.com/), [Foncia](https://fr.foncia.com/), [Citya](https://www.citya.com/), [Square Habitat](https://www.squarehabitat.fr/) | ✓ | ✓ |
+| Agences lilloises : [Vacherand](https://www.vacherand.fr/), [Abrinor](https://www.abrinor.fr/) | ✓ | ✓ |
+| Tout autre site d'annonce (sites d'agences Apimo, Netty, La Boîte Immo…) | via « Analyser cette page » | via « Analyser cette page » |
 
-Un bouton flottant **Immodex** apparaît en bas à droite. Clique dessus :
+Logic-Immo, Superimmo, MeilleursAgents et Efficity bloquent les robots : l'extension fonctionne quand même en navigation normale via « Analyser cette page », mais ces sites n'ont pas été testés.
 
-- **Logement** : tu confirmes la date du DPE (optionnel — ça affine le score) puis Immodex te retourne 1 à 5 candidats classés par score de confiance, avec lien Google Maps et fiche ADEME.
+Un bouton flottant **Immodex+** apparaît en bas à droite. Clique dessus :
+
+- **Logement** : tu confirmes la date du DPE (facultatif, ça affine le score) et, si l'étiquette n'est qu'une image, les lettres énergie et GES puis Immodex te retourne 1 à 5 candidats classés par score de confiance, avec lien Google Maps et fiche ADEME.
 - **Terrain** : Immodex interroge directement le cadastre IGN et te retourne 1 à 5 parcelles candidates, avec l'IDU, la section/numéro, l'adresse approximative (BAN reverse), et un lien vers Géoportail superposant le cadastre sur la photo aérienne.
 
 ### Recherche manuelle
 
-Clique sur l'icône Immodex dans la barre d'outils → un popup s'ouvre avec deux modes (**DPE** / **TERRAIN**) pour faire une recherche sans être sur une annonce.
+Clique sur l'icône Immodex+ dans la barre d'outils : un popup s'ouvre avec trois onglets (**DPE** / **TERRAIN** / **HISTORIQUE**).
+
+- **Analyser cette page** lit l'annonce ouverte dans l'onglet actif (n'importe quel site), remplit le formulaire et lance la recherche.
+- **HISTORIQUE** liste les recherches des 7 derniers jours ; chacune se rouvre avec tous ses candidats et leurs liens.
+- Fermer le popup (par exemple en cliquant sur un lien Google Maps) ne fait plus rien perdre : à la réouverture, le dernier résultat est réaffiché.
+
+### Tests
+
+```bash
+npm install
+npm test
+npm run test:e2e
+```
+
+`npm test` lance les tests unitaires (historique, lecture des annonces, rapprochement ADEME). `npm run test:e2e` charge l'extension dans un Chromium piloté et rejoue les parcours réels (API ADEME comprises) ; il faut d'abord `npx playwright install chromium`. L'extension elle-même n'a aucune dépendance : `node_modules` ne sert qu'aux tests.
 
 ---
 
@@ -123,9 +156,9 @@ Trois tiers de tolérance (exact → élargi → très élargi) sont appliqués 
 
 | Source | URL | Usage |
 | --- | --- | --- |
-| ADEME — registre DPE existants | `data.ademe.fr/data-fair/api/v1/datasets/dpe03existant` | Logements post-2021 |
-| ADEME — registre DPE neufs | `data.ademe.fr/.../g3cgx7jb3cmys5voxz1mrm22` | Logements neufs |
-| ADEME — registre DPE legacy | `data.ademe.fr/.../dpe-france` | Logements pré-2021 |
+| ADEME : registre DPE existants | `data.ademe.fr/data-fair/api/v1/datasets/dpe03existant` | Logements post-2021 |
+| ADEME : registre DPE neufs | `data.ademe.fr/.../g3cgx7jb3cmys5voxz1mrm22` | Logements neufs |
+| ADEME : registre DPE legacy | `data.ademe.fr/.../dpe-france` | Logements pré-2021 |
 | IGN apicarto cadastre | `apicarto.ign.fr/api/cadastre/parcelle` | Parcelles cadastrales |
 | BAN (Base Adresse Nationale) | `api-adresse.data.gouv.fr/reverse/` | Reverse geocoding |
 | API Géo (Etalab) | `geo.api.gouv.fr/communes` | Code postal → INSEE |
@@ -136,11 +169,11 @@ Toutes ces APIs sont **publiques, gratuites, sans clé**. Elles sont financées 
 
 ## Cas d'usage
 
-- 🏘️ **Investisseur locatif** — comparer le rendement réel selon le quartier avant de contacter l'agence
-- 🔍 **Chasseur d'appartement** — vérifier que l'annonce n'est pas un duplicate ou un bait
-- 📍 **Acheteur** — voir l'environnement immédiat (commerces, transports, nuisances) avant la visite
-- 🏗️ **Auto-promoteur terrain** — identifier les parcelles correspondant à une annonce et accéder aux données cadastrales
-- 🧭 **Chasseur immobilier pro** — accélérer le sourcing en court-circuitant la communication avec les agences
+- 🏘️ **Investisseur locatif** : comparer le rendement réel selon le quartier avant de contacter l'agence
+- 🔍 **Chasseur d'appartement** : vérifier que l'annonce n'est pas un duplicate ou un bait
+- 📍 **Acheteur** : voir l'environnement immédiat (commerces, transports, nuisances) avant la visite
+- 🏗️ **Auto-promoteur terrain** : identifier les parcelles correspondant à une annonce et accéder aux données cadastrales
+- 🧭 **Chasseur immobilier pro** : accélérer le sourcing en court-circuitant la communication avec les agences
 
 ---
 
@@ -160,7 +193,7 @@ Code source 100 % auditable.
 
 - Fonctionne **uniquement sur les annonces françaises** des trois sites supportés
 - Le matching DPE **nécessite un DPE valide** sur l'annonce (logements avant 2007 souvent exemptés)
-- Dans les zones denses (Paris, Lyon, centre Marseille), plusieurs candidats peuvent partager les mêmes critères — Immodex retourne le top 5 et te laisse choisir visuellement
+- Dans les zones denses (Paris, Lyon, centre Marseille), plusieurs candidats peuvent partager les mêmes critères : Immodex retourne le top 5 et te laisse choisir visuellement
 - L'API ADEME peut renvoyer des données obsolètes si le DPE a été refait sans que l'ancien ne soit retiré
 
 ---
@@ -239,9 +272,9 @@ Oui, dès qu'elles affichent un DPE (donc essentiellement toutes les locations r
 
 ### Pourquoi plusieurs candidats sont retournés ?
 Dans les zones denses, plusieurs logements peuvent partager le même code postal + surface + classe DPE. Immodex utilise un système de score (0-100) qui combine surface exacte, date du DPE, classes, et type de bâtiment pour classer les candidats. La confiance est codée par couleur :
-- 🟢 **Vert** — score ≥ 80 et écart au 2e candidat ≥ 20 points
-- 🟡 **Jaune** — score 50-79
-- 🔴 **Rouge** — score < 50
+- 🟢 **Vert** : score ≥ 80 et écart au 2e candidat ≥ 20 points
+- 🟡 **Jaune** : score 50-79
+- 🔴 **Rouge** : score < 50
 
 ### Est-ce que mon adresse de recherche est enregistrée quelque part ?
 Non. Les caches restent dans le navigateur. Aucune télémétrie n'est envoyée.
@@ -258,7 +291,7 @@ Ouvre une issue : https://github.com/tonoid/immodex/issues
 
 [MIT](LICENSE) © [tonoïd](https://www.tonoid.com/fr)
 
-Tu peux **forker, modifier, redistribuer, vendre** — du moment que tu gardes la mention de copyright. Pas d'obligation de partager tes changements.
+Tu peux **forker, modifier, redistribuer, vendre** : du moment que tu gardes la mention de copyright. Pas d'obligation de partager tes changements.
 
 ---
 
@@ -268,7 +301,7 @@ Tu peux **forker, modifier, redistribuer, vendre** — du moment que tu gardes l
   <img src="https://img.shields.io/badge/tono%C3%AFd-microstartup%20studio-dc2626?style=for-the-badge" alt="tonoïd" />
 </a>
 
-**Immodex est un projet [tonoïd](https://www.tonoid.com/fr)** — un studio de micro-SaaS et d'outils open source pour particuliers et freelances. On construit des outils simples, ciblés, qui résolvent un problème précis.
+**Immodex est un projet [tonoïd](https://www.tonoid.com/fr)** : un studio de micro-SaaS et d'outils open source pour particuliers et freelances. On construit des outils simples, ciblés, qui résolvent un problème précis.
 
 ### Autres projets tonoïd
 
