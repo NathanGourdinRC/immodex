@@ -1,8 +1,9 @@
 name: Release
 
+# Fork Immodex+ : pas de publication automatique sur le Chrome Web Store
+# (les secrets du Store appartiennent au dépôt d'origine). Lancement manuel seulement.
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
