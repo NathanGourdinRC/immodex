@@ -84,8 +84,10 @@ function scoreRecord(record, payload) {
   const diffs = [];
 
   if (payload.surface != null && record.surface != null) {
+    // Le registre a des décimales (65,1 m²), l'annonce arrondit (65 m²) : moins
+    // d'un demi-mètre d'écart compte comme une surface exacte.
     const diff = Math.abs(record.surface - payload.surface);
-    if (diff === 0) {
+    if (diff < 0.5) {
       score += 30;
       reasons.push('surface exacte');
     } else if (diff <= 1) {
@@ -134,21 +136,23 @@ function scoreRecord(record, payload) {
 
   if (payload.energyConsumption != null && record.energyConsumption != null) {
     const diff = Math.abs(Number(record.energyConsumption) - payload.energyConsumption);
-    if (diff <= 1) {
+    if (diff < 0.5) {
       score += 25;
       reasons.push('consommation identique');
     } else {
-      if (diff <= 5) score += 8;
+      if (diff <= 1.5) score += 15;
+      else if (diff <= 5) score += 5;
       diffs.push(`conso ${Math.round(Number(record.energyConsumption))} vs ${payload.energyConsumption}`);
     }
   }
 
   if (payload.gesEmission != null && record.gesEmission != null) {
     const diff = Math.abs(Number(record.gesEmission) - payload.gesEmission);
-    if (diff <= 1) {
+    if (diff < 0.5) {
       score += 10;
       reasons.push('émissions identiques');
     } else {
+      if (diff <= 1) score += 5;
       diffs.push(`émissions ${Math.round(Number(record.gesEmission))} vs ${payload.gesEmission}`);
     }
   }
@@ -205,8 +209,10 @@ async function runLookup(input) {
     for (let tier = firstTier; tier <= 3; tier++) {
       const filters = buildFilters(payload, dataset, tier);
       try {
-        // 50 lignes : en ville dense, des centaines de logements partagent surface et classes.
-        const result = await queryAdeme({ dataset, filters, size: tier === 0 ? 20 : 50 });
+        // En ville dense, des dizaines de logements partagent surface, classes et même
+        // consommation : on lit 50 lignes, les DPE les plus récents d'abord (une annonce
+        // en ligne s'appuie le plus souvent sur un DPE récent).
+        const result = await queryAdeme({ dataset, filters, size: 50, sort: '-date_etablissement_dpe' });
         tried.push({ dataset, tier, total: result.total, url: result.url });
         if (result.records.length > 0) {
           usedDataset = dataset;
