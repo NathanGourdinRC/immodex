@@ -798,6 +798,78 @@
     return result;
   }
 
+  function computeMissing(result) {
+    if (result.kind === 'land') return ['postal', 'surface'].filter((k) => !result[k] && !(k === 'postal' && result.city));
+    return ['postal', 'surface', 'energyClass'].filter((k) => !result[k] && !(k === 'postal' && result.city));
+  }
+
+  // Étiquettes chargées à part, depuis le même site (Laforêt : /ajax/properties/<id>/dpe
+  // renvoie un SVG avec g#DPE_D) : on les télécharge pour y lire la lettre et les valeurs.
+  // Les images bitmap (PNG, JPEG) sont ignorées : rien n'y est lisible.
+  async function fetchLabelImages(doc) {
+    const out = { texts: [], energyClass: null, gesClass: null };
+    const urls = new Set();
+    for (const node of doc.querySelectorAll('img[src], object[data]')) {
+      const src = node.getAttribute('src') || node.getAttribute('data');
+      if (!src || src.startsWith('data:')) continue;
+      let url;
+      try {
+        url = new URL(src, doc.baseURI);
+      } catch {
+        continue;
+      }
+      if (url.origin !== location.origin) continue;
+      if (!/dpe|ges|energ|diagnostic/i.test(url.pathname + url.search)) continue;
+      if (/\.(png|jpe?g|gif|webp|avif)$/i.test(url.pathname)) continue;
+      urls.add(url.href);
+      if (urls.size >= 4) break;
+    }
+    for (const href of urls) {
+      try {
+        const res = await fetch(href, { credentials: 'same-origin' });
+        if (!/svg|xml/i.test(res.headers.get('content-type') || '')) continue;
+        const svg = await res.text();
+        const d = svg.match(/id="DPE_([A-G])"/);
+        const g = svg.match(/id="GES_([A-G])"/);
+        if (d && !out.energyClass) out.energyClass = d[1];
+        if (g && !out.gesClass) out.gesClass = g[1];
+        out.texts.push(...[...svg.matchAll(/<text[^>]*>([^<]*)<\/text>/g)].map((m) => m[1]));
+      } catch {
+        // étiquette inaccessible : ignorée
+      }
+    }
+    return out;
+  }
+
+  // Version complète, asynchrone : lecture de la page, puis, s'il manque une
+  // classe, téléchargement des étiquettes séparées.
+  async function extractPageAsync() {
+    const r = extractPage();
+    if (r.kind !== 'dpe' || (r.energyClass && r.gesClass)) return r;
+    const extra = await fetchLabelImages(document);
+    const found = r.found || (r.found = {});
+    const text = cleanText(extra.texts.join(' '));
+    if (r.energyConsumption == null) {
+      const n = firstNumber(text, EP_PATTERNS, { min: 1, max: 1500 });
+      if (n != null) (r.energyConsumption = Math.round(n)), (found.energyConsumption = 'étiquette téléchargée');
+    }
+    if (r.gesEmission == null) {
+      const n = firstNumber(text, GES_VALUE_PATTERNS, { min: 0, max: 400 });
+      if (n != null) (r.gesEmission = Math.round(n)), (found.gesEmission = 'étiquette téléchargée');
+    }
+    const derived = deriveClasses(r.energyConsumption, r.gesEmission, r.surface);
+    if (!r.energyClass && (extra.energyClass || (derived && derived.energyClass))) {
+      r.energyClass = extra.energyClass || derived.energyClass;
+      found.energyClass = extra.energyClass ? 'étiquette téléchargée' : 'calculée';
+    }
+    if (!r.gesClass && (extra.gesClass || (derived && derived.gesClass))) {
+      r.gesClass = extra.gesClass || derived.gesClass;
+      found.gesClass = extra.gesClass ? 'étiquette téléchargée' : 'calculée';
+    }
+    r.missing = computeMissing(r);
+    return r;
+  }
+
   // Point d'entrée : l'extracteur dédié du site passe en premier quand il existe.
   function extractPage() {
     if (typeof window.__immodexSiteExtract === 'function') {
@@ -811,5 +883,5 @@
     return extractFromDocument(document);
   }
 
-  window.__immodexGeneric = { extractPage, extractFromDocument, deriveClasses, postalAndCity, dpeDateRange };
+  window.__immodexGeneric = { extractPage, extractPageAsync, extractFromDocument, deriveClasses, postalAndCity, dpeDateRange };
 })();

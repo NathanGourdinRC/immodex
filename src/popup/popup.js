@@ -423,7 +423,7 @@ async function analyzeActiveTab() {
     });
     const [injection] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      func: () => window.__immodexGeneric.extractPage(),
+      func: () => window.__immodexGeneric.extractPageAsync(),
     });
     payload = injection && injection.result;
   } catch (err) {

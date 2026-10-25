@@ -81,6 +81,35 @@
         "src/ui/overlay.css"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://immobilier.lefigaro.fr/annonces/*",
+        "https://www.pap.fr/annonces/*",
+        "https://www.iadfrance.fr/annonce/*",
+        "https://www.orpi.com/annonce-*",
+        "https://www.safti.fr/annonces/*",
+        "https://www.century21.fr/trouver_logement/detail/*",
+        "https://www.laforet.com/agence-immobiliere/*",
+        "https://fr.foncia.com/location/*",
+        "https://fr.foncia.com/achat/*",
+        "https://www.citya.com/annonces/*",
+        "https://www.paruvendu.fr/immobilier/*",
+        "https://www.squarehabitat.fr/*",
+        "https://www.immobilier.notaires.fr/fr/annonce-immo/*",
+        "https://www.vacherand.fr/immobilier/*",
+        "https://www.abrinor.fr/annonce/*"
+      ],
+      "js": [
+        "src/common/extract.js",
+        "src/common/generic-extract.js",
+        "src/ui/overlay.js",
+        "src/content/generic.js"
+      ],
+      "css": [
+        "src/ui/overlay.css"
+      ],
+      "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [

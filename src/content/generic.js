@@ -10,13 +10,13 @@
   // Les pages de liste et d'accueil n'ont ni surface ni DPE : pas de bouton.
   function looksLikeListing() {
     const text = (document.body && (document.body.innerText || document.body.textContent)) || '';
-    return /\d\s*m\s*[²2]/i.test(text) && /(dpe|classe\s+[ée]nerg|kwh|diagnostic|performance\s+[ée]nerg|terrain)/i.test(text);
+    return /\d\s*m\s*[²2]/i.test(text) && /(dpe|[ée]nerg[ée]tique|classe\s+[ée]nergie|kwh|diagnostic|terrain)/i.test(text);
   }
 
-  function onButtonClick() {
+  async function onButtonClick() {
     let payload = null;
     try {
-      payload = gen.extractPage();
+      payload = await gen.extractPageAsync();
     } catch (err) {
       console.error('[immodex generic] extraction error:', err);
     }

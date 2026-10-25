@@ -543,3 +543,30 @@
   border-bottom: 1px dotted rgba(147, 197, 253, 0.5);
   cursor: pointer;
 }
+
+/* ─── Classes à lire sur l'étiquette (DPE affiché en image) ─── */
+.immodex-classes {
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--imx-screen-frame);
+}
+
+.immodex-classes-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--imx-screen-soft);
+}
+
+.immodex-classes-row select {
+  padding: 5px 8px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--imx-screen-bright);
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--imx-screen-frame);
+  border-radius: 3px;
+}

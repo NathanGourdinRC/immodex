@@ -156,12 +156,28 @@
       placeholder: 'JJ/MM/AAAA, MM/AAAA ou AAAA (facultatif)',
       autocomplete: 'off',
     });
+    if (payload.dateRange) input.value = formatRange(payload.dateRange);
     const errBox = el('div', { class: 'immodex-error', style: { display: 'none' } });
+
+    // Classe absente de la page (étiquette en image) : on la demande, l'utilisateur
+    // la lit sur l'étiquette DPE de l'annonce.
+    const classSelect = (current) => {
+      const select = el('select', null, el('option', { value: '' }, '?'));
+      for (const l of ['A', 'B', 'C', 'D', 'E', 'F', 'G']) select.appendChild(el('option', { value: l }, l));
+      if (current) select.value = current;
+      return select;
+    };
+    const askClasses = !payload.energyClass || !payload.gesClass;
+    const energySelect = classSelect(payload.energyClass);
+    const gesSelect = classSelect(payload.gesClass);
+    const withClasses = (p) =>
+      askClasses ? { ...p, energyClass: energySelect.value || p.energyClass || null, gesClass: gesSelect.value || p.gesClass || null } : p;
+
     const submit = () => {
       const raw = input.value.trim();
       if (!raw) {
         errBox.style.display = 'none';
-        onSubmit({ ...payload, dateRange: null });
+        onSubmit(withClasses({ ...payload, dateRange: null }));
         return;
       }
       const parsed = window.__immodexExtract.parseUserDate(raw);
@@ -172,11 +188,11 @@
       }
       errBox.style.display = 'none';
       const range = window.__immodexExtract.parseDateRange(parsed);
-      onSubmit({ ...payload, dateRange: range });
+      onSubmit(withClasses({ ...payload, dateRange: range }));
     };
     const submitNoDate = () => {
       errBox.style.display = 'none';
-      onSubmit({ ...payload, dateRange: null });
+      onSubmit(withClasses({ ...payload, dateRange: null }));
     };
     input.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter') {
@@ -185,9 +201,18 @@
       }
     });
 
+    const classesRow = askClasses
+      ? el(
+          'div',
+          { class: 'immodex-classes' },
+          el('label', null, 'Classes lues sur l’étiquette DPE de l’annonce (facultatif)'),
+          el('div', { class: 'immodex-classes-row' }, el('span', null, 'Énergie'), energySelect, el('span', null, 'GES'), gesSelect)
+        )
+      : null;
     const prompt = el(
       'div',
       { class: 'immodex-date-prompt' },
+      classesRow,
       el('label', null, 'Date du DPE (facultatif : laisser vide pour chercher par surface et classes)'),
       input,
       errBox,
@@ -196,6 +221,13 @@
     );
     card.appendChild(prompt);
     setTimeout(() => input.focus(), 30);
+  }
+
+  function formatRange(range) {
+    const [y, m, d] = String(range.gte).split('-');
+    if (range.precision === 'day') return `${d}/${m}/${y}`;
+    if (range.precision === 'month') return `${m}/${y}`;
+    return y;
   }
 
   function confidenceClass(score) {
@@ -631,9 +663,12 @@
   }
 
   // Enchaînement commun à toutes les annonces : un terrain part directement au
-  // cadastre ; un logement sans date de DPE passe d'abord par la question de la date.
+  // cadastre ; un logement sans date de DPE ou sans classe passe d'abord par une
+  // question (date, et lettres de l'étiquette si la page ne les donne pas).
+  // Exception : avec la consommation, la recherche précise suffit, on ne demande rien.
   function startLookup(payload) {
-    if (payload.kind !== 'land' && !payload.dateRange) {
+    const needsInput = !payload.dateRange || !payload.energyClass;
+    if (payload.kind !== 'land' && needsInput && payload.energyConsumption == null) {
       showDatePrompt(payload, (updated) => {
         showLoading(updated);
         runLookup(updated);
