@@ -219,11 +219,7 @@
   }
 
   function openOverride(payload) {
-    try {
-      sessionStorage.setItem('immodex.override.payload', JSON.stringify(payload));
-    } catch {}
-    chrome.runtime.sendMessage({ type: 'OPEN_POPUP' }).catch(() => {});
-    alert("Ouvrez l’extension (icône dans la barre) pour modifier les champs et relancer la recherche.");
+    ui.openOverride(payload);
   }
 
   function onButtonClick() {
@@ -271,8 +267,19 @@
     }
   }
 
+  // Extracteur exposé à « Analyser cette page » (lecture générique) du popup.
+  window.__immodexSiteExtract = () => {
+    const ad = findAd(readNextData());
+    let payload = ad ? extractFromAd(ad) : null;
+    if (!payload || (!payload.surface && !payload.energyClass)) {
+      const fallback = extractFromDom();
+      if (fallback) payload = { ...(payload || {}), ...fallback };
+    }
+    return payload;
+  };
+
   function ensureButton() {
-    ui.mountFloatingButton("Immodex — trouver l’adresse", onButtonClick);
+    ui.mountListingButton(onButtonClick);
   }
 
   function init() {

@@ -1,0 +1,13 @@
+{
+  "name": "immodex-plus",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Outils de développement d'Immodex+ (tests). L'extension elle-même n'a aucune dépendance.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test \"tests/**/*.test.mjs\""
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.1"
+  }
+}

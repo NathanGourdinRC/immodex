@@ -108,6 +108,40 @@ async function resolveInseeCodes(postal, city) {
   return result;
 }
 
+// Codes postaux d'une commune à partir de son nom, pour les annonces qui
+// affichent « Lille » ou « Lille (59) » sans code postal. Lille seule en a cinq.
+async function resolvePostalCodes(city, department) {
+  if (!city) return [];
+  await loadStores();
+  const cacheKey = `cp|${normalizeCity(city)}|${department || ''}`;
+  const cached = getMemo(inseeMemory, cacheKey);
+  if (cached) return cached;
+
+  // « Lille Vauban », « Lille - Centre » : on retente avec le premier mot si le nom complet ne donne rien.
+  const names = [city, city.split(/\s+[-–(]\s*|\s*\(/)[0], city.split(/\s+/)[0]].filter((n, i, a) => n && a.indexOf(n) === i);
+  let codes = [];
+  for (const name of names) {
+    const params = new URLSearchParams({ nom: name, fields: 'nom,codesPostaux,codeDepartement', boost: 'population', limit: '10' });
+    if (department) params.set('codeDepartement', department);
+    let list;
+    try {
+      const res = await fetch(`${GEO_BASE}/communes?${params.toString()}`);
+      if (!res.ok) throw new Error(`geo.api ${res.status}`);
+      list = await res.json();
+    } catch (err) {
+      return [];
+    }
+    // La recherche par nom est approximative (« Lille » renvoie aussi « Lillers ») : on ne garde que le nom exact.
+    const exact = (Array.isArray(list) ? list : []).filter((c) => normalizeCity(c.nom) === normalizeCity(name));
+    codes = [...new Set(exact.flatMap((c) => c.codesPostaux || []))];
+    if (codes.length > 0) break;
+  }
+
+  setMemo(inseeMemory, cacheKey, codes, INSEE_TTL_MS);
+  persist(INSEE_STORE_KEY, inseeMemory);
+  return codes;
+}
+
 function roundCoord(n) {
   return Math.round(n * 100000) / 100000;
 }
@@ -147,4 +181,4 @@ async function banReverse(lon, lat) {
   return value;
 }
 
-export { resolveInseeCodes, banReverse, normalizeCity, stripAccents };
+export { resolveInseeCodes, resolvePostalCodes, banReverse, normalizeCity, stripAccents };

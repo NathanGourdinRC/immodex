@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Immodex",
-  "version": "0.1.0",
-  "description": "Trouve l'adresse réelle d'une annonce immobilière (Leboncoin, Bienici, SeLoger) via le registre ADEME des DPE et le cadastre IGN.",
+  "name": "Immodex+",
+  "version": "0.2.0",
+  "description": "Trouve l'adresse réelle d'une annonce immobilière (Leboncoin, Bienici, SeLoger et sites d'agences) via le registre ADEME des DPE et le cadastre IGN. Historique des recherches sur 7 jours.",
   "icons": {
     "16": "icons/16.png",
     "32": "icons/32.png",
@@ -10,7 +10,7 @@
     "128": "icons/128.png"
   },
   "action": {
-    "default_title": "Immodex",
+    "default_title": "Immodex+",
     "default_popup": "src/popup/popup.html",
     "default_icon": {
       "16": "icons/16.png",
@@ -19,7 +19,11 @@
       "128": "icons/128.png"
     }
   },
-  "permissions": ["storage"],
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
   "host_permissions": [
     "https://data.ademe.fr/*",
     "https://apicarto.ign.fr/*",
@@ -43,7 +47,9 @@
         "src/ui/overlay.js",
         "src/content/leboncoin.js"
       ],
-      "css": ["src/ui/overlay.css"],
+      "css": [
+        "src/ui/overlay.css"
+      ],
       "run_at": "document_idle"
     },
     {
@@ -56,7 +62,9 @@
         "src/ui/overlay.js",
         "src/content/bienici.js"
       ],
-      "css": ["src/ui/overlay.css"],
+      "css": [
+        "src/ui/overlay.css"
+      ],
       "run_at": "document_idle"
     },
     {
@@ -69,13 +77,17 @@
         "src/ui/overlay.js",
         "src/content/seloger.js"
       ],
-      "css": ["src/ui/overlay.css"],
+      "css": [
+        "src/ui/overlay.css"
+      ],
       "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["src/ui/overlay.css"],
+      "resources": [
+        "src/ui/overlay.css"
+      ],
       "matches": [
         "https://www.leboncoin.fr/*",
         "https://www.bienici.com/*",

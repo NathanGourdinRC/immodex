@@ -1,6 +1,6 @@
 import { DATASETS, queryAdeme } from './ademe.js';
 import { queryParcels } from './apicarto.js';
-import { resolveInseeCodes, banReverse } from './geo.js';
+import { resolveInseeCodes, resolvePostalCodes, banReverse } from './geo.js';
 
 function shiftIsoDate(iso, days) {
   const d = new Date(iso + 'T00:00:00Z');
@@ -27,9 +27,32 @@ function buildFilters(payload, dataset, tier) {
     ges: isLegacy ? 'classe_estimation_ges' : 'etiquette_ges',
     date: 'date_etablissement_dpe',
     building: isLegacy ? 'tr002_type_batiment_description' : 'type_batiment',
+    conso: isLegacy ? 'consommation_energie' : 'conso_5_usages_par_m2_ep',
+    gesValue: isLegacy ? 'estimation_ges' : 'emission_ges_5_usages_par_m2',
   };
 
   if (payload.postal) filters.eq.push([f.postal, payload.postal]);
+  else if (Array.isArray(payload.postals) && payload.postals.length > 0) {
+    // Ville sans code postal (ex. Lille : 59000, 59160, 59260, 59777, 59800) : on cherche dans tous.
+    filters.in.push([f.postal, payload.postals.join(',')]);
+  }
+
+  // Niveau 0 : la consommation (et les émissions) affichées sur l'annonce sont
+  // presque uniques à surface et code postal donnés. Surface élargie à ±3 m²
+  // car l'annonce peut afficher la surface Carrez plutôt que la surface du DPE.
+  if (tier === 0) {
+    if (payload.surface) {
+      filters.gte.push([f.surface, payload.surface - 3]);
+      filters.lte.push([f.surface, payload.surface + 3]);
+    }
+    filters.gte.push([f.conso, payload.energyConsumption - 1]);
+    filters.lte.push([f.conso, payload.energyConsumption + 1]);
+    if (payload.gesEmission != null) {
+      filters.gte.push([f.gesValue, payload.gesEmission - 1]);
+      filters.lte.push([f.gesValue, payload.gesEmission + 1]);
+    }
+    return filters;
+  }
 
   let surfaceTolerance = 1;
   if (tier >= 3) surfaceTolerance = 3;
@@ -109,6 +132,27 @@ function scoreRecord(record, payload) {
     }
   }
 
+  if (payload.energyConsumption != null && record.energyConsumption != null) {
+    const diff = Math.abs(Number(record.energyConsumption) - payload.energyConsumption);
+    if (diff <= 1) {
+      score += 25;
+      reasons.push('consommation identique');
+    } else {
+      if (diff <= 5) score += 8;
+      diffs.push(`conso ${Math.round(Number(record.energyConsumption))} vs ${payload.energyConsumption}`);
+    }
+  }
+
+  if (payload.gesEmission != null && record.gesEmission != null) {
+    const diff = Math.abs(Number(record.gesEmission) - payload.gesEmission);
+    if (diff <= 1) {
+      score += 10;
+      reasons.push('émissions identiques');
+    } else {
+      diffs.push(`émissions ${Math.round(Number(record.gesEmission))} vs ${payload.gesEmission}`);
+    }
+  }
+
   if (payload.buildingType && record.buildingType) {
     const recordType = String(record.buildingType).toLowerCase();
     if (recordType.includes(payload.buildingType)) {
@@ -130,8 +174,22 @@ function pickDataset(payload) {
   return DATASETS.existing;
 }
 
-async function runLookup(payload) {
+// Annonce sans code postal mais avec une ville : on récupère ses codes postaux.
+async function withPostalCodes(payload) {
+  if (payload.postal || !payload.city) return payload;
+  const codes = await resolvePostalCodes(payload.city, payload.department || null);
+  if (codes.length === 1) return { ...payload, postal: codes[0] };
+  if (codes.length > 1 && codes.length <= 12) return { ...payload, postals: codes };
+  return payload;
+}
+
+async function runLookup(input) {
+  const payload = await withPostalCodes(input);
+  if (!payload.postal && !(payload.postals && payload.postals.length)) {
+    return { ok: true, candidates: [], tried: [], dataset: pickDataset(payload), tier: 0, highConfidence: false, note: 'code postal introuvable' };
+  }
   const primaryDataset = pickDataset(payload);
+  const firstTier = payload.energyConsumption != null ? 0 : 1;
   const tried = [];
   const datasetsToTry = [primaryDataset];
   if (primaryDataset !== DATASETS.legacy) datasetsToTry.push(DATASETS.legacy);
@@ -144,10 +202,11 @@ async function runLookup(payload) {
   let usedTier = 1;
 
   for (const dataset of datasetsToTry) {
-    for (let tier = 1; tier <= 3; tier++) {
+    for (let tier = firstTier; tier <= 3; tier++) {
       const filters = buildFilters(payload, dataset, tier);
       try {
-        const result = await queryAdeme({ dataset, filters, size: 20 });
+        // 50 lignes : en ville dense, des centaines de logements partagent surface et classes.
+        const result = await queryAdeme({ dataset, filters, size: tier === 0 ? 20 : 50 });
         tried.push({ dataset, tier, total: result.total, url: result.url });
         if (result.records.length > 0) {
           usedDataset = dataset;
@@ -233,8 +292,14 @@ function scoreParcel(parcel, payload, inseeCount) {
   return { score: Math.max(0, Math.min(100, score)), reasons, diffs };
 }
 
-async function runLandLookup(payload) {
+async function runLandLookup(input) {
   const tried = [];
+  let payload = input;
+  if (!payload.postal && payload.city) {
+    // Un seul code postal suffit : resolveInseeCodes retrouve ensuite la commune par son nom.
+    const codes = await resolvePostalCodes(payload.city, payload.department || null);
+    if (codes.length > 0) payload = { ...payload, postal: codes[0] };
+  }
   if (!payload.postal || !payload.surface) {
     return { ok: true, kind: 'land', candidates: [], tried, tier: 0, total: 0, highConfidence: false };
   }

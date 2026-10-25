@@ -519,3 +519,27 @@
 .immodex-credit svg {
   flex-shrink: 0;
 }
+
+/* ─── Bandeau « résultat enregistré » (historique) ─── */
+.immodex-saved {
+  margin: 10px 12px 0;
+  padding: 7px 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 2px solid var(--imx-red-shadow);
+  border-left: 4px solid var(--imx-lens-glow);
+  border-radius: 4px;
+  color: var(--imx-screen-soft);
+  font-size: 11px;
+}
+
+.immodex-saved a {
+  color: var(--imx-lens-glow);
+  text-decoration: none;
+  border-bottom: 1px dotted rgba(147, 197, 253, 0.5);
+  cursor: pointer;
+}

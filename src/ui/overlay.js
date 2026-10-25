@@ -37,7 +37,7 @@
     return card;
   }
 
-  const GITHUB_URL = 'https://github.com/tonoid/immodex';
+  const GITHUB_URL = 'https://github.com/NathanGourdinRC/immodex';
   const TONOID_URL = 'https://www.tonoid.com/fr';
 
   function githubIconSvg() {
@@ -109,6 +109,8 @@
           ['Surface', payload.surface ? `${payload.surface} m²` : null],
           ['Classe énergie', payload.energyClass],
           ['Classe GES', payload.gesClass],
+          ['Consommation', payload.energyConsumption != null ? `${payload.energyConsumption} kWh/m²/an` : null],
+          ['Émissions', payload.gesEmission != null ? `${payload.gesEmission} kg CO2/m²/an` : null],
           ['Type', payload.buildingType],
           ['Date DPE', payload.dateRange ? `${payload.dateRange.gte} → ${payload.dateRange.lte}` : null],
         ];
@@ -186,7 +188,7 @@
     const prompt = el(
       'div',
       { class: 'immodex-date-prompt' },
-      el('label', null, 'Date du DPE (facultatif — laisser vide pour chercher par surface + classes)'),
+      el('label', null, 'Date du DPE (facultatif : laisser vide pour chercher par surface et classes)'),
       input,
       errBox,
       el('button', { onclick: submit }, 'Rechercher'),
@@ -207,10 +209,27 @@
     return `https://www.google.com/maps/search/?api=1&query=${q}`;
   }
 
-  function showResult(payload, result, onModify) {
+  function formatSavedAt(ts) {
+    const d = new Date(ts);
+    const pad = (n) => (n < 10 ? '0' + n : String(n));
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} à ${pad(d.getHours())}h${pad(d.getMinutes())}`;
+  }
+
+  // Bandeau affiché quand la carte montre un résultat de l'historique et non une recherche fraîche.
+  function renderSavedBanner(card, saved) {
+    if (!saved) return;
+    const banner = el('div', { class: 'immodex-saved' }, `Résultat enregistré le ${formatSavedAt(saved.createdAt)}`);
+    if (saved.onRerun) {
+      banner.appendChild(el('a', { onclick: saved.onRerun }, 'Relancer la recherche'));
+    }
+    card.appendChild(banner);
+  }
+
+  function showResult(payload, result, onModify, saved) {
     const card = ensureCard();
     card.innerHTML = '';
     renderHeader(card);
+    renderSavedBanner(card, saved);
     renderFields(card, payload);
 
     if (!result || !result.candidates || result.candidates.length === 0) {
@@ -354,10 +373,11 @@
     return `https://www.google.com/maps?q=${lat.toFixed(6)},${lon.toFixed(6)}`;
   }
 
-  function showLandResult(payload, result, onModify) {
+  function showLandResult(payload, result, onModify, saved) {
     const card = ensureCard();
     card.innerHTML = '';
     renderHeader(card);
+    renderSavedBanner(card, saved);
     renderFields(card, payload);
 
     if (!result || !result.candidates || result.candidates.length === 0) {
@@ -396,7 +416,7 @@
     if (parcel.section) sn.push(`section ${parcel.section}`);
     if (parcel.numero) sn.push(`n°${parcel.numero}`);
     if (sn.length > 0) idParts.push(sn.join(' '));
-    idLine.textContent = idParts.join(' — ');
+    idLine.textContent = idParts.join(' · ');
     topBox.appendChild(idLine);
 
     const confLabel =
@@ -583,6 +603,89 @@
     return null;
   }
 
+  function sendMessage(message) {
+    return chrome.runtime.sendMessage(message).catch((err) => ({ ok: false, error: String(err.message || err) }));
+  }
+
+  // « Modifier les champs » : les critères partent au service worker, que le popup
+  // relit à son ouverture (le popup ne peut pas lire le stockage de la page).
+  async function openOverride(payload) {
+    await sendMessage({ type: 'PREFILL_SET', payload });
+    const res = await sendMessage({ type: 'OPEN_POPUP' });
+    if (!res || !res.opened) {
+      alert("Cliquez sur l'icône Immodex+ dans la barre d'outils : le formulaire est pré-rempli avec ces critères.");
+    }
+  }
+
+  async function runLookup(payload) {
+    const response = await sendMessage({ type: 'LOOKUP', payload });
+    if (!response || response.ok !== true) {
+      showError(response?.error || 'Erreur inconnue', payload);
+      return;
+    }
+    if (payload.kind === 'land' || response.result?.kind === 'land') {
+      showLandResult(payload, response.result, () => openOverride(payload));
+    } else {
+      showResult(payload, response.result, () => openOverride(payload));
+    }
+  }
+
+  // Enchaînement commun à toutes les annonces : un terrain part directement au
+  // cadastre ; un logement sans date de DPE passe d'abord par la question de la date.
+  function startLookup(payload) {
+    if (payload.kind !== 'land' && !payload.dateRange) {
+      showDatePrompt(payload, (updated) => {
+        showLoading(updated);
+        runLookup(updated);
+      });
+      return;
+    }
+    showLoading(payload);
+    runLookup(payload);
+  }
+
+  function showSaved(entry, onRerun) {
+    const saved = { createdAt: entry.createdAt, onRerun };
+    const onModify = () => openOverride(entry.payload);
+    if (entry.kind === 'land') showLandResult(entry.payload, entry.result, onModify, saved);
+    else showResult(entry.payload, entry.result, onModify, saved);
+  }
+
+  async function savedEntryForPage() {
+    const res = await sendMessage({ type: 'HISTORY_GET_FOR_URL', url: location.href });
+    return res && res.ok ? res.entry : null;
+  }
+
+  const LABEL_SEARCH = 'Immodex+ · trouver l’adresse';
+  const LABEL_SAVED = 'Immodex+ · adresses enregistrées';
+  let labelCheckedFor = null;
+
+  function setFloatingLabel(label) {
+    if (floatingBtnState) floatingBtnState.label = label;
+    const btn = document.getElementById('immodex-floating-btn');
+    if (btn && btn.textContent !== label) {
+      btn.textContent = label;
+      btn.title = label;
+      btn.setAttribute('aria-label', label);
+    }
+  }
+
+  // Bouton flottant des annonces : si la page a déjà été cherchée, il réaffiche
+  // le résultat enregistré au lieu de relancer les API.
+  function mountListingButton(onClick) {
+    const handler = async (btn) => {
+      const entry = await savedEntryForPage();
+      if (entry) showSaved(entry, () => onClick(btn));
+      else onClick(btn);
+    };
+    const btn = mountFloatingButton(floatingBtnState ? floatingBtnState.label : LABEL_SEARCH, handler);
+    if (labelCheckedFor !== location.href) {
+      labelCheckedFor = location.href;
+      savedEntryForPage().then((entry) => setFloatingLabel(entry ? LABEL_SAVED : LABEL_SEARCH));
+    }
+    return btn;
+  }
+
   function onNavigate(cb) {
     let lastUrl = location.href;
     const fire = () => {
@@ -610,7 +713,12 @@
     closeCard,
     injectButton,
     mountFloatingButton,
+    mountListingButton,
     resetFloatingButton,
     onNavigate,
+    openOverride,
+    runLookup,
+    startLookup,
+    showSaved,
   };
 })();
