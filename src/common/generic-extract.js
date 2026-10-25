@@ -201,7 +201,7 @@
     // « Logement à consommation énergétique excessive : classe E »
     // Sans drapeau /i : avec /i, (?![a-z]) refuserait aussi une majuscule collée (« classe EMontant »).
     /[ée]nerg[ée]tique[^.\n]{0,40}?:\s*[Cc]lasse\s+([A-G])(?![a-zà-ÿ])/,
-    /(?:classe|[ée]tiquette|lettre)\s+(?:de\s+)?(?:l['’])?(?:[ée]nergie|[ée]nerg[ée]tique|dpe|consommation)(?:\s*-\s*climat)?\s*(?:\(dpe\))?\s*[:\-–]?\s*\(?([A-Ga-g])\b/i,
+    /(?:classe|[ée]tiquette|lettre)\s+(?:de\s+)?(?:l['’])?(?:[ée]nergie|[ée]nerg[ée]tique|dpe|consommation)(?:\s*-\s*climat)?(?:\s+actuelle)?\s*(?:\(dpe\))?\s*[:\-–]?\s*\(?([A-Ga-g])\b/i,
     /(?:diagnostic\s+de\s+performance\s+[ée]nerg[ée]tique|performance\s+[ée]nerg[ée]tique|consommations?\s+[ée]nerg[ée]tiques?)\s*(?:\(dpe\))?\s*(?:classe)?\s*[:\-–]?\s*([A-Ga-g])\b/i,
     /\bDPE\s*(?:classe)?\s*[:\-–]?\s*([A-G])\b/,
   ];
@@ -209,7 +209,7 @@
     /\bGES\s+class[ée]e?\s+(?:en\s+)?([A-G])\b/i,
     /\(GES\)\s*:?\s*([A-G])(?![a-zà-ÿ])/,
     /\b([A-G])\s+(?:indice\s+d['’])?[ée]missions?\s+de\s+gaz/i,
-    /(?:classe|[ée]tiquette|lettre)\s+(?:de\s+)?(?:ges|climat|co2|gaz\s+[àa]\s+effet\s+de\s+serre|[ée]missions?)\s*(?:\(ges\))?\s*[:\-–]?\s*\(?([A-Ga-g])\b/i,
+    /(?:classe|[ée]tiquette|lettre)\s+(?:de\s+)?(?:ges|climat|co2|gaz\s+[àa]\s+effet\s+de\s+serre|[ée]missions?)(?:\s+actuelle)?\s*(?:\(ges\))?\s*[:\-–]?\s*\(?([A-Ga-g])\b/i,
     /(?:[ée]missions?\s+de\s+gaz\s+[àa]\s+effet\s+de\s+serre|gaz\s+[àa]\s+effet\s+de\s+serre)\s*(?:\(ges\))?\s*(?:classe)?\s*[:\-–]?\s*([A-Ga-g])\b/i,
     /\bGES\s*(?:classe)?\s*[:\-–]?\s*([A-G])\b/,
   ];
@@ -335,6 +335,15 @@
   // l'id évoque l'énergie ou le climat, ou une image dont le nom porte la lettre.
   function fromLabels(doc) {
     const r = {};
+    // Étiquette SVG dont les groupes portent la classe dans leur identifiant (Laforêt : g#DPE_D, g#GES_C).
+    const dpeGroup = doc.querySelector('[id^="DPE_"]');
+    const gesGroup = doc.querySelector('[id^="GES_"]');
+    const idLetter = (node, prefix) => {
+      const m = node && node.id.match(new RegExp(`^${prefix}_([A-G])$`));
+      return m ? m[1] : null;
+    };
+    r.energyClass = idLetter(dpeGroup, 'DPE') || undefined;
+    r.gesClass = idLetter(gesGroup, 'GES') || undefined;
     const actives = doc.querySelectorAll(
       '[class*="active"], [class*="selected"], [class*="current"], [aria-current], [class*="highlight"]'
     );
@@ -389,6 +398,11 @@
       const label = `${img.getAttribute('alt') || ''} ${img.getAttribute('title') || ''}`;
       if (/kwh|co\s*[2₂]|dpe|climat/i.test(label)) parts.push(label);
     }
+    // Étiquettes accessibles : Abrinor « DPE F (365) », Citya « Classe énergétique actuelle : D ».
+    for (const el of doc.querySelectorAll('[aria-label]')) {
+      const label = el.getAttribute('aria-label') || '';
+      if (label.length < 200 && /kwh|co\s*[2₂]|dpe|ges\b|climat|[ée]nerg[ée]tique/i.test(label)) parts.push(label);
+    }
     return cleanText(parts.join('\n'));
   }
 
@@ -401,25 +415,241 @@
       if (blob.length > 3000000) break;
       blob += (s.textContent || '') + '\n';
     }
+    // Next.js (self.__next_f.push) échappe le JSON dans des chaînes : \"dpeNote\":\"E\".
+    blob = blob.replace(/\\"/g, '"');
     const key = (names) => `["']?(?:${names})["']?\\s*[:=]\\s*["']?`;
     const pick = (names, valueRe) => {
       const m = blob.match(new RegExp(key(names) + valueRe, 'i'));
       return m ? m[1] : null;
     };
     const r = {};
-    const energy = pick('energyClass|energy_class|classeEnergie|classe_energie|dpeLetter|dpe_letter|etiquetteDpe|etiquette_dpe|dpeClass|dpe_class|energyClassification|lettreDpe', '([A-G])["\']');
-    const ges = pick('gesClass|ges_class|classeGes|classe_ges|gesLetter|ges_letter|etiquetteGes|etiquette_ges|greenhouseGasClass|greenhouseGasEmissionClassification|lettreGes', '([A-G])["\']');
+    const energy = pick('energyClass|energy_class|classeEnergie|classe_energie|dpeLetter|dpe_letter|dpeLettre|dpeNote|energyCategory|noteConsoEnergie|consommationClasse|etiquetteDpe|etiquette_dpe|dpeClass|dpe_class|energyClassification|lettreDpe', '([A-G])["\']');
+    const ges = pick('gesClass|ges_class|classeGes|classe_ges|gesLetter|ges_letter|gesLettre|gesNote|gesCategory|noteEmissionGES|emissionGesClasse|etiquetteGes|etiquette_ges|greenhouseGasClass|greenhouseGasEmissionClassification|lettreGes', '([A-G])["\']');
     if (energy) r.energyClass = energy;
     if (ges) r.gesClass = ges;
     const ep = pick('energyConsumption|energy_consumption|consoEnergie|conso_energie|dpeValue|dpe_value|valeurDpe|consommationEnergie|energyValue', '(\\d{1,4}(?:\\.\\d+)?)');
     const gesV = pick('gesValue|ges_value|valeurGes|emissionGes|emission_ges|greenhouseGasValue|greenhouseGasEmission', '(\\d{1,4}(?:\\.\\d+)?)');
     if (ep) r.energyConsumption = parseNumber(ep);
     if (gesV) r.gesEmission = parseNumber(gesV);
-    const postal = pick('postalCode|postal_code|zipCode|zipcode|zip_code|codePostal|code_postal', '(\\d{5})');
+    const postal = pick('postalCode|postal_code|zipCode|zipcode|zip_code|codePostal|code_postal|postCode|itemZipcode', '(\\d{5})');
     if (postal) r.postal = postal;
-    const surface = pick('livingArea|living_area|surfaceHabitable|surface_habitable|habitableSurface|livingSurface', '(\\d{1,4}(?:\\.\\d+)?)');
+    const surface = pick('livingArea|living_area|surfaceHabitable|surface_habitable|habitableSurface|livingSurface|liveableSurface|mainSurface|propertySurface|itemSize', '(\\d{1,4}(?:\\.\\d+)?)');
     if (surface) r.surface = ex.normalizeSurface(surface);
     return r;
+  }
+
+  // ─── Données structurées embarquées par les sites ───
+  // Figaro Immobilier et IAD (Nuxt), Square Habitat et Foncia (Angular), Orpi
+  // (attribut data-estate), sites Netty (base64), Next.js. Plus fiables que le
+  // texte quand elles existent : ce sont les données qui servent à dessiner la page.
+
+  // Nuxt 3 sérialise son état en tableau plat (format « devalue ») : chaque objet
+  // référence ses valeurs par leur position dans le tableau.
+  const NUXT_WRAPPERS = new Set(['Reactive', 'ShallowReactive', 'Ref', 'ShallowRef', 'EmptyRef', 'EmptyShallowRef']);
+
+  function decodeNuxt(arr) {
+    const memo = new Map();
+    let budget = 300000;
+    function hydrate(i, depth) {
+      if (typeof i !== 'number' || i < 0 || i >= arr.length) return undefined;
+      if (memo.has(i)) return memo.get(i);
+      if (--budget < 0 || depth > 60) return undefined;
+      const v = arr[i];
+      if (v === null || typeof v !== 'object') {
+        memo.set(i, v);
+        return v;
+      }
+      if (Array.isArray(v)) {
+        if (typeof v[0] === 'string') {
+          // Valeur typée : ['ShallowReactive', idx], ['Date', '2026-…'], ['Set', …], ['Map', …].
+          if (NUXT_WRAPPERS.has(v[0])) {
+            const out = hydrate(v[1], depth + 1);
+            memo.set(i, out);
+            return out;
+          }
+          if (v[0] === 'Date') return v[1];
+          if (v[0] === 'Set') return v.slice(1).map((x) => hydrate(x, depth + 1));
+          if (v[0] === 'Map') {
+            const out = {};
+            for (let k = 1; k < v.length; k += 2) out[String(hydrate(v[k], depth + 1))] = hydrate(v[k + 1], depth + 1);
+            return out;
+          }
+          return undefined;
+        }
+        const out = [];
+        memo.set(i, out);
+        for (const x of v) out.push(hydrate(x, depth + 1));
+        return out;
+      }
+      const out = {};
+      memo.set(i, out);
+      for (const [k, x] of Object.entries(v)) out[k] = hydrate(x, depth + 1);
+      return out;
+    }
+    return hydrate(0, 0);
+  }
+
+  function parseJson(text) {
+    try {
+      return JSON.parse(text);
+    } catch {
+      return null;
+    }
+  }
+
+  function decodeBase64Json(b64) {
+    try {
+      return JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))));
+    } catch {
+      return null;
+    }
+  }
+
+  function structuredRoots(doc) {
+    const roots = [];
+    const nuxt = doc.getElementById('__NUXT_DATA__');
+    const nuxtArr = nuxt && parseJson(nuxt.textContent);
+    if (Array.isArray(nuxtArr)) roots.push(decodeNuxt(nuxtArr));
+    const next = doc.getElementById('__NEXT_DATA__');
+    const nextData = next && parseJson(next.textContent);
+    if (nextData) roots.push(nextData);
+    // Angular TransferState : les anciennes versions échappent les guillemets en « &q; ».
+    for (const id of ['ng-state', 'serverApp-state']) {
+      const n = doc.getElementById(id);
+      if (!n) continue;
+      const t = n.textContent.replace(/&q;/g, '"').replace(/&s;/g, "'").replace(/&l;/g, '<').replace(/&g;/g, '>').replace(/&a;/g, '&');
+      const j = parseJson(t);
+      if (j) roots.push(j);
+    }
+    for (const n of doc.querySelectorAll('[data-estate]')) {
+      const j = parseJson(n.getAttribute('data-estate'));
+      if (j) roots.push(j);
+    }
+    for (const s of doc.querySelectorAll('script:not([src])')) {
+      const m = (s.textContent || '').match(/_TEMPLATE_DATA\s*=\s*JSON\.parse\(\s*b64_to_utf8\(\s*["']([A-Za-z0-9+/=]{40,})["']/);
+      const j = m && decodeBase64Json(m[1]);
+      if (j) roots.push(j);
+    }
+    return roots;
+  }
+
+  // Noms de clés connus, du plus précis au plus vague. « parent.clé » désigne une
+  // clé imbriquée (IAD : epcGes.epc.class).
+  const KEYS = {
+    postal: ['location.postalcode', 'location.postcode', 'localisation.codepostal', 'address.postalcode', 'adresse.codepostal', 'villeinfos.codepostal', 'postalcode', 'postal_code', 'zipcode', 'zip_code', 'codepostal', 'code_postal', 'postcode', 'itemzipcode'],
+    city: ['location.cityonly', 'location.city', 'location.place', 'localisation.ville', 'cityonly', 'city', 'ville', 'commune', 'addresslocality', 'itemcity', 'place'],
+    surface: ['surfacehabitable', 'livingarea', 'living_area', 'habitablesurface', 'livingsurface', 'liveablesurface', 'mainsurface', 'propertysurface', 'surface.habitable', 'itemsize', 'area', 'surface'],
+    land: ['surfaceterrain', 'landsurface', 'lotsurface', 'areaground', 'areasurface', 'plotsurface', 'surface.terrain'],
+    energyClass: ['energycategory', 'dpenote', 'dpelettre', 'dpeletter', 'dpeclass', 'energyclass', 'classeenergie', 'consommationclasse', 'noteconsoenergie', 'etiquettedpe', 'energyclassification', 'epc.class', 'dpe.class', 'dpe.classe', 'dpe.lettre'],
+    gesClass: ['gescategory', 'gesnote', 'geslettre', 'gesletter', 'gesclass', 'classeges', 'emissiongesclasse', 'noteemissionges', 'etiquetteges', 'greenhousegasclass', 'ges.class', 'ges.classe', 'ges.lettre'],
+    energyIndex: ['consumptionindex'],
+    gesIndex: ['emissionindex'],
+    energyConsumption: ['energyconsumption', 'consoenergie', 'consommationenergie', 'valeurdpe', 'dpevalue', 'consumptionvalue', 'epc.value', 'dpe.value'],
+    gesEmission: ['gesvalue', 'emissionges', 'valeurges', 'emissionvalue', 'ges.value'],
+    date: ['datedpefr', 'dpedate', 'dpeexecutiondate', 'daterealisationdpe', 'datedpe', 'epcges.date', 'epc.date', 'dpe.date'],
+    type: ['propertytype', 'typebien', 'realestatetype', 'prod_type', 'itemtype', 'type'],
+  };
+  const ANCHORS = new Set([...KEYS.surface, ...KEYS.land, ...KEYS.energyClass, ...KEYS.energyIndex, 'dpe', 'epcges', 'dpeinfos', 'logementinfos'].filter((k) => !k.includes('.')));
+
+  // Blocs qui décrivent quelqu'un d'autre que le bien (l'agence et son adresse, le
+  // vendeur, le contact) : leur code postal n'est pas celui du bien.
+  const FOREIGN_PARENTS = /^(agency|agence|agences|advertiser|annonceur|contact|contacts|seller|vendeur|owner|publisher|office|negotiator|negociateur|agent|company|societe|brand|marque|user)$/i;
+
+  // Aplatit un objet sur 3 niveaux, les clés les moins profondes d'abord :
+  // { "postalcode": …, "location.postalcode": … }.
+  function flatten(obj) {
+    const out = new Map();
+    let level = [{ o: obj, parent: '' }];
+    for (let depth = 0; depth <= 3 && level.length; depth++) {
+      const nextLevel = [];
+      for (const { o, parent } of level) {
+        for (const [k, v] of Object.entries(o)) {
+          const key = k.toLowerCase();
+          if (v !== null && typeof v === 'object') {
+            if (!Array.isArray(v) && !FOREIGN_PARENTS.test(key)) nextLevel.push({ o: v, parent: key });
+            continue;
+          }
+          if (!out.has(key)) out.set(key, v);
+          if (parent && !out.has(`${parent}.${key}`)) out.set(`${parent}.${key}`, v);
+        }
+      }
+      level = nextLevel;
+    }
+    return out;
+  }
+
+  function structuredDate(v) {
+    const s = String(v);
+    let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    let y;
+    let mo;
+    let d;
+    if (m) [d, mo, y] = [+m[1], +m[2], +m[3]];
+    else if ((m = s.match(/^(\d{4})-(\d{2})-(\d{2})/))) [y, mo, d] = [+m[1], +m[2], +m[3]];
+    else return null;
+    const iso = `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    if (iso < '2021-07-01' || iso > new Date().toISOString().slice(0, 10)) return null;
+    return ex.parseDateRange({ year: y, month: mo, day: d });
+  }
+
+  function readFields(flat) {
+    const first = (keys, accept) => {
+      for (const k of keys) {
+        if (!flat.has(k)) continue;
+        const v = accept(flat.get(k));
+        if (v != null) return v;
+      }
+      return null;
+    };
+    const num = (min, max) => (v) => {
+      const n = typeof v === 'number' ? v : parseNumber(v);
+      return n != null && n >= min && n <= max ? n : null;
+    };
+    const letter = (v) => (typeof v === 'string' && /^[A-Ga-g]$/.test(v.trim()) ? v.trim().toUpperCase() : null);
+    const index = (v) => (Number.isInteger(+v) && +v >= 1 && +v <= 7 ? 'ABCDEFG'[+v - 1] : null);
+    return {
+      postal: first(KEYS.postal, (v) => (/^\d{5}$/.test(String(v)) ? String(v) : null)),
+      city: first(KEYS.city, (v) => (typeof v === 'string' && /^[^\d]{2,60}$/.test(v) ? v : null)),
+      surface: first(KEYS.surface, num(5, 2000)),
+      land: first(KEYS.land, num(10, 9999999)),
+      energyClass: first(KEYS.energyClass, letter) || first(KEYS.energyIndex, index),
+      gesClass: first(KEYS.gesClass, letter) || first(KEYS.gesIndex, index),
+      energyConsumption: first(KEYS.energyConsumption, num(1, 1500)),
+      gesEmission: first(KEYS.gesEmission, num(0, 400)),
+      dateRange: first(KEYS.date, structuredDate),
+      type: first(KEYS.type, (v) => (typeof v === 'string' ? v : null)),
+    };
+  }
+
+  // Cherche, dans tous les états embarqués, l'objet qui décrit le mieux l'annonce :
+  // celui qui réunit le plus de champs (surface, code postal, DPE…). En cas
+  // d'égalité, celui dont la surface correspond au titre de la page, sinon le
+  // premier rencontré (l'annonce principale précède les annonces similaires).
+  function fromStructured(doc, headSurface) {
+    let best = null;
+    let visited = 0;
+    for (const root of structuredRoots(doc)) {
+      const queue = [root];
+      const seen = new Set();
+      while (queue.length && visited < 30000) {
+        const node = queue.shift();
+        if (!node || typeof node !== 'object' || seen.has(node)) continue;
+        seen.add(node);
+        visited++;
+        const values = Array.isArray(node) ? node : Object.values(node);
+        for (const v of values) if (v && typeof v === 'object') queue.push(v);
+        if (Array.isArray(node) || !Object.keys(node).some((k) => ANCHORS.has(k.toLowerCase()))) continue;
+        const f = readFields(flatten(node));
+        if (f.surface == null && f.land == null) continue;
+        const score = ['postal', 'surface', 'energyClass', 'gesClass', 'energyConsumption', 'dateRange'].filter((k) => f[k] != null).length;
+        const matchesHead = headSurface != null && f.surface != null && Math.abs(f.surface - headSurface) < 1;
+        if (score < 2) continue;
+        if (!best || score > best.score || (score === best.score && matchesHead && !best.matchesHead)) {
+          best = { score, matchesHead, fields: f };
+        }
+      }
+    }
+    return best ? best.fields : {};
   }
 
   // ─── Assemblage ───
@@ -440,11 +670,14 @@
     const ld = fromJsonLd(readJsonLd(doc));
     const labels = fromLabels(doc);
     const scripts = fromScripts(doc);
+    const st = fromStructured(doc, surfaceFromHeadline(head));
     const r = {};
 
     // Localisation
     set(r, 'postal', ld.postal, 'json-ld');
+    set(r, 'postal', st.postal, 'données du site');
     set(r, 'city', ld.city && cleanCity(ld.city), 'json-ld');
+    set(r, 'city', st.city && cleanCity(st.city), 'données du site');
     const pcHead = postalAndCity(head);
     if (pcHead) {
       set(r, 'postal', pcHead.postal, 'titre');
@@ -472,11 +705,12 @@
       }
     }
 
-    const kind = isLandListing(head) ? 'land' : 'dpe';
+    const landByType = st.type && /terrain|land|plot/i.test(st.type) && !st.energyClass;
+    const kind = isLandListing(head) || landByType ? 'land' : 'dpe';
 
     if (kind === 'land') {
-      let land = null;
-      for (const re of LAND_PATTERNS) {
+      let land = st.land || (landByType ? st.surface : null) || null;
+      for (const re of land == null ? LAND_PATTERNS : []) {
         const m = text.match(re);
         if (m) land = parseLandNumber(m[1]);
         if (land != null) break;
@@ -503,6 +737,7 @@
 
     // Surface habitable
     set(r, 'surface', ld.surface, 'json-ld');
+    set(r, 'surface', st.surface != null ? ex.normalizeSurface(st.surface) : null, 'données du site');
     set(r, 'surface', ex.normalizeSurface(firstNumber(text, SURFACE_PATTERNS, { min: 5, max: 2000 })), 'texte');
     set(r, 'surface', surfaceFromHeadline(head), 'titre');
     set(r, 'surface', scripts.surface, 'script');
@@ -510,6 +745,8 @@
 
     // Valeurs du DPE (kWh et kg CO2), y compris dans les étiquettes SVG intégrées.
     const svgText = svgImageText(doc);
+    set(r, 'energyConsumption', st.energyConsumption, 'données du site');
+    set(r, 'gesEmission', st.gesEmission, 'données du site');
     set(r, 'energyConsumption', firstNumber(text, EP_PATTERNS, { min: 1, max: 1500 }), 'texte');
     set(r, 'energyConsumption', firstNumber(svgText, EP_PATTERNS, { min: 1, max: 1500 }), 'étiquette');
     set(r, 'energyConsumption', scripts.energyConsumption, 'script');
@@ -522,16 +759,23 @@
     // Le texte vient après car il mélange souvent la lettre et la légende « A B C … ».
     const derived = deriveClasses(r.energyConsumption, r.gesEmission, r.surface);
     set(r, 'energyClass', labels.energyClass, 'étiquette');
+    set(r, 'energyClass', st.energyClass, 'données du site');
+    set(r, 'energyClass', firstLetter(svgText, ENERGY_PATTERNS), 'étiquette');
     set(r, 'energyClass', derived && derived.energyClass, 'calculée');
     set(r, 'energyClass', firstLetter(text, [AFTER_LEGEND, ...ENERGY_PATTERNS]), 'texte');
     set(r, 'energyClass', scripts.energyClass, 'script');
     set(r, 'gesClass', labels.gesClass, 'étiquette');
+    set(r, 'gesClass', st.gesClass, 'données du site');
+    set(r, 'gesClass', firstLetter(svgText, GES_PATTERNS), 'étiquette');
     set(r, 'gesClass', derived && derived.gesClass, 'calculée');
     set(r, 'gesClass', firstLetter(text, GES_PATTERNS), 'texte');
     set(r, 'gesClass', scripts.gesClass, 'script');
 
     set(r, 'buildingType', buildingTypeFrom(head), 'titre');
     set(r, 'buildingType', ld.buildingType, 'json-ld');
+    set(r, 'buildingType', ex.normalizePropertyType(st.type), 'données du site');
+    set(r, 'dateRange', st.dateRange, 'données du site');
+    set(r, 'dateRange', dpeDateRange(text), 'texte');
 
     const result = {
       kind: 'dpe',
@@ -544,7 +788,7 @@
       energyConsumption: r.energyConsumption != null ? Math.round(r.energyConsumption) : null,
       gesEmission: r.gesEmission != null ? Math.round(r.gesEmission) : null,
       buildingType: r.buildingType || null,
-      dateRange: dpeDateRange(text),
+      dateRange: r.dateRange || null,
       // « neuf » dans la description vaut souvent « remis à neuf » : on ne regarde que le titre.
       isNewBuild: /\b(VEFA|programme neuf|logement neuf|appartement neuf|maison neuve)\b/i.test(head),
       source: 'generic',

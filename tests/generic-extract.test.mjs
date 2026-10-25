@@ -225,3 +225,70 @@ test('accents décomposés et ville en majuscules sur une ligne isolée', () => 
   assert.equal(r.city, 'Lille');
   assert.equal(r.energyClass, 'D');
 });
+
+// ─── Données structurées embarquées ───
+
+test('Nuxt (Figaro, IAD) : état « devalue » décodé, adresse de l’agence ignorée', () => {
+  // Tableau plat : chaque objet référence ses valeurs par leur position.
+  const nuxt = [
+    ['ShallowReactive', 1],
+    { data: 2 },
+    { classified: 3 },
+    { agency: 4, location: 6, area: 8, dpe: 9, type: 13 },
+    { postalCode: 5 },
+    '77127',
+    { postalCode: 7, cityOnly: 14 },
+    '59000',
+    130,
+    { energyCategory: 10, gesCategory: 11, dateDpeFr: 12 },
+    'C',
+    'B',
+    '28/04/2026',
+    'maison',
+    'Lille',
+  ];
+  const r = extract(page(`<h1>Maison</h1>`, `<script type="application/json" id="__NUXT_DATA__">${JSON.stringify(nuxt)}</script>`));
+  assert.equal(r.postal, '59000');
+  assert.equal(r.city, 'Lille');
+  assert.equal(r.surface, 130);
+  assert.equal(r.energyClass, 'C');
+  assert.equal(r.gesClass, 'B');
+  assert.deepEqual(plain(r.dateRange), { gte: '2026-04-28', lte: '2026-04-28', precision: 'day' });
+});
+
+test('Angular (Foncia, Square Habitat) : état avec guillemets échappés « &q; »', () => {
+  const state = '{&q;bien&q;:{&q;localisation&q;:{&q;codePostal&q;:&q;59800&q;},&q;surface&q;:{&q;habitable&q;:48.5},&q;noteConsoEnergie&q;:&q;E&q;,&q;noteEmissionGES&q;:&q;B&q;,&q;dpe&q;:{&q;date&q;:&q;2025-06-11&q;}}}';
+  const r = extract(page(`<h1>Location appartement</h1>`, `<script id="serverApp-state" type="application/json">${state}</script>`));
+  assert.equal(r.postal, '59800');
+  assert.equal(r.surface, 49);
+  assert.equal(r.energyClass, 'E');
+  assert.equal(r.gesClass, 'B');
+  assert.equal(plain(r.dateRange).gte, '2025-06-11');
+});
+
+test('Orpi : attribut data-estate avec indices 1 à 7 pour les classes', () => {
+  const estate = JSON.stringify({ zipCode: '59160', liveableSurface: 69, consumptionIndex: 5, emissionIndex: 3, dpeDate: '2026-05-15' });
+  const r = extract(page(`<h1>Maison 69 m²</h1><div data-component="estate-poi-map" data-estate='${estate}'></div>`));
+  assert.equal(r.postal, '59160');
+  assert.equal(r.energyClass, 'E');
+  assert.equal(r.gesClass, 'C');
+});
+
+test('Netty : données en base64 dans window._TEMPLATE_DATA', () => {
+  const b64 = Buffer.from(JSON.stringify({ product: { cp: '59000', city: 'Lille', surface: 129, prod_type: 'Appartement', dpeLetter: 'C' } }), 'utf8').toString('base64');
+  const r = extract(page(`<h1>Appartement</h1>`, `<script>window._TEMPLATE_DATA = JSON.parse(b64_to_utf8("${b64}"));</script>`));
+  assert.equal(r.surface, 129);
+  assert.equal(r.energyClass, 'C');
+});
+
+test('Laforêt : étiquette SVG en ligne avec groupes g#DPE_D et g#GES_C', () => {
+  const r = extract(page(`<h1>Maison 163 m² Lille (59000)</h1><svg><g id="DPE_D"><g id="Graph"></g></g><g id="GES_C"></g></svg>`));
+  assert.equal(r.energyClass, 'D');
+  assert.equal(r.gesClass, 'C');
+});
+
+test('Abrinor et Citya : classe dans un aria-label', () => {
+  const r = extract(page(`<h1>Appartement 51 m² Tourcoing (59200)</h1><div aria-label="DPE F (365)"></div><span aria-label="Classe GES actuelle : D"></span>`));
+  assert.equal(r.energyClass, 'F');
+  assert.equal(r.gesClass, 'D');
+});
