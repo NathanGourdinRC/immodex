@@ -131,3 +131,97 @@ test('extracteur dédié du site utilisé en premier par extractPage', () => {
   assert.equal(r.postal, '59000');
   assert.equal(r.found.tout, 'leboncoin-json');
 });
+
+// ─── Cas tirés de vraies pages d'annonces (structure reproduite, contenu inventé) ───
+
+test('PAP : lettre active dans l’échelle, la légende du texte est ignorée', () => {
+  const r = extract(
+    page(`<h1>Vente maison 113 m² Lambersart (59130)</h1>
+      <div class="energy-indice"><div class="item-title">Classe énergie</div><ul><li>A</li><li>B</li><li class="active">C</li><li>D</li><li>E</li><li>F</li><li>G</li></ul></div>
+      <div class="ges-indice"><div class="item-title">GES</div><ul><li class="active">A</li><li>B</li><li>C</li><li>D</li><li>E</li><li>F</li><li>G</li></ul></div>`)
+  );
+  assert.equal(r.energyClass, 'C');
+  assert.equal(r.gesClass, 'A');
+});
+
+test('ParuVendu : lettre après la légende, date « Fait le », mention de juillet 2021 ignorée', () => {
+  const r = extract(
+    page(`<h1>Vente maison 138 m² Lille 59000</h1>
+      <p>Diagnostic de performance énergétique (DPE) A B C D E F G F Classe Énergie 380 kWh/m² an C Indice d'émissions de gaz à effet de serre 19 kgCO₂/m².an</p>
+      <p>Diagnostic de Performance Energétique Fait le : 19/08/2025</p>
+      <p>Pour les DPE délivrés à compter du 1er juillet 2021, les valeurs E, F et G diffèrent.</p>`)
+  );
+  assert.equal(r.energyClass, 'F');
+  assert.equal(r.gesClass, 'C');
+  assert.deepEqual(plain(r.dateRange), { gte: '2025-08-19', lte: '2025-08-19', precision: 'day' });
+});
+
+test('dates de mentions légales ou impossibles : pas de date de DPE', () => {
+  const r = extract(
+    page(`<h1>Appartement 60 m² Lille (59000)</h1><p>Classe énergie : D. Prix moyens des énergies indexés au 1er janvier 2021. DPE réalisé le 01/01/2064.</p>`)
+  );
+  assert.equal(r.dateRange, null);
+});
+
+test('Foncia : classe et valeurs dans le texte alternatif des images d’étiquette', () => {
+  const r = extract(
+    page(`<h1>Location appartement 41 m² Lille (59000)</h1>
+      <img alt="Diagnostic classe énergie : C indice : 150 kWhEP/m².an" src="/dpe.png">
+      <img alt="Diagnostic classe climat : A indice : 5 KgéqCO2/m².an" src="/ges.png">`)
+  );
+  assert.equal(r.energyClass, 'C');
+  assert.equal(r.gesClass, 'A');
+  assert.equal(r.energyConsumption, 150);
+  assert.equal(r.gesEmission, 5);
+});
+
+test('Apimo : valeurs lues dans une étiquette SVG intégrée en base64', () => {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg"><text>CLASSE ÉNERGIE</text><text>285</text><text>kWh/m².year</text><text>émission</text><text>38</text><text>kg CO2/m².an</text></svg>';
+  const b64 = Buffer.from(svg, 'utf8').toString('base64');
+  const r = extract(page(`<h1>Vente maison 247 m² Tourcoing (59200)</h1><img alt="Diagnostic Graph" src="data:image/svg+xml;base64,${b64}">`));
+  assert.equal(r.energyConsumption, 285);
+  assert.equal(r.gesEmission, 38);
+  assert.equal(r.energyClass, 'E');
+  assert.equal(r.gesClass, 'D');
+});
+
+test('IAD : « DPE classé en B et GES classé en B »', () => {
+  const r = extract(page(`<h1>Appartement 44 m² Lille (59000)</h1><p>Performance énergétique : DPE classé en B et GES classé en B.</p>`));
+  assert.equal(r.energyClass, 'B');
+  assert.equal(r.gesClass, 'B');
+});
+
+test('annonces similaires et vignettes : leurs DPE et surfaces sont ignorés', () => {
+  const r = extract(
+    page(`<article class="card"><h3>Appartement 47 m²</h3><p>${'Autre bien. '.repeat(50)} 137 kWh/m².an 28 kg CO2/m².an Classe énergie : C</p></article>
+      <h1>Location appartement 41 m² Lille (59000)</h1><p>Classe énergie : B</p><p>${'Description du bien loué. '.repeat(40)}</p>
+      <section class="similar-ads"><p>Appartement 39 m² 216 kWh/m².an 7 kg CO2/m².an</p></section>`)
+  );
+  assert.equal(r.surface, 41);
+  assert.equal(r.energyClass, 'B');
+  assert.equal(r.energyConsumption, null);
+});
+
+test('Safti : petite surface, classe lue dans « consommation énergétique excessive : classe E »', () => {
+  const r = extract(page(`<h1>Appartement 16 m² Lille (59000)</h1><p>388kWh/m².an 15*kgCO₂/m².an</p><p>Logement à consommation énergétique excessive : classe E</p>`));
+  assert.equal(r.energyClass, 'E');
+  assert.equal(r.energyConsumption, 388);
+  assert.equal(r.gesEmission, 15);
+});
+
+test('Vacherand : surface seulement dans « Appartement 19 m² 1 pièce »', () => {
+  const r = extract(page(`<h1>Location Lille</h1><p>60/62 rue d'Arras 59000 Lille Appartement 19 m² 1 pièce Meublé. Terrasse de 6 m².</p>`));
+  assert.equal(r.surface, 19);
+});
+
+test('La Boîte Immo : étiquette en image JPEG, la classe reste à demander', () => {
+  const r = extract(page(`<h1>Appartement T5 89 m² Lille (59000)</h1><img class="energy__img" src="/admin/dpe.php?idann=1" alt="DPE"><img src="/admin/dpe.php?type=GES&idann=1" alt="GES">`));
+  assert.equal(r.energyClass, null);
+  assert.ok(r.missing.includes('energyClass'));
+});
+
+test('accents décomposés et ville en majuscules sur une ligne isolée', () => {
+  const r = extract(page(`<h1>Maison 163 m²</h1><p>59000 LILLE\nTéléphone Siège</p><p>Classe énergétique : D</p>`));
+  assert.equal(r.city, 'Lille');
+  assert.equal(r.energyClass, 'D');
+});
