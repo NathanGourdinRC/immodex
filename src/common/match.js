@@ -199,7 +199,17 @@ function pickDataset(payload) {
 }
 
 // Annonce sans code postal mais avec une ville : on récupère ses codes postaux.
-async function withPostalCodes(payload) {
+async function withPostalCodes(input) {
+  let payload = input;
+  // Indice de ville (titre ou adresse de la page) : si c'est une vraie commune et que
+  // le code postal lu ne lui appartient pas, ce code est celui de l'agence.
+  if (payload.cityHint) {
+    const hinted = await resolvePostalCodes(payload.cityHint, payload.department || null);
+    if (hinted.length && !(payload.postal && hinted.includes(payload.postal))) {
+      payload = { ...payload, city: payload.cityHint, postal: hinted.length === 1 ? hinted[0] : null, postals: hinted.length > 1 ? hinted : undefined };
+      if (payload.postal || payload.postals) return payload;
+    }
+  }
   if (payload.postal || !payload.city) return payload;
   const codes = await resolvePostalCodes(payload.city, payload.department || null);
   if (codes.length === 1) return { ...payload, postal: codes[0] };
@@ -321,6 +331,10 @@ function scoreParcel(parcel, payload, inseeCount) {
 async function runLandLookup(input) {
   const tried = [];
   let payload = input;
+  if (payload.cityHint) {
+    const hinted = await resolvePostalCodes(payload.cityHint, payload.department || null);
+    if (hinted.length && !(payload.postal && hinted.includes(payload.postal))) payload = { ...payload, city: payload.cityHint, postal: hinted[0] };
+  }
   if (!payload.postal && payload.city) {
     // Un seul code postal suffit : resolveInseeCodes retrouve ensuite la commune par son nom.
     const codes = await resolvePostalCodes(payload.city, payload.department || null);

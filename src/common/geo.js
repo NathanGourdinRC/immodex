@@ -14,8 +14,10 @@ function stripAccents(str) {
   return String(str || '').normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
 
+// « Marcq-en-Barœul » et « marcq-en-baroeul » doivent se reconnaître : la ligature œ
+// n'est pas décomposée par NFD, on la remplace à la main.
 function normalizeCity(str) {
-  return stripAccents(str).toLowerCase().replace(/[-'\s]+/g, ' ').trim();
+  return stripAccents(str).toLowerCase().replace(/œ/g, 'oe').replace(/æ/g, 'ae').replace(/[-'’\s]+/g, ' ').trim();
 }
 
 async function loadStores() {

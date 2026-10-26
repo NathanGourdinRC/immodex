@@ -1,0 +1,562 @@
+[
+  {
+    "nom": "Action Immobilier",
+    "ville": "Wattrelos",
+    "domaine": "action.immo",
+    "plateforme": "Pilotim (lien pilotim.com)",
+    "exemple": "https://action.immo/fiche-maison-a-vendre-wattrelos-ref-1254.php"
+  },
+  {
+    "nom": "Bonte Immo",
+    "ville": "Mouvaux",
+    "domaine": "bonteimmo.com",
+    "plateforme": "Apimo",
+    "exemple": "https://bonteimmo.com/fr/propriete/vente+appartement+lannoy+appartement-t2-46-11m2-lannoy-centre+87109458"
+  },
+  {
+    "nom": "B&R Immobilier",
+    "ville": "Leers",
+    "domaine": "br-immobilier.fr",
+    "plateforme": "Apimo",
+    "exemple": "https://br-immobilier.fr/fr/propriete/vente+maison+roubaix+maison-renovee+84957836"
+  },
+  {
+    "nom": "Deleu Immobilier (agence de Neuville)",
+    "ville": "Neuville-en-Ferrain",
+    "domaine": "deleuimmobilier.com",
+    "plateforme": "Apimo",
+    "exemple": "https://deleuimmobilier.com/fr/propriete/vente+maison+neuville-en-ferrain+semi-plain-pied-individuel-sur-secteur-prise+87443305"
+  },
+  {
+    "nom": "De Rycker Transaction",
+    "ville": "Lille",
+    "domaine": "drtimmo.com",
+    "plateforme": "Gabarit « detail.php?item= » non identifié (même que metropolimmo.fr)",
+    "exemple": "https://drtimmo.com/detail.php?item=193"
+  },
+  {
+    "nom": "Leduc Immobilier",
+    "ville": "Lambersart",
+    "domaine": "immobilier.agence-leduc.fr",
+    "plateforme": "WordPress (Elementor)",
+    "exemple": "https://immobilier.agence-leduc.fr/ventes-immobilieres-a-lille/va1909-leduc-lille"
+  },
+  {
+    "nom": "Guy Hoquet Lambersart",
+    "ville": "Lambersart",
+    "domaine": "lambersart.guy-hoquet.com",
+    "plateforme": "Site du réseau Guy Hoquet (sous-domaine) ; liste chargée en JavaScript",
+    "exemple": null
+  },
+  {
+    "nom": "Leers Immobilier",
+    "ville": "Leers",
+    "domaine": "leers-immobilier.com",
+    "plateforme": "WordPress (Elementor)",
+    "exemple": "https://leers-immobilier.com/property/leers-au-calme-4/"
+  },
+  {
+    "nom": "Thérèse Noiret Immobilier",
+    "ville": "Comines",
+    "domaine": "therese-noiret.com",
+    "plateforme": "3Clics probable (étiquette DPE #dep-svg data-lettre, comme immosens.fr)",
+    "exemple": "https://therese-noiret.com/detail.php?item=794"
+  },
+  {
+    "nom": "Vereecke Immobilier",
+    "ville": "Saint-André-lez-Lille",
+    "domaine": "vereecke-immobilier.com",
+    "plateforme": "WordPress (extension Estatik)",
+    "exemple": "https://vereecke-immobilier.com/bien/appartement-t3-sans-vis-a-vis-dans-residence-arboree-avec-balcon-et-2-parkings/"
+  },
+  {
+    "nom": "L'Agence de Croix (Zola Immobilier)",
+    "ville": "Croix",
+    "domaine": "www.agence-de-croix.com",
+    "plateforme": "Proximedia (cdnnen.proxi.tools)",
+    "exemple": "https://www.agence-de-croix.com/fr/roubaix-maison-3-chambres---mezzanine"
+  },
+  {
+    "nom": "Agence Leers Transactions",
+    "ville": "Leers",
+    "domaine": "www.agence-leers.com",
+    "plateforme": "non identifiée (même étiquette DPE data-lettre que les sites 3Clics)",
+    "exemple": "https://www.agence-leers.com/maison-a-vendre-leers-59115,1627,p1.htm"
+  },
+  {
+    "nom": "Agence Cappelle",
+    "ville": "Lille",
+    "domaine": "www.agencecappelle.fr",
+    "plateforme": "Constructeur de sites Mono (site-assets.cdnmns.com) ; plusieurs annonces par page, pas de page par annonce",
+    "exemple": "https://www.agencecappelle.fr/nos-studios-t2-et-t3"
+  },
+  {
+    "nom": "Agence de la Forêt (Groupe Forest)",
+    "ville": "Bondues",
+    "domaine": "www.agforet.fr",
+    "plateforme": "Netty (gabarit classique, img.netty.immo)",
+    "exemple": "https://www.agforet.fr/immobilier/appartement-t2-2-pieces-roubaix-59100-fr_VA23409.htm"
+  },
+  {
+    "nom": "Alerte Immo",
+    "ville": "Linselles (fiche MeilleursAgents) ; pied de page du site : Lille 59800, à confirmer",
+    "domaine": "www.alerteimmobilier.fr",
+    "plateforme": "Netty (gabarit Modelo, _TEMPLATE_DATA)",
+    "exemple": "https://www.alerteimmobilier.fr/vente/maison-mitoyenne-1-cote-6-pieces-lannoy-59390,VM1149"
+  },
+  {
+    "nom": "Audrey Immobilier",
+    "ville": "Faches-Thumesnil",
+    "domaine": "www.audrey-immobilier.fr",
+    "plateforme": "Pilotim",
+    "exemple": "https://www.audrey-immobilier.fr/fiche-maison-a-vendre-faches-thumesnil-ref-382.php"
+  },
+  {
+    "nom": "B&H Associés",
+    "ville": "Roncq",
+    "domaine": "www.bh-immo.fr",
+    "plateforme": "Netty (gabarit Modelo, _TEMPLATE_DATA)",
+    "exemple": "https://www.bh-immo.fr/vente/maison-ancienne-4-pieces-roncq-59223,VM541"
+  },
+  {
+    "nom": "Brice Habitat (ex-Renoult Habitat)",
+    "ville": "Villeneuve-d'Ascq",
+    "domaine": "www.brice-habitat.com",
+    "plateforme": "La Boîte Immo",
+    "exemple": "https://www.brice-habitat.com/vente/1-villeneuve-d-ascq/maison/4256-5-chambres-jardin-et-garage"
+  },
+  {
+    "nom": "Brique Rouge Immobilier",
+    "ville": "Haubourdin, Lambersart",
+    "domaine": "www.brique-rouge-immobilier.fr",
+    "plateforme": "Site sur mesure non identifié (même gabarit que le-lion-immobilier.fr)",
+    "exemple": "https://www.brique-rouge-immobilier.fr/vente/maison/jolie-maison-de-lotissement_33459"
+  },
+  {
+    "nom": "Cabinet Choquet",
+    "ville": "Lille",
+    "domaine": "www.cabinet-choquet.com",
+    "plateforme": "Pilotim probable (même gabarit que audrey-immobilier.fr, non vérifié)",
+    "exemple": "https://www.cabinet-choquet.com/fiche-type-2-a-vendre-lille-centre-republique-ref-1384.php"
+  },
+  {
+    "nom": "Cabinet Sandevoir",
+    "ville": "Lille",
+    "domaine": "www.cabinet-sandevoir.com",
+    "plateforme": "Site sur mesure (0001.fr)",
+    "exemple": "https://www.cabinet-sandevoir.com/detail-annonce/65"
+  },
+  {
+    "nom": "Century 21 Apolite",
+    "ville": "La Madeleine",
+    "domaine": "www.century21-apolite-la-madeleine.com",
+    "plateforme": "Gabarit des agences Century 21 (monsitemedia.fr)",
+    "exemple": "https://www.century21-apolite-la-madeleine.com/trouver_logement/detail/15738179630/"
+  },
+  {
+    "nom": "Century 21 Les Weppes",
+    "ville": "Haubourdin",
+    "domaine": "www.century21-les-weppes-haubourdin.com",
+    "plateforme": "Gabarit des agences Century 21 (monsitemedia.fr)",
+    "exemple": "https://www.century21-les-weppes-haubourdin.com/trouver_logement/detail/15589626672/"
+  },
+  {
+    "nom": "Century 21 LM Immobilier",
+    "ville": "Hellemmes (Lille)",
+    "domaine": "www.century21-lm-hellemmes-lille.com",
+    "plateforme": "Gabarit des agences Century 21 (monsitemedia.fr)",
+    "exemple": "https://www.century21-lm-hellemmes-lille.com/trouver_logement/detail/15110961884/"
+  },
+  {
+    "nom": "Century 21 Vieux-Lille",
+    "ville": "Lille",
+    "domaine": "www.century21-vieux-lille.com",
+    "plateforme": "Gabarit des agences Century 21 (monsitemedia.fr)",
+    "exemple": "https://www.century21-vieux-lille.com/trouver_logement/detail/15476249407/"
+  },
+  {
+    "nom": "C'est pour ton bien",
+    "ville": "Lille (Hellemmes)",
+    "domaine": "www.cestpourtonbien.com",
+    "plateforme": "Netty (Modelo)",
+    "exemple": "https://www.cestpourtonbien.com/vente/maison-mitoyenne-2-cotes-5-pieces-lille-59260,VM1826"
+  },
+  {
+    "nom": "City Immo",
+    "ville": "Quesnoy-sur-Deûle",
+    "domaine": "www.city-immo.fr",
+    "plateforme": "non identifiée",
+    "exemple": "https://www.city-immo.fr/vente-maison-ferme-quesnoy-sur-deule-1102"
+  },
+  {
+    "nom": "Clé du Nord",
+    "ville": "Mouvaux",
+    "domaine": "www.cledunord.com",
+    "plateforme": "3Clics (logo)",
+    "exemple": "https://www.cledunord.com/vente-maison-209000-mouvaux,341"
+  },
+  {
+    "nom": "Cofima",
+    "ville": "Lys-lez-Lannoy",
+    "domaine": "www.cofima-immo.com",
+    "plateforme": "La Boîte Immo (/admin/dpe.php)",
+    "exemple": "http://www.cofima-immo.com/8492-maison-1930-avec-jardin.html"
+  },
+  {
+    "nom": "Croix Immobilier GFI",
+    "ville": "Croix",
+    "domaine": "www.croix-immobilier.fr",
+    "plateforme": "Netty (gabarit Modelo, _TEMPLATE_DATA)",
+    "exemple": "https://www.croix-immobilier.fr/vente/maison-mitoyenne-2-cotes-4-pieces-croix-59170,VM39723"
+  },
+  {
+    "nom": "Delphine Immo",
+    "ville": "Mouvaux",
+    "domaine": "www.delphine.immo",
+    "plateforme": "Wix (annonces chargées en JavaScript)",
+    "exemple": null
+  },
+  {
+    "nom": "De Marez Immobilier",
+    "ville": "Marcq-en-Barœul",
+    "domaine": "www.demarezimmo.fr",
+    "plateforme": "Pilotim (lien pilotim.com)",
+    "exemple": "https://www.demarezimmo.fr/fiche-maison-a-vendre-croix-ref-1854.php"
+  },
+  {
+    "nom": "Duquesnoy Immobilier",
+    "ville": "Wasquehal",
+    "domaine": "www.duquesnoyimmobilier.com",
+    "plateforme": "La Boîte Immo (/admin/dpe.php)",
+    "exemple": "https://www.duquesnoyimmobilier.com/vente/1-wasquehal/maison/t6/11895-large-1930-situee-dans-une-rue-calme-proche-des-commerces/"
+  },
+  {
+    "nom": "Éric Franques Immobilier",
+    "ville": "La Madeleine",
+    "domaine": "www.eric-franques.com",
+    "plateforme": "3clics",
+    "exemple": "https://www.eric-franques.com/vente/appartement/lille/annonce-immobiliere-VA2276"
+  },
+  {
+    "nom": "Espaces Atypiques Lille",
+    "ville": "Lille",
+    "domaine": "www.espaces-atypiques.com",
+    "plateforme": "WordPress",
+    "exemple": "https://www.espaces-atypiques.com/ventes/59000-lille-lame-de-lancien-avec-terrasse-au-coeur-de-wazemmes-18784/"
+  },
+  {
+    "nom": "Estime",
+    "ville": "Lille",
+    "domaine": "www.estime-immo.com",
+    "plateforme": "La Boîte Immo",
+    "exemple": "https://www.estime-immo.com/vente/1-lille/appartement/1249-lille-gambetta-appartement-t4"
+  },
+  {
+    "nom": "Exception Immobilier",
+    "ville": "Lille",
+    "domaine": "www.exception-immo.com",
+    "plateforme": "ImmoFacile (AC3 / Orisha Real Estate)",
+    "exemple": "https://www.exception-immo.com/fiches/3-33-29_59825528/lille-quartier-sebastopol-saint-michel-tres-bel-appartement-de-type-3-avec-terrasse.html"
+  },
+  {
+    "nom": "GLV Immobilier",
+    "ville": "Lille, Ronchin",
+    "domaine": "www.glv-immobilier.fr",
+    "plateforme": "ImmoFacile (AC3 / Orisha Real Estate)",
+    "exemple": "https://www.glv-immobilier.fr/fiches/3-33-29_59825931/t3-secteur-vauban-port-de-lille-terrasse-et-garage-en-sus.html"
+  },
+  {
+    "nom": "Grimmelpont",
+    "ville": "Lambersart",
+    "domaine": "www.grimmelpont.fr",
+    "plateforme": "Immoscope",
+    "exemple": "https://www.grimmelpont.fr/immobilier/vente-appartement-lille/ref-VA2393-GRIMMELPONT"
+  },
+  {
+    "nom": "Grimonprez Immo",
+    "ville": "La Madeleine (et Roubaix)",
+    "domaine": "www.grimonprez.immo",
+    "plateforme": "La Boîte Immo",
+    "exemple": "https://www.grimonprez.immo/vente/579-lille/appartement/1416-appartement-4-pieces-entierement-renove"
+  },
+  {
+    "nom": "Hem Immobilier",
+    "ville": "Hem",
+    "domaine": "www.hem-immobilier.fr",
+    "plateforme": "3Clics (« Site réalisé par 3clics.com »)",
+    "exemple": "https://www.hem-immobilier.fr/detail.php?item=530"
+  },
+  {
+    "nom": "Hoste Immobilier (MAV by Hoste)",
+    "ville": "Tourcoing",
+    "domaine": "www.hoste-immobilier.fr",
+    "plateforme": "Vitrinellis (media.vitrinellis.net)",
+    "exemple": "https://www.hoste-immobilier.fr/fr/vente/1/1981391-maison-tourcoing-59200"
+  },
+  {
+    "nom": "Imko",
+    "ville": "Lille",
+    "domaine": "www.imko.fr",
+    "plateforme": "Netty (Modelo)",
+    "exemple": "https://www.imko.fr/vente/appartement-t3-3-pieces-lille-59000,VA4424"
+  },
+  {
+    "nom": "Logénord",
+    "ville": "Ronchin",
+    "domaine": "www.immobilier-logenord.fr",
+    "plateforme": "La Boîte Immo",
+    "exemple": "https://www.immobilier-logenord.fr/vente/26-lille/appartement/248-lille-saint-maurice-pellevoisin-appartement-t2-lumineux-et-climatise-petite-copropriete"
+  },
+  {
+    "nom": "Immobilière du Fer à Cheval",
+    "ville": "Croix / Bondues",
+    "domaine": "www.immobiliere-fer-cheval.fr",
+    "plateforme": "Immo-Facile probable (même structure que immobilierederoncq.com)",
+    "exemple": "https://www.immobiliere-fer-cheval.fr/fiches/3-32-36_58263660/croix-centre-t3-de-107m2-terrasse-parking-garage-cave.html"
+  },
+  {
+    "nom": "Immobilière de Roncq",
+    "ville": "Roncq",
+    "domaine": "www.immobilierederoncq.com",
+    "plateforme": "Immo-Facile (images v2.immo-facile.com)",
+    "exemple": "https://www.immobilierederoncq.com/fiches/3-33-30_56179214/appartement-roncq-t4-90-m2.html"
+  },
+  {
+    "nom": "Immobilière d'Halluin",
+    "ville": "Halluin",
+    "domaine": "www.immobilieredhalluin.com",
+    "plateforme": "3Clics (logo)",
+    "exemple": "https://www.immobilieredhalluin.com/maison-a-vendre-a-halluin-50626-immobilieredhalluin"
+  },
+  {
+    "nom": "Immocarré",
+    "ville": "Lille (Saint-Maurice Pellevoisin)",
+    "domaine": "www.immocarre.com",
+    "plateforme": "ICS",
+    "exemple": "https://www.immocarre.com/appartement-a-vendre-lille-saint-maurice-614.html"
+  },
+  {
+    "nom": "Immobilière de Linselles (Groupe Forest)",
+    "ville": "Linselles",
+    "domaine": "www.immolinselles.fr",
+    "plateforme": "Netty (gabarit classique, img.netty.immo)",
+    "exemple": "https://www.immolinselles.fr/immobilier/appartement-t3-3-pieces-tourcoing-59200-fr_VA23289.htm"
+  },
+  {
+    "nom": "Immobilière de Marcq (Groupe Forest)",
+    "ville": "Marcq-en-Barœul",
+    "domaine": "www.immomarcq.fr",
+    "plateforme": "Netty (gabarit Modelo, _TEMPLATE_DATA)",
+    "exemple": "https://www.immomarcq.fr/vente/maison-mitoyenne-1-cote-5-pieces-marcq-en-baroeul-59700,VM39746"
+  },
+  {
+    "nom": "Immo Parc Barbieux",
+    "ville": "Roubaix",
+    "domaine": "www.immoparcbarbieux.fr",
+    "plateforme": "3Clics (logo)",
+    "exemple": "https://www.immoparcbarbieux.fr/appartement-a-vendre-roubaix-151"
+  },
+  {
+    "nom": "Immosens (agences de Tourcoing et Croix)",
+    "ville": "Tourcoing / Croix (siège à Lille)",
+    "domaine": "www.immosens.fr",
+    "plateforme": "3Clics (mention sur la page d'accueil)",
+    "exemple": "https://www.immosens.fr/vente-appartement-tourcoing,CRVAP1310011514,1.htm"
+  },
+  {
+    "nom": "Immotram (agences de Roubaix et Marcq)",
+    "ville": "Roubaix / Marcq-en-Barœul",
+    "domaine": "www.immotram.fr",
+    "plateforme": "3Clics (logo)",
+    "exemple": "https://www.immotram.fr/bien-immobilier-vente-appartement-roubaix-alfred-mongy-R-va27035.html"
+  },
+  {
+    "nom": "Impact Immobilier",
+    "ville": "Loos",
+    "domaine": "www.impact-immobilier.fr",
+    "plateforme": "Pilotim probable (même gabarit que audrey-immobilier.fr, non vérifié)",
+    "exemple": "https://www.impact-immobilier.fr/fiche-maison-a-vendre-loos-ref-5335.php"
+  },
+  {
+    "nom": "JBG Immobilier",
+    "ville": "Lille",
+    "domaine": "www.jbgimmo.fr",
+    "plateforme": "ImmoFacile (AC3 / Orisha Real Estate)",
+    "exemple": "https://www.jbgimmo.fr/fiches/3-33-27_60821960/vieux-lille-studio-a-nenover.html"
+  },
+  {
+    "nom": "La Lilloise Immobilier",
+    "ville": "Lille",
+    "domaine": "www.lalilloise-immobilier.fr",
+    "plateforme": "ImmoFacile (AC3 / Orisha Real Estate)",
+    "exemple": "https://www.lalilloise-immobilier.fr/fiches/3-33-28_61338304/l-emplacement-l-emplacement-l-emplacement.html"
+  },
+  {
+    "nom": "L'Alliance Immobilier",
+    "ville": "Lesquin",
+    "domaine": "www.lalliance-immobilier.fr",
+    "plateforme": "La Boîte Immo",
+    "exemple": "https://www.lalliance-immobilier.fr/vente/9-lille/appartement/t2/501-belle-opportunite-a-saisir-sur-lille/"
+  },
+  {
+    "nom": "Le Lion Immobilier",
+    "ville": "Lille",
+    "domaine": "www.le-lion-immobilier.fr",
+    "plateforme": "Site sur mesure non identifié (même gabarit que brique-rouge-immobilier.fr)",
+    "exemple": "https://www.le-lion-immobilier.fr/vente/appartement/appartement-d-exception-deux-pas-de-la-grand-place_23882"
+  },
+  {
+    "nom": "Lecoutre Immobilier",
+    "ville": "La Madeleine",
+    "domaine": "www.lecoutre-immobilier.com",
+    "plateforme": "3clics (logiciel Gercop)",
+    "exemple": "https://www.lecoutre-immobilier.com/vente/appartement/la-madeleine/annonce-immobiliere-ref883"
+  },
+  {
+    "nom": "Lille Immo",
+    "ville": "Lille",
+    "domaine": "www.lille-immo.fr",
+    "plateforme": "3clics",
+    "exemple": "https://www.lille-immo.fr/location/lille/t1/annonce-immobiliere-G361-01"
+  },
+  {
+    "nom": "Logéhome (réseau)",
+    "ville": "Lille, Hellemmes, Lambersart, Ronchin",
+    "domaine": "www.logehome.fr",
+    "plateforme": "Spot My Place (site sur mesure)",
+    "exemple": "https://www.logehome.fr/achat,appartement-appartement-duplex-t6-de-99-m2-plein-coeur-du-vieux-lille,JLLIL-62"
+  },
+  {
+    "nom": "Marquette Immobilier",
+    "ville": "Marquette-lez-Lille",
+    "domaine": "www.marquette-immobilier.fr",
+    "plateforme": "WordPress",
+    "exemple": "https://www.marquette-immobilier.fr/immobilier/semi-individuelle-dans-quartier-prise-4-chambres-jardin-bien-expose-garage-et-stationnement/"
+  },
+  {
+    "nom": "MAV Immobilier",
+    "ville": "Marcq-en-Barœul",
+    "domaine": "www.mavimmobilier.fr",
+    "plateforme": "3Clics (logo)",
+    "exemple": "https://www.mavimmobilier.fr/annonces/vente/maison/roubaix/MVV251"
+  },
+  {
+    "nom": "Métropol'Immo",
+    "ville": "Villeneuve-d'Ascq",
+    "domaine": "www.metropolimmo.fr",
+    "plateforme": "Gabarit « detail.php?item= » non identifié (même que drtimmo.com)",
+    "exemple": "https://www.metropolimmo.fr/detail.php?item=427"
+  },
+  {
+    "nom": "Miss Immo",
+    "ville": "Marcq-en-Barœul",
+    "domaine": "www.miss-immo.fr",
+    "plateforme": "atHome (i1.static.athome.eu)",
+    "exemple": "https://www.miss-immo.fr/vente/maison/tourcoing/9299417"
+  },
+  {
+    "nom": "Nathalie Forest Sotheby's International Realty",
+    "ville": "Lille",
+    "domaine": "www.nathalieforest-sothebysrealty.com",
+    "plateforme": "Gabarit Sotheby's International Realty France (cartes agence-plus.net)",
+    "exemple": "https://www.nathalieforest-sothebysrealty.com/fr/nos-biens/ref-nf1-5325/vente-maison-de-luxe-lille-7-pieces-4-chambres-59000/"
+  },
+  {
+    "nom": "Norestim",
+    "ville": "Lille",
+    "domaine": "www.norestim.fr",
+    "plateforme": "WordPress (thème Houzez)",
+    "exemple": "https://www.norestim.fr/annonces-immobilieres/a-vendre-appartement-2-pieces-de-86-m2-lille/"
+  },
+  {
+    "nom": "Perez Immobilier",
+    "ville": "Bousbecque",
+    "domaine": "www.perezimmo.com",
+    "plateforme": "WordPress (thème « immo », extension wp-dpe-ges)",
+    "exemple": "https://www.perezimmo.com/biens_immobiliers/maison-bourgeoise-centre-ville-de-wervicq-sud/"
+  },
+  {
+    "nom": "Le 12 Immobilier / Pierres du Nord",
+    "ville": "Marcq-en-Barœul",
+    "domaine": "www.pierresdunordimmobilier.fr",
+    "plateforme": "WordPress (Elementor)",
+    "exemple": "https://www.pierresdunordimmobilier.fr/bien/mouvaux-st-germain-maison-trois-chambres-jardin-garage/"
+  },
+  {
+    "nom": "Posez Immobilier",
+    "ville": "Houplines",
+    "domaine": "www.posezimmobilier.fr",
+    "plateforme": "La Boîte Immo (/admin/dpe.php)",
+    "exemple": "https://www.posezimmobilier.fr/vente/1-houplines/maison/t4/57-maison-houplines-bourg-3-chambres-jardin-garage/"
+  },
+  {
+    "nom": "RD Immo",
+    "ville": "Marcq-en-Barœul",
+    "domaine": "www.rdimmo.fr",
+    "plateforme": "non identifiée",
+    "exemple": "https://www.rdimmo.fr/vente/257-maison-semi-individuelle-avec-jardin-sud-2-chambres-1-bureau-tourcoing"
+  },
+  {
+    "nom": "Sergic",
+    "ville": "Lambersart, Lille, La Madeleine, Mons-en-Barœul, Villeneuve-d'Ascq",
+    "domaine": "www.sergic.com",
+    "plateforme": "WordPress (annonces via Ubiflow)",
+    "exemple": "https://www.sergic.com/annonces-immobilieres/achat-3-pieces-61-59000-lille-hdf5501/"
+  },
+  {
+    "nom": "SH Immobilier",
+    "ville": "Wattrelos",
+    "domaine": "www.sh-immobilier.com",
+    "plateforme": "Netty (gabarit classique, img.netty.immo)",
+    "exemple": "https://www.sh-immobilier.com/immobilier/maison-mitoyenne-2-cotes-roubaix-vente-fr_VM433.htm"
+  },
+  {
+    "nom": "Trigone Immobilier",
+    "ville": "Armentières",
+    "domaine": "www.trigone-immo.com",
+    "plateforme": "Immo-Facile probable (même structure que immobilierederoncq.com ; lien realestate.orisha.com)",
+    "exemple": "https://www.trigone-immo.com/fiches/4-40-26_61501648/houplines.html"
+  },
+  {
+    "nom": "Valérie Duparque Immobilier",
+    "ville": "Marcq-en-Barœul",
+    "domaine": "www.valerie-duparque-immobilier.com",
+    "plateforme": "Kaio (« Création … kaio.fr »)",
+    "exemple": "https://www.valerie-duparque-immobilier.com/vente-maison-marcq-en-baroeul,b551/"
+  },
+  {
+    "nom": "Vartem",
+    "ville": "Lille",
+    "domaine": "www.vartem.fr",
+    "plateforme": "ImmoFacile (AC3 / Orisha Real Estate)",
+    "exemple": "https://www.vartem.fr/fiches/3-32-35_55433121/lille-3-piece-s-meuble-42-25-m2.html"
+  },
+  {
+    "nom": "Vastimmo",
+    "ville": "Lille (Saint-Maurice Pellevoisin)",
+    "domaine": "www.vastimmo.fr",
+    "plateforme": "Netty (Modelo)",
+    "exemple": "https://www.vastimmo.fr/vente/maison-ancienne-5-pieces-lille-59800,VM1170"
+  },
+  {
+    "nom": "Vendôme Immobilier",
+    "ville": "Lille",
+    "domaine": "www.vendome-immobilier.fr",
+    "plateforme": "Spot My Place (site sur mesure)",
+    "exemple": "https://www.vendome-immobilier.fr/achat,maison-lille-buisson-maison-bourgeoise-5-chambres-garage,VDM-39759-PHT"
+  },
+  {
+    "nom": "VRC Immo'",
+    "ville": "Halluin",
+    "domaine": "www.vrcimmo.fr",
+    "plateforme": "La Boîte Immo (/admin/dpe.php)",
+    "exemple": "https://www.vrcimmo.fr/vente/1-halluin/maison/284-maison-4-chambres-jardin-et-garage"
+  },
+  {
+    "nom": "Immobilière de Wasquehal (Groupe Forest)",
+    "ville": "Wasquehal",
+    "domaine": "www.wasquehal-immobilier.fr",
+    "plateforme": "Netty (gabarit classique, img.netty.immo)",
+    "exemple": "https://www.wasquehal-immobilier.fr/immobilier/appartement-t3-3-pieces-croix-59170-fr_VA23419.htm"
+  }
+]

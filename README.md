@@ -28,6 +28,8 @@
 | Consommation (kWh/m²/an) affichée sur l'annonce | ignorée | **filtre précis** dans le registre ADEME, souvent décisif en ville dense |
 | Lecture du registre | 20 lignes, ordre quelconque | 50 lignes, DPE les plus récents d'abord |
 | DPE affiché en image | rien | la carte demande les lettres lues sur l'étiquette |
+| Interface | style Pokédex | interface sobre : classes aux couleurs officielles du DPE, jauge de confiance, boutons Maps / ADEME / copier pour chaque candidat, bouton en onglet au bord droit (ne masque plus les bandeaux cookies) |
+| Agence non couverte | rien | « Activer sur ce site » dans le popup : le bouton automatique y est ajouté en un clic |
 
 Détails techniques et choix : [docs/plans/2026-10-25-historique-et-sites-nord.md](docs/plans/2026-10-25-historique-et-sites-nord.md).
 
@@ -82,8 +84,8 @@ Ouvre n'importe quelle annonce sur :
 | [SeLoger](https://www.seloger.com/) | ✓ | ✓ |
 | [Figaro Immobilier](https://immobilier.lefigaro.fr/), [PAP](https://www.pap.fr/), [ParuVendu](https://www.paruvendu.fr/), [Notaires](https://www.immobilier.notaires.fr/) | ✓ | ✓ |
 | Réseaux : [IAD](https://www.iadfrance.fr/), [Orpi](https://www.orpi.com/), [Safti](https://www.safti.fr/), [Century 21](https://www.century21.fr/), [Laforêt](https://www.laforet.com/), [Foncia](https://fr.foncia.com/), [Citya](https://www.citya.com/), [Square Habitat](https://www.squarehabitat.fr/) | ✓ | ✓ |
-| Agences lilloises : [Vacherand](https://www.vacherand.fr/), [Abrinor](https://www.abrinor.fr/) | ✓ | ✓ |
-| Tout autre site d'annonce (sites d'agences Apimo, Netty, La Boîte Immo…) | via « Analyser cette page » | via « Analyser cette page » |
+| Agences de la métropole lilloise : [Vacherand](https://www.vacherand.fr/), [Abrinor](https://www.abrinor.fr/) et 80 autres, de Lille à Armentières, Roubaix, Tourcoing et Seclin (liste : [docs/agences-lilloises.json](docs/agences-lilloises.json)) | ✓ | ✓ |
+| Tout autre site d'annonce (sites d'agences Apimo, Netty, La Boîte Immo…) | via « Analyser la page ouverte », ou bouton automatique après « Activer sur ce site » | idem |
 
 Logic-Immo, Superimmo, MeilleursAgents et Efficity bloquent les robots : l'extension fonctionne quand même en navigation normale via « Analyser cette page », mais ces sites n'ont pas été testés.
 
@@ -94,10 +96,11 @@ Un bouton flottant **Immodex+** apparaît en bas à droite. Clique dessus :
 
 ### Recherche manuelle
 
-Clique sur l'icône Immodex+ dans la barre d'outils : un popup s'ouvre avec trois onglets (**DPE** / **TERRAIN** / **HISTORIQUE**).
+Clique sur l'icône Immodex+ dans la barre d'outils : un popup s'ouvre avec quatre onglets (**Logement** / **Terrain** / **Historique** / **Sites**).
 
-- **Analyser cette page** lit l'annonce ouverte dans l'onglet actif (n'importe quel site), remplit le formulaire et lance la recherche.
-- **HISTORIQUE** liste les recherches des 7 derniers jours ; chacune se rouvre avec tous ses candidats et leurs liens.
+- **Analyser la page ouverte** lit l'annonce de l'onglet actif (n'importe quel site), remplit le formulaire et lance la recherche.
+- Sur une agence non couverte, un bandeau propose **Activer** : Chrome demande l'autorisation pour ce seul site, puis le bouton automatique y apparaît à chaque visite. L'onglet **Sites** liste les sites intégrés et ceux que tu as ajoutés (avec « Retirer »).
+- **Historique** liste les recherches des 7 derniers jours ; chacune se rouvre avec tous ses candidats et leurs liens.
 - Fermer le popup (par exemple en cliquant sur un lien Google Maps) ne fait plus rien perdre : à la réouverture, le dernier résultat est réaffiché.
 
 ### Tests

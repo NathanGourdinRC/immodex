@@ -37,6 +37,7 @@ function hashPayload(payload) {
     payload.postal || '',
     // Sans code postal, c'est la ville qui distingue deux recherches.
     payload.postal ? '' : payload.city || '',
+    payload.cityHint || '',
     payload.surface || '',
     payload.energyClass || '',
     payload.gesClass || '',

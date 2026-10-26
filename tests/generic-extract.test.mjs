@@ -292,3 +292,83 @@ test('Abrinor et Citya : classe dans un aria-label', () => {
   assert.equal(r.energyClass, 'F');
   assert.equal(r.gesClass, 'D');
 });
+
+// ─── Sites d'agences du Lillois (structures reproduites, contenus inventés) ───
+
+const long = (s) => `${s}<p>${'Description du bien, lumineux et bien situé. '.repeat(20)}</p>`;
+
+test('Spot My Place : zone sélectionnée #dpe_D parmi #dpe_A … #dpe_G', () => {
+  const zones = ['A', 'B', 'C', 'D', 'E', 'F', 'G'].map((l) => `<div class="zone${l === 'D' ? ' selected' : ''}" id="dpe_${l}">${l === 'D' ? '217' : ''}</div>`).join('');
+  const r = extract(page(long(`<h1>Maison 89 m² Tourcoing (59200)</h1>${zones}`)));
+  assert.equal(r.energyClass, 'D');
+});
+
+test('légende avec une classe par lettre (letter-a … letter-g) : ignorée sans lettre active', () => {
+  const legend = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((l) => `<span class="diagnostic-letter letter-${l}">${l.toUpperCase()}</span>`).join('');
+  const r = extract(page(long(`<h1>Appartement 86 m² Lille (59000)</h1><div class="diagnostic-scale number">${legend}</div>`)));
+  assert.equal(r.energyClass, null);
+});
+
+test('lettre portée par une classe CSS et valeurs en attributs data-*', () => {
+  const r = extract(
+    page(long(`<h1>Maison 112 m² Comines (59560)</h1><span class="dpeInfoConso e"><span class="txt">305</span></span><span id="ges-svg" data-lettre="D" data-ges="35"></span>`))
+  );
+  assert.equal(r.energyClass, 'E');
+  assert.equal(r.gesClass, 'D');
+  assert.equal(r.gesEmission, 35);
+});
+
+test('Century 21 (sites d’agences) : valeurs dans g[data-name="chiffres"], classes calculées', () => {
+  const r = extract(page(long(`<h1>Maison 90 m² Lille (59260)</h1><svg><g data-name="chiffres"><text>173</text><text>40</text></g></svg>`)));
+  assert.equal(r.energyConsumption, 173);
+  assert.equal(r.gesEmission, 40);
+  assert.equal(r.energyClass, 'D');
+  assert.equal(r.gesClass, 'D');
+});
+
+test('série de 7 images : la lettre est celle dont le nom de fichier diffère', () => {
+  const imgs = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((l) => `<img src="/img/energie-${l === 'd' ? 'd2021' : `${l}-v2021`}.png">`).join('');
+  const r = extract(page(long(`<h1>Maison 85 m² Lille (59000)</h1>${imgs}`)));
+  assert.equal(r.energyClass, 'D');
+});
+
+test('code postal : ni une référence d’annonce ni l’adresse de l’agence en JSON-LD', () => {
+  const agent = { '@type': 'RealEstateAgent', address: { '@type': 'PostalAddress', postalCode: '59100', addressLocality: 'Roubaix' } };
+  const r = extract(
+    page(long(`<h1>Appartement 60 m²</h1><p>RÉF. 18784 Appeler</p><p>Lille 59800, proche gare</p><p>Classe énergie : D</p>`), `<script type="application/ld+json">${JSON.stringify(agent)}</script>`)
+  );
+  assert.equal(r.postal, '59800');
+  assert.equal(r.city, 'Lille');
+});
+
+test('ville du titre sans code postal, sous plusieurs formes', () => {
+  assert.equal(extract(page(long(`<h1>Appartement à vendre Lille Réf. VA2276</h1><p>Surface habitable : 33 m²</p>`))).city, 'Lille');
+  assert.equal(extract(page(long(`<h1>MOUVAUX ST GERMAIN: Maison trois chambres</h1><p>105 m² habitables</p>`))).city, 'Mouvaux St Germain');
+  assert.equal(extract(page(long(`<h1>Maison bourgeoise – centre ville de Wervicq-Sud</h1><p>97 m² habitables</p>`))).city, 'Wervicq-Sud');
+  // le nom de l'agence en fin de titre n'est pas une ville
+  assert.notEqual(extract(page(long(`<h1>Appartement 2 pièces 46 m2 - Leduc Immobilier</h1>`))).city, 'Leduc Immobilier');
+});
+
+test('ville tirée de l’adresse de la page quand la page ne la donne pas', () => {
+  const html = page(long(`<h1>Jolie maison</h1><p>Surface habitable : 120 m²</p>`));
+  assert.equal(extract(html, 'https://www.agence.fr/ventes-immobilieres-a-lille/va1909').city, 'Lille');
+  assert.equal(extract(html, 'https://www.agence.fr/vente-maison-marcq-en-baroeul,b551/').city, 'Marcq En Baroeul');
+});
+
+test('surface : « m² hab. », « T3 de 49,2 m² », et pas la « chambre de 12 m² »', () => {
+  assert.equal(extract(page(long(`<h1>Appartement Lille (59000)</h1><p>44.49 m² hab.</p>`))).surface, 44);
+  assert.equal(extract(page(long(`<h1>Appartement La Madeleine (59110)</h1><p>Beau T3 de 49,2 m² lumineux</p>`))).surface, 49);
+  const r = extract(page(long(`<h1>Appartement Lille (59800)</h1><p>Appartement avec une chambre de 12 m² et un séjour.</p><p>2 pièces - 58 m²</p>`)));
+  assert.equal(r.surface, 58);
+});
+
+test('libellés d’agences : « DPE conso : 144, Lettre : C », « Consommation énergie primaire », « Co² »', () => {
+  const r = extract(page(long(`<h1>Maison 80 m² Hem (59510)</h1><p>DPE conso : 144, Lettre : C</p><p>DPE émi : 22, Lettre : C</p>`)));
+  assert.equal(r.energyConsumption, 144);
+  assert.equal(r.energyClass, 'C');
+  assert.equal(r.gesEmission, 22);
+  assert.equal(r.gesClass, 'C');
+  const r2 = extract(page(long(`<h1>Studio 28 m² Lille (59000)</h1><div>Consommation énergie primaire</div><div><b>E</b></div><p>9* kg Co²/m².an</p>`)));
+  assert.equal(r2.energyClass, 'E');
+  assert.equal(r2.gesEmission, 9);
+});

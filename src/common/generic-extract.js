@@ -52,11 +52,12 @@
   // comprendre d'où vient une valeur (console, popup).
   let evidence = null;
 
-  function firstLetter(text, patterns) {
+  function firstLetter(text, patterns, { allowLower = false } = {}) {
     for (const re of patterns) {
       const g = new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g');
       let m;
       while ((m = g.exec(text))) {
+        if (allowLower) m[1] = m[1].toUpperCase();
         if (!LETTER.test(m[1])) continue;
         // « DPE : A venir », « Classe énergie : en cours » ne sont pas des classes.
         const after = text.slice(m.index + m[0].length, m.index + m[0].length + 12);
@@ -103,6 +104,10 @@
           const cur = stack.pop();
           if (Array.isArray(cur)) stack.push(...cur);
           else if (cur && typeof cur === 'object') {
+            // L'agence (et son adresse) n'est pas le bien : son sous-arbre est ignoré
+            // (Grimonprez : code postal de l'agence 59100 pour un bien à 59800).
+            const types = [].concat(cur['@type'] || []).map(String);
+            if (types.some((t) => /RealEstateAgent|Organization|LocalBusiness|Corporation|Person|BreadcrumbList/i.test(t))) continue;
             out.push(cur);
             for (const v of Object.values(cur)) if (v && typeof v === 'object') stack.push(v);
           }
@@ -139,29 +144,41 @@
   // Texte d'un bloc, y compris ce qui est masqué : beaucoup de sites rangent la
   // consommation et la date du DPE dans un onglet ou un bloc replié, qu'innerText
   // ignorerait (Vacherand). On lit donc une copie sans scripts ni styles.
+  const BLOCKS = new Set(['P', 'DIV', 'LI', 'BR', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'SECTION', 'ARTICLE', 'TR', 'TD', 'TH', 'DT', 'DD', 'UL', 'OL', 'HEADER', 'FOOTER', 'TABLE', 'TBODY', 'FORM', 'FIGURE', 'ASIDE', 'NAV', 'MAIN']);
+
   function rawText(node) {
     const copy = node.cloneNode(true);
-    for (const s of copy.querySelectorAll('script, style, noscript, template, svg defs')) s.remove();
-    // Comme innerText : un retour à la ligne après chaque bloc, pour ne pas coller
-    // « B » et « Description » en « BDescription ».
-    for (const b of copy.querySelectorAll('p, div, li, br, h1, h2, h3, h4, h5, h6, section, article, tr, td, th, dt, dd, ul, ol, header, footer, table, span')) {
-      b.appendChild(b.ownerDocument.createTextNode(b.tagName === 'SPAN' ? ' ' : '\n'));
+    // Formulaires de recherche (listes de villes et de codes postaux) : pas l'annonce.
+    for (const s of copy.querySelectorAll('script, style, noscript, template, svg defs, select, option, datalist')) s.remove();
+    // Comme innerText : un retour à la ligne après chaque bloc, une espace après
+    // chaque élément en ligne, pour ne pas coller « Code postal » et « 59000 »
+    // (« Code postal59000VilleLILLE ») ni « B » et « Description ».
+    for (const b of copy.querySelectorAll('*')) {
+      b.appendChild(b.ownerDocument.createTextNode(BLOCKS.has(b.tagName) ? '\n' : ' '));
     }
     return copy.textContent || '';
   }
 
-  // Blocs qui parlent d'autres biens (annonces similaires, recommandations,
-  // carrousels) : leurs surfaces et DPE fausseraient la lecture de l'annonce.
-  const NOISE =
+  // Blocs qui parlent d'autres biens (annonces similaires, recommandations) :
+  // leurs surfaces et DPE fausseraient la lecture de l'annonce.
+  const OTHER_LISTINGS =
     '[class*="similar" i], [class*="similaire" i], [class*="related" i], [class*="recommend" i], [class*="suggest" i], ' +
-    '[id*="similar" i], [id*="similaire" i], [class*="other-ad" i], [class*="autres-annonces" i], [class*="carousel" i], ' +
-    '[class*="slider" i], [class*="swiper" i], footer';
+    '[id*="similar" i], [id*="similaire" i], [class*="other-ad" i], [class*="autres-annonces" i], footer';
+  // Carrousels : en général d'autres biens ou des photos, mais certains sites
+  // (La Boîte Immo « sliderV2 ») y mettent toute la fiche. On les garde alors.
+  const CAROUSELS = '[class*="carousel" i], [class*="slider" i], [class*="swiper" i]';
+  const LISTING_MARKERS = /surface\s+habitable|consommation\s+[ée]nerg|classe\s+[ée]nerg|diagnostic|kwh/i;
 
-  function visibleText(node) {
+  function visibleText(node, h1) {
     let text = rawText(node);
-    for (const noise of node.querySelectorAll(NOISE)) {
+    const remove = (noise) => {
       const t = rawText(noise).trim();
       if (t.length > 20) text = text.split(t).join('\n');
+    };
+    for (const noise of node.querySelectorAll(OTHER_LISTINGS)) remove(noise);
+    for (const noise of node.querySelectorAll(CAROUSELS)) {
+      if ((h1 && noise.contains(h1)) || LISTING_MARKERS.test(noise.textContent || '')) continue;
+      remove(noise);
     }
     return text;
   }
@@ -173,12 +190,12 @@
     const main = doc.querySelector('main, [role="main"]') || (h1 && h1.closest('article'));
     const body = doc.body;
     if (!body) return '';
-    const mainContent = main ? visibleText(main) : '';
+    const mainContent = main ? visibleText(main, h1) : '';
     if (mainContent.length > 400) return cleanText(mainContent);
     // Sans bloc principal, l'annonce commence à son titre : ce qui précède (menus,
     // vignettes d'autres biens) est écarté, sauf si le titre arrive tard dans la
     // page (on garderait trop peu de texte).
-    const all = cleanText(visibleText(body));
+    const all = cleanText(visibleText(body, h1));
     const title = h1 ? cleanText(rawText(h1)).trim() : '';
     const at = title ? all.indexOf(title) : -1;
     return at > 0 && at < all.length / 2 ? all.slice(at) : all;
@@ -206,8 +223,16 @@
     /(?:classe|[ée]tiquette|lettre)\s+(?:de\s+)?(?:l['’])?(?:[ée]nergie|[ée]nerg[ée]tique|dpe|consommation)(?:\s*-\s*climat)?(?:\s+actuelle)?\s*(?:\(dpe\))?\s*[:\-–]?\s*\(?([A-Ga-g])\b/i,
     /(?:diagnostic\s+de\s+performance\s+[ée]nerg[ée]tique|performance\s+[ée]nerg[ée]tique|consommations?\s+[ée]nerg[ée]tiques?)\s*(?:\(dpe\))?\s*(?:classe)?\s*[:\-–]?\s*([A-Ga-g])\b/i,
     /\bDPE\s*(?:classe)?\s*[:\-–]?\s*([A-G])\b/,
+    // « DPE conso : 144, Lettre : C » (Hem Immobilier)
+    /DPE\s+conso[^\n]{0,30}?lettre\s*:?\s*([A-G])\b/i,
+    // « Consommation énergie primaire » puis la lettre seule (JBG Immo)
+    /[Cc]onsommation\s+(?:d['’])?[ée]nergie(?:\s+primaire)?\s*[:\-–]?\s*([A-G])\b/,
   ];
+  // Lettre écrite en minuscule après un libellé sans ambiguïté (« Diagnostics énergétiques: c »).
+  const ENERGY_LOWER_OK = [/[Dd]iagnostics?\s+[ée]nerg[ée]tiques?\s*:\s*([a-g])\b/];
   const GES_PATTERNS = [
+    /DPE\s+[ée]mi(?:ssions?)?[^\n]{0,30}?lettre\s*:?\s*([A-G])\b/i,
+    /[Gg]az\s+(?:[àa]\s+)?[Ee]ffet\s+de\s+[Ss]erre\s*(?:\(GES\))?\s*[:\-–]?\s*([A-G])\b/,
     /\bGES\s+class[ée]e?\s+(?:en\s+)?([A-G])\b/i,
     /\(GES\)\s*:?\s*([A-G])(?![a-zà-ÿ])/,
     /\b([A-G])\s+(?:indice\s+d['’])?[ée]missions?\s+de\s+gaz/i,
@@ -216,18 +241,36 @@
     /\bGES\s*(?:classe)?\s*[:\-–]?\s*([A-G])\b/,
   ];
   const EP_PATTERNS = [
-    /(\d{1,4}(?:[.,]\d+)?)\s*kWh\s*(?:ep|e\.p\.)?\s*(?:\/|par)\s*m\s*[²2]\s*(?:\/|\.|par|\s)?\s*(?:an|year)/i,
+    /(\d{1,4}(?:[.,]\d+)?)\s*\*?\s*kWh\s*(?:ep|e\.p\.)?\s*(?:\/|par)\s*m\s*[²2]\s*(?:\/|\.|par|\s)?\s*(?:an|year)/i,
     /consommation[^\d\n]{0,40}(\d{1,4}(?:[.,]\d+)?)\s*kWh/i,
+    /DPE\s+conso\s*:?\s*(\d{1,4}(?:[.,]\d+)?)/i,
+    // « DPE: 117.1 » sans unité (Vereecke) : jamais suivi d'une date ni d'un mot.
+    /\bDPE\s*:\s*(\d{2,4}(?:[.,]\d{1,2})?)(?![\d\/.,-])(?!\s*[A-Za-z%])/,
   ];
+  // Émissions : « CO2 », « CO₂ » ou « Co² » selon les sites.
   const GES_VALUE_PATTERNS = [
     // « 15* kgCO₂/m².an » : l'astérisque renvoie à une note de bas de page.
-    /(\d{1,4}(?:[.,]\d+)?)\s*\*?\s*kg\s*(?:[ée]q\.?|eq\.?)?\s*(?:de\s+)?CO\s*[2₂]\s*(?:eq)?\s*(?:\/|par)\s*m\s*[²2]/i,
+    /(\d{1,4}(?:[.,]\d+)?)\s*\*?\s*kg\s*(?:[ée]q\.?|eq\.?)?\s*(?:de\s+)?CO\s*[2₂²]\s*(?:eq)?\s*(?:\/|par)\s*m\s*[²2]/i,
     /[ée]missions?[^\d\n]{0,40}(\d{1,4}(?:[.,]\d+)?)\s*kg/i,
+    /DPE\s+[ée]mi(?:ssions?)?\s*:?\s*(\d{1,3}(?:[.,]\d+)?)/i,
+    /\bGES\s*:\s*(\d{1,3}(?:[.,]\d{1,2})?)(?![\d\/.,-])(?!\s*[A-Za-z%])/,
   ];
+  // « env. », « environ », « +/- », « ± » avant le nombre ; « (m²) » après le libellé.
+  const APPROX = '(?:(?:env(?:iron|\\.)?|\\+\\s*\\/\\s*-|±)\\s*)?';
+  const NUM = '(\\d{1,4}(?:[.,]\\d{1,2})?)';
+  const M2 = '\\s*m\\s*[²2]';
+  // Libellés sûrs : lus avant le titre de la page.
   const SURFACE_PATTERNS = [
-    /surface\s+(?:habitable|hab\.?|loi\s+carrez|carrez|totale\s+habitable)\s*[:\-–]?\s*(?:de\s+)?(?:env(?:iron|\.)?\s*)?(\d{1,4}(?:[.,]\d{1,2})?)\s*m\s*[²2]/i,
-    /(\d{1,4}(?:[.,]\d{1,2})?)\s*m\s*[²2]\s*(?:habitables?|carrez)/i,
-    /(?:^|\n)\s*surface\s*[:\-–]?\s*(\d{1,4}(?:[.,]\d{1,2})?)\s*m\s*[²2]/i,
+    new RegExp(`surface\\s+(?:habitable|hab\\.?|loi\\s+carrez|carrez|totale\\s+habitable)\\s*(?:\\(m\\s*[²2]\\))?\\s*[:\\-–]?\\s*(?:de\\s+)?${APPROX}${NUM}${M2}`, 'i'),
+    new RegExp(`${NUM}${M2}\\s*(?:habitables?|hab\\.?|carrez)`, 'i'),
+  ];
+  // Formulations ambiguës : lues seulement si ni les libellés sûrs ni le titre ne donnent la surface.
+  const SURFACE_WEAK_PATTERNS = [
+    // « 2 pièces - 58 m² », plutôt que la « chambre de 12 m² » de la description.
+    new RegExp(`pi[eè]ces?\\s*[-–·,|]\\s*${APPROX}${NUM}${M2}`, 'i'),
+    // « T3 de 49,2 m² »
+    new RegExp(`\\b[TF]\\d\\s+(?:de\\s+)?${APPROX}${NUM}${M2}`),
+    new RegExp(`(?:^|\\n)\\s*surface\\s*(?:\\(m\\s*[²2]\\))?\\s*[:\\-–]?\\s*${APPROX}${NUM}${M2}`, 'i'),
   ];
   const LAND_PATTERNS = [
     /(?:surface\s+(?:du\s+)?terrain|terrain|parcelle)\s*(?:de|d['’]environ|d['’]une\s+surface\s+de|[:\-–])?\s*(?:env(?:iron|\.)?\s*)?(\d{1,3}(?:[ .]\d{3})+|\d{2,7})\s*m\s*[²2]/i,
@@ -241,7 +284,7 @@
   const MONTHS = { janvier: 1, fevrier: 2, mars: 3, avril: 4, mai: 5, juin: 6, juillet: 7, aout: 8, septembre: 9, octobre: 10, novembre: 11, decembre: 12 };
   const DATE_LABEL =
     '(?:(?:dpe|diagnostic(?:\\s+de\\s+performance\\s+[ée]nerg[ée]tique)?)\\s*(?:\\(dpe\\)\\s*)?(?:r[ée]alis[ée]|[ée]tabli|fait|effectu[ée])' +
-    '|date\\s+(?:de\\s+r[ée]alisation\\s+)?(?:du\\s+)?(?:dpe|diagnostic)|fait)\\s*(?:le|en)?\\s*:?\\s*';
+    '|date\\s+(?:de\\s+r[ée]alisation\\s+|d[\'’]?\\s*[ée]tablissement\\s+)?(?:du\\s+)?(?:dpe|diagnostic)(?:\\s+[ée]nerg[ée]tique)?|fait)\\s*(?:le|en)?\\s*:?\\s*';
   const DATE_DAY = new RegExp(DATE_LABEL + '(\\d{1,2})[\\/.\\-](\\d{1,2})[\\/.\\-](\\d{4})', 'i');
   const DATE_NAMED = new RegExp(
     DATE_LABEL + '(?:(\\d{1,2})(?:er)?\\s+)?(janvier|f[ée]vrier|mars|avril|mai|juin|juillet|ao[uû]t|septembre|octobre|novembre|d[ée]cembre)\\s+(\\d{4})',
@@ -279,7 +322,8 @@
     const re = /(?:appartement|maison|studio|duplex|triplex|loft|villa|pavillon|logement)[^.\n]{0,40}?(\d{1,4}(?:[.,]\d{1,2})?)\s*m\s*[²2]/gi;
     let m;
     while ((m = re.exec(text))) {
-      if (/(terrain|jardin|terrasse|balcon|cave|parcelle|garage|cour)[^\d]{0,15}$/i.test(m[0].slice(0, m[0].lastIndexOf(m[1])))) continue;
+      // Surfaces d'annexes ou de pièces (« chambre de 12 m² ») : pas la surface du logement.
+      if (/(terrain|jardin|terrasse|balcon|cave|parcelle|garage|cour|chambre|s[ée]jour|salon|cuisine|salle|bureau|pi[eè]ce\s+de\s+vie|grenier|veranda|véranda)[^\d]{0,15}$/i.test(m[0].slice(0, m[0].lastIndexOf(m[1])))) continue;
       const n = ex.normalizeSurface(m[1]);
       if (n && n >= 8) return n;
     }
@@ -293,10 +337,17 @@
   // déborde sur le libellé suivant (« LILLE Téléphone Siège »).
   const CITY = `${WORD}(?:[ \\t]+(?:d['’]|l['’])?${WORD}){0,3}`;
   const CITY_THEN_POSTAL_PAREN = new RegExp(`(${CITY})\\s*\\(\\s*(\\d{5})\\s*\\)`);
-  const POSTAL_THEN_CITY = new RegExp(`\\b(\\d{5})\\s+(${CITY})`);
-  const CITY_THEN_POSTAL = new RegExp(`(${CITY})\\s+(\\d{5})\\b`);
+  // Code postal et ville sur la même ligne (« 59200, Tourcoing ») : pas de saut de
+  // ligne entre les deux, sinon « Code postal: 59100\nChambres » donnerait « Chambres ».
+  const POSTAL_THEN_CITY = new RegExp(`\\b(\\d{5})[ \\t]*,?[ \\t]+(${CITY})`);
+  const CITY_THEN_POSTAL = new RegExp(`(${CITY})[ \\t]*,?[ \\t]+(\\d{5})\\b`);
   const CITY_THEN_DEPT = new RegExp(`(${CITY})\\s*\\(\\s*(\\d{2}|2[AB])\\s*\\)`);
-  const LEADING_WORDS = /^(?:(?:Vente|Achat|Location|Appartement|Maison|Terrain|Studio|Duplex|Loft|Villa|Immeuble|Bien|Proche|Centre|Quartier)\s+)+/i;
+  const LEADING_WORDS = /^(?:(?:Vente|Achat|Location|Appartement|Maison|Terrain|Studio|Duplex|Loft|Villa|Immeuble|Bien|Proche|Centre|Quartier|Ville|Commune|Localisation|Secteur)\s+)+/i;
+  // Un nombre à 5 chiffres après « Réf. », « Mandat », « Tél. »… n'est pas un code postal.
+  const POSTAL_BLOCKERS = /(?:r[ée]f(?:[ée]rence)?|mandat|n[°o]|t[ée]l(?:[ée]phone)?|siret|siren|rcs|carte\s+pro|prix|€)\.?\s*:?\s*$/i;
+  // Libellés de fiche qui suivent souvent un code postal et ne sont pas des villes.
+  const NOT_CITIES = /^(?:Type|Chambres?|Pi[eè]ces?|Surface|Prix|D[ée]tails?|Appeler|Contacter|Voir|R[ée]f(?:[ée]rence)?|Mandat|Description|Honoraires|Charges|Copropri[ée]t[ée]|Euros?|Ville|Commune|Agence|Contact|T[ée]l[ée]phone|Email|Mail)$/i;
+  const VALID_POSTAL = /^(?:0[1-9]|[1-8]\d|9[0-5]|97|98)\d{3}$/;
 
   function cleanCity(raw) {
     let city = String(raw).replace(/\s*\(?\d{5}\)?\s*/g, ' ').replace(LEADING_WORDS, '').trim() || String(raw).trim();
@@ -307,14 +358,103 @@
 
   // « Lille (59000) », « 59000 Lille », « Lille 59000 ».
   function postalAndCity(text) {
-    let m = text.match(CITY_THEN_POSTAL_PAREN);
-    if (m) return { postal: m[2], city: cleanCity(m[1]) };
-    m = text.match(POSTAL_THEN_CITY);
-    if (m) return { postal: m[1], city: cleanCity(m[2]) };
-    m = text.match(CITY_THEN_POSTAL);
-    if (m) return { postal: m[2], city: cleanCity(m[1]) };
+    for (const [re, pi, ci] of [[CITY_THEN_POSTAL_PAREN, 2, 1], [POSTAL_THEN_CITY, 1, 2], [CITY_THEN_POSTAL, 2, 1]]) {
+      const g = new RegExp(re.source, 'g');
+      let m;
+      while ((m = g.exec(text))) {
+        const at = m.index + m[0].indexOf(m[pi]);
+        if (!VALID_POSTAL.test(m[pi]) || POSTAL_BLOCKERS.test(text.slice(Math.max(0, at - 16), at))) continue;
+        const city = cleanCity(m[ci]);
+        return { postal: m[pi], city: city && !NOT_CITIES.test(city) ? city : null };
+      }
+    }
     return null;
   }
+
+  // Code postal et ville présentés par des libellés : « Code postal : 59000 », « Ville : LILLE ».
+  const LABELED_POSTAL = /code\s*postal\s*:?\s*(\d{5})\b/i;
+  const LABELED_CITY = new RegExp(`(?:^|\\n)[ \\t]*(?:[Vv]ille|VILLE|[Cc]ommune|COMMUNE)[ \\t]*:?[ \\t]*(${CITY})`);
+
+  // Ville du titre sans code postal, sous les formes vues sur les sites d'agences :
+  const HEAD_CITY_PATTERNS = [
+    // « Maison à COMINES • 228 000 € », « Maison à vendre à Halluin »
+    new RegExp(`(?:^|\\s)[àa][ \\t]+(${CITY})`, 'g'),
+    // « Appartement à vendre Lille Réf. VA2276 », « Appartement 25m² Lille », « 3 chambre(s) - Roubaix, Alfred Mongy »
+    new RegExp(`(?:vendre|louer|m\\s*[²2]|pi[eè]ces?|chambres?(?:\\(s\\))?)[ \\t]*[-–,]?[ \\t]+(${CITY})(?=[ \\t]*(?:[-–,•|:(]|R[ée]f|$))`, 'g'),
+    // « MOUVAUX ST GERMAIN: Maison trois chambres »
+    new RegExp(`^(${CITY})[ \\t]*:`, 'g'),
+    // « centre ville de Wervicq-Sud », « proche de Lambersart » (sans drapeau /i : la
+    // ville doit commencer par une majuscule, sinon « quartier prisé » donnerait « prisé »)
+    new RegExp(`(?:[Cc]entre[- ][Vv]ille|[Pp]roche|[Qq]uartier|[Ss]ecteur)[ \\t]+(?:de[ \\t]+|d['’])?(${CITY})`, 'g'),
+    // « Vente Maison Marcq-en-Barœul »
+    new RegExp(`(?:Vente|Location|Achat)[ \\t]+(?:Maison|Appartement|Terrain|Studio|Immeuble|Loft|Duplex)[ \\t]+(${CITY})`, 'g'),
+  ];
+  const NOT_HEAD_CITIES = /^(?:Vendre|Louer|Saisir|Voir|Proximit[ée]|Maisons?|Appartements?|Vente|Location|Terrains?|Studio|Fermes?|Luxe|Exception|Lotissement|Neuf|Ancien)$/i;
+
+  function headlineCity(head) {
+    // Le titre est la jointure h1 | og:title | <title> : chaque partie est lue à part.
+    for (const part of head.split(' | ')) {
+      for (const re of HEAD_CITY_PATTERNS) {
+        re.lastIndex = 0;
+        let m;
+        while ((m = re.exec(part))) {
+          const city = cleanCity(m[1]);
+          // « … 46 m2 - Leduc Immobilier » : c'est le nom de l'agence, pas une ville.
+          if (/\b(?:immobili[eè]re?|immo|agence|habitat|conseil|patrimoine|transactions?|realty|groupe)\b/i.test(city)) continue;
+          if (city && !NOT_CITIES.test(city) && !NOT_HEAD_CITIES.test(city.split(/\s+/)[0])) return city;
+        }
+      }
+    }
+    return null;
+  }
+
+  // Ville tirée de l'adresse de la page : /vente/appartement/lille/123,
+  // ventes-immobilieres-a-lille, maison-a-vendre-a-halluin-123. Le nom est ensuite
+  // vérifié par le service worker (nom exact de commune), une erreur ne donne rien.
+  const URL_STOP = new Set(
+    'vente ventes location locations achat acheter louer vendre annonce annonces immobilier immobiliere bien biens detail details fiche appartement appartements maison maisons terrain terrains studio immeuble local commerce parking garage neuf ancien fr index html php de du la le les pieces piece chambres propriete property'.split(' ')
+  );
+  const toCity = (slug) => slug.replace(/-+/g, ' ').replace(/(^|\s)(\S)/g, (m0, sep, c) => sep + c.toUpperCase());
+
+  function cityFromUrl(href) {
+    let path;
+    try {
+      path = decodeURIComponent(new URL(href).pathname).toLowerCase();
+    } catch {
+      return null;
+    }
+    for (const m of path.matchAll(/-a-([a-z][a-z-]{2,40}?)(?=-\d|[/_.,]|$)/g)) {
+      if (!URL_STOP.has(m[1].split('-')[0])) return toCity(m[1]);
+    }
+    // « vente-appartement-tourcoing,CRV… » (Immosens)
+    // (s'arrête au premier chiffre : « roubaix-alfred-mongy-r-va27035 » donne « Roubaix Alfred
+    // Mongy R Va », que le service worker ramène à « Roubaix », son premier mot)
+    const typed = path.match(
+      /(?:vente|location|achat)-(?:appartement|maison|terrain|studio|immeuble|loft|duplex|local|ferme|villa)s?(?:-(?:ferme|villa|individuelle|mitoyenne|semi-individuelle|de-ville))*-([a-z][a-z-]{2,60}?)(?=[,_./]|-?\d|$)/
+    );
+    if (typed && !URL_STOP.has(typed[1].split('-')[0])) return toCity(typed[1]);
+    // Dernier segment fait d'un seul nom : « /fiches/4-40-26_61501648/houplines.html » (Trigone)
+    const last = path.split('/').filter(Boolean).pop() || '';
+    const slug = last.replace(/\.(html?|php|aspx?)$/, '');
+    if (/^[a-z]+(?:-[a-z]+){0,3}$/.test(slug) && !slug.split('-').some((w) => URL_STOP.has(w))) return toCity(slug);
+    const segments = path.split('/').filter(Boolean);
+    const i = segments.findIndex((s) => /^(?:vente|ventes|location|locations|achat|acheter|louer)$/.test(s));
+    if (i >= 0) {
+      for (const s of segments.slice(i + 1)) {
+        if (URL_STOP.has(s) || /\d/.test(s)) continue;
+        if (/^[a-z][a-z-]{2,40}$/.test(s)) return toCity(s);
+        break;
+      }
+    }
+    return null;
+  }
+
+  const sameCity = (a, b) => {
+    const n = (s) => ex.stripAccents(String(s || '')).toLowerCase().replace(/[^a-z]+/g, ' ').trim();
+    const x = n(a);
+    const y = n(b);
+    return !!x && !!y && (x === y || x.startsWith(y) || y.startsWith(x));
+  };
 
   // Ville seule avec département : « Lille (59) ».
   function cityWithDepartment(text) {
@@ -335,17 +475,86 @@
 
   // Étiquette DPE dessinée : la lettre « active » dans un bloc dont la classe ou
   // l'id évoque l'énergie ou le climat, ou une image dont le nom porte la lettre.
+  const classOf = (node) => node.getAttribute('class') || '';
+  const isActive = (node) => /active|selected|current|is-on|highlight/i.test(classOf(node));
+  // Échelle désignée par un nom de classe ou d'identifiant : GES, énergie, ou inconnue.
+  const scaleOf = (s) => (/ges|climat|co2|gaz|emission/i.test(s) ? 'ges' : /dpe|energ|conso|dep\b|dep-/i.test(s) ? 'dpe' : null);
+
   function fromLabels(doc) {
     const r = {};
-    // Étiquette SVG dont les groupes portent la classe dans leur identifiant (Laforêt : g#DPE_D, g#GES_C).
-    const dpeGroup = doc.querySelector('[id^="DPE_"]');
-    const gesGroup = doc.querySelector('[id^="GES_"]');
-    const idLetter = (node, prefix) => {
-      const m = node && node.id.match(new RegExp(`^${prefix}_([A-G])$`));
-      return m ? m[1] : null;
+    const put = (scale, letter) => {
+      const key = scale === 'ges' ? 'gesClass' : 'energyClass';
+      if (letter && !r[key]) r[key] = letter.toUpperCase();
     };
-    r.energyClass = idLetter(dpeGroup, 'DPE') || undefined;
-    r.gesClass = idLetter(gesGroup, 'GES') || undefined;
+
+    // 1. Identifiants porteurs de la lettre : g#DPE_D (Laforêt), div.zone.selected#dpe_D
+    //    (Spot My Place). S'il y en a une série, on prend celui qui est sélectionné.
+    const idNodes = [...doc.querySelectorAll('[id]')];
+    for (const [scale, re] of [['dpe', /^(?:dpe|energie|energy|conso)[_-]?([a-g])$/i], ['ges', /^(?:ges|climat|co2)[_-]?([a-g])$/i]]) {
+      const nodes = idNodes.filter((n) => re.test(n.id));
+      const node = nodes.find(isActive) || (nodes.length === 1 ? nodes[0] : null);
+      if (node) put(scale, node.id.match(re)[1]);
+    }
+
+    // 2. Attributs de données : data-energetic-class="D" (Sotheby's), data-lettre="D" sur
+    //    span#dep-svg / span#ges-svg, avec les valeurs data-dpe="172", data-ges="35".
+    for (const node of doc.querySelectorAll('[data-energetic-class], [data-energy-class], [data-dpe-class], [data-classe-energie], [data-lettre], [data-letter]')) {
+      const letter = ['data-energetic-class', 'data-energy-class', 'data-dpe-class', 'data-classe-energie', 'data-lettre', 'data-letter']
+        .map((a) => node.getAttribute(a))
+        .find((v) => v && /^[A-Ga-g]$/.test(v.trim()));
+      if (!letter) continue;
+      const explicit = node.hasAttribute('data-energetic-class') || node.hasAttribute('data-energy-class') || node.hasAttribute('data-dpe-class') || node.hasAttribute('data-classe-energie');
+      put(explicit ? 'dpe' : scaleOf(`${node.id} ${classOf(node)}`) || 'dpe', letter.trim());
+    }
+    const numAttr = (sel, attrs) => {
+      for (const node of doc.querySelectorAll(sel)) {
+        for (const a of attrs) {
+          const n = parseNumber(node.getAttribute(a));
+          if (n != null && n > 0) return n;
+        }
+      }
+      return null;
+    };
+    r.energyConsumption = numAttr('[data-consumption], [data-conso], [data-dpe]', ['data-consumption', 'data-conso', 'data-dpe']);
+    r.gesEmission = numAttr('[data-emissions], [data-emission], [data-ges]', ['data-emissions', 'data-emission', 'data-ges']);
+
+    // 3. Lettre portée par une classe CSS : « dpeInfoConso e » (DRT Immo),
+    //    « diagnostic-scale numberC » (Vereecke). Sans indication d'échelle, la
+    //    première série est l'énergie et la seconde le GES.
+    //    Une série d'au moins 3 éléments de même classe (letter-a … letter-g, Norestim)
+    //    est la légende de l'échelle : seul l'élément marqué actif compte.
+    const tokenCandidates = [];
+    for (const node of doc.querySelectorAll('[class]')) {
+      const cls = classOf(node);
+      if (!/dpe|energ|conso|ges\b|ges[-_]|climat|diagnostic|co2/i.test(cls)) continue;
+      for (const t of cls.split(/\s+/)) {
+        const m = t.match(/^(?:number|lettre|letter|classe|class|note|grade|niveau|level|rank)[-_]?([a-g])$/i) || t.match(/^([a-g])$/i);
+        if (m) {
+          tokenCandidates.push({ node, letter: m[1], template: cls.replace(t, '?'), scale: scaleOf(cls) });
+          break;
+        }
+      }
+    }
+    const templateCount = {};
+    for (const c of tokenCandidates) templateCount[c.template] = (templateCount[c.template] || 0) + 1;
+    const unknown = [];
+    for (const c of tokenCandidates) {
+      const legend = templateCount[c.template] >= 3;
+      if (legend && !isActive(c.node) && !(c.node.parentElement && isActive(c.node.parentElement))) continue;
+      if (c.scale) put(c.scale, c.letter);
+      else unknown.push(c.letter);
+    }
+    if (unknown[0]) put('dpe', unknown[0]);
+    if (unknown[1]) put('ges', unknown[1]);
+
+    // 4. Century 21 : étiquette SVG dont les valeurs sont dans g[data-name="chiffres"]
+    //    (consommation puis émissions) ; la lettre, elle, n'est qu'un tracé.
+    const chiffres = doc.querySelector('g[data-name="chiffres"]');
+    if (chiffres) {
+      const nums = [...chiffres.querySelectorAll('text')].map((t) => parseNumber(t.textContent)).filter((n) => n != null);
+      if (nums[0] != null && r.energyConsumption == null) r.energyConsumption = nums[0];
+      if (nums[1] != null && r.gesEmission == null) r.gesEmission = nums[1];
+    }
     const actives = doc.querySelectorAll(
       '[class*="active"], [class*="selected"], [class*="current"], [aria-current], [class*="highlight"]'
     );
@@ -359,19 +568,31 @@
       if (/ges|climat|co2|gaz/.test(tag)) r.gesClass = r.gesClass || letter[1];
       else r.energyClass = r.energyClass || letter[1];
     }
+    // 5. Images : texte alternatif (« classe énergie : C »), puis nom de fichier.
+    //    Quand une échelle compte une image par lettre, la lettre retenue est celle
+    //    dont le nom de fichier diffère des autres (Brique Rouge : energie-d2021.png
+    //    au milieu de energie-a-v2021.png, energie-b-v2021.png…).
+    const families = { dpe: [], ges: [] };
     for (const img of doc.querySelectorAll('img')) {
       const label = `${img.getAttribute('alt') || ''} ${img.getAttribute('title') || ''}`;
-      const file = (img.getAttribute('src') || '').split('?')[0].split('/').pop() || '';
       // Pas de \b devant « énergie » : en JavaScript, \b ne reconnaît pas les lettres accentuées.
       // Dans le texte alternatif, la lettre doit être une majuscule isolée (« classe énergie : C »).
       let m = label.match(/(?:dpe|[ée]nergie|consommation)[^A-Za-z]{0,10}([A-G])(?![A-Za-z])/i);
-      if (m && !LETTER.test(m[1])) m = null;
-      m = m || file.match(/(?:dpe|energie|energy|conso)[-_ ]?([a-g])(?:[-_.]|$)/i);
-      if (m && !r.energyClass) r.energyClass = m[1].toUpperCase();
+      if (m && LETTER.test(m[1])) put('dpe', m[1]);
       m = label.match(/(?:ges|climat|co2)[^A-Za-z]{0,10}([A-G])(?![A-Za-z])/i);
-      if (m && !LETTER.test(m[1])) m = null;
-      m = m || file.match(/(?:ges|climat|co2)[-_ ]?([a-g])(?:[-_.]|$)/i);
-      if (m && !r.gesClass) r.gesClass = m[1].toUpperCase();
+      if (m && LETTER.test(m[1])) put('ges', m[1]);
+      const file = (img.getAttribute('src') || '').split('?')[0].split('/').pop() || '';
+      const f = file.match(/(dpe|energie|energy|conso|ges|climat|co2)[-_ ]?([a-g])(?=[-_.\d]|$)/i);
+      if (f) families[/ges|climat|co2/i.test(f[1]) ? 'ges' : 'dpe'].push({ letter: f[2], template: file.replace(f[0], `${f[1]}?`) });
+    }
+    for (const [scale, imgs] of Object.entries(families)) {
+      if (imgs.length === 1) put(scale, imgs[0].letter);
+      else if (imgs.length >= 3) {
+        const counts = {};
+        for (const i of imgs) counts[i.template] = (counts[i.template] || 0) + 1;
+        const odd = imgs.filter((i) => counts[i.template] === 1);
+        if (odd.length === 1) put(scale, odd[0].letter);
+      }
     }
     return r;
   }
@@ -431,8 +652,9 @@
     if (ges) r.gesClass = ges;
     const ep = pick('energyConsumption|energy_consumption|consoEnergie|conso_energie|dpeValue|dpe_value|valeurDpe|consommationEnergie|energyValue', '(\\d{1,4}(?:\\.\\d+)?)');
     const gesV = pick('gesValue|ges_value|valeurGes|emissionGes|emission_ges|greenhouseGasValue|greenhouseGasEmission', '(\\d{1,4}(?:\\.\\d+)?)');
-    if (ep) r.energyConsumption = parseNumber(ep);
-    if (gesV) r.gesEmission = parseNumber(gesV);
+    // « energy_consumption: "0.00" » veut dire « non renseigné » (atHome), pas zéro.
+    if (ep && parseNumber(ep) > 0) r.energyConsumption = parseNumber(ep);
+    if (gesV && parseNumber(gesV) > 0) r.gesEmission = parseNumber(gesV);
     const postal = pick('postalCode|postal_code|zipCode|zipcode|zip_code|codePostal|code_postal|postCode|itemZipcode', '(\\d{5})');
     if (postal) r.postal = postal;
     const surface = pick('livingArea|living_area|surfaceHabitable|surface_habitable|habitableSurface|livingSurface|liveableSurface|mainSurface|propertySurface|itemSize', '(\\d{1,4}(?:\\.\\d+)?)');
@@ -685,7 +907,15 @@
       set(r, 'postal', pcHead.postal, 'titre');
       set(r, 'city', pcHead.city, 'titre');
     }
-    const crumbs = cleanText(Array.from(doc.querySelectorAll('nav, [class*="breadcrumb" i], [class*="ariane" i]')).map((n) => n.textContent).join(' | '));
+    const headCity = headlineCity(head);
+    const urlCity = cityFromUrl(doc.URL || (typeof location !== 'undefined' ? location.href : ''));
+    const labeledPostal = text.match(LABELED_POSTAL);
+    const labeledCity = text.match(LABELED_CITY);
+    if (labeledPostal && VALID_POSTAL.test(labeledPostal[1])) {
+      set(r, 'postal', labeledPostal[1], 'texte');
+      if (labeledCity) set(r, 'city', cleanCity(labeledCity[1]), 'texte');
+    }
+    const crumbs = cleanText(Array.from(doc.querySelectorAll('nav, [class*="breadcrumb" i], [class*="ariane" i]')).map((n) => rawText(n)).join(' | '));
     const pcCrumbs = postalAndCity(crumbs);
     if (pcCrumbs) {
       set(r, 'postal', pcCrumbs.postal, 'fil d’Ariane');
@@ -693,19 +923,30 @@
     }
     if (!r.postal) {
       const pcText = postalAndCity(text);
-      if (pcText) {
+      // Le titre nomme une autre ville que celle du code postal trouvé dans le texte :
+      // ce code postal est sans doute celui de l'agence (Trigone : bien à Houplines,
+      // agence à Armentières). On garde la ville du titre.
+      if (pcText && !(headCity && pcText.city && !sameCity(headCity, pcText.city))) {
         set(r, 'postal', pcText.postal, 'texte');
         set(r, 'city', pcText.city, 'texte');
       }
     }
-    set(r, 'postal', scripts.postal, 'script');
+    if (!r.postal && !r.city) set(r, 'postal', scripts.postal, 'script');
     if (!r.postal) {
       const cd = cityWithDepartment(head) || cityWithDepartment(crumbs) || cityWithDepartment(text);
       if (cd) {
         set(r, 'city', cd.city, 'titre');
         r.department = cd.department;
       }
+      set(r, 'city', headCity, 'titre');
+      if (labeledCity) set(r, 'city', cleanCity(labeledCity[1]), 'texte');
+      if (!r.city) set(r, 'city', urlCity, 'adresse de la page');
     }
+    // Indice de ville (titre, sinon adresse de la page) quand il diffère de la ville lue :
+    // le service worker le vérifie dans la liste officielle des communes et remplace le
+    // code postal s'il n'appartient pas à cette commune (code postal de l'agence).
+    const hint = headCity || urlCity;
+    r.cityHint = hint && !sameCity(hint, r.city) ? hint : null;
 
     const landByType = st.type && /terrain|land|plot/i.test(st.type) && !st.energyClass;
     const kind = isLandListing(head) || landByType ? 'land' : 'dpe';
@@ -728,6 +969,7 @@
         postal: r.postal || null,
         city: r.city || null,
         department: r.department || null,
+        cityHint: r.cityHint || null,
         surface,
         section: ex.normalizeSection(text),
         source: 'generic',
@@ -742,13 +984,22 @@
     set(r, 'surface', st.surface != null ? ex.normalizeSurface(st.surface) : null, 'données du site');
     set(r, 'surface', ex.normalizeSurface(firstNumber(text, SURFACE_PATTERNS, { min: 5, max: 2000 })), 'texte');
     set(r, 'surface', surfaceFromHeadline(head), 'titre');
+    set(r, 'surface', ex.normalizeSurface(firstNumber(text, SURFACE_WEAK_PATTERNS, { min: 5, max: 2000 })), 'texte');
     set(r, 'surface', scripts.surface, 'script');
     set(r, 'surface', surfaceNearType(text), 'texte');
+    // Une maison de moins de 20 m² est une pièce lue par erreur (« chambre de 14 m² ») :
+    // on se rabat sur la surface du titre.
+    if (r.surface && r.surface < 20 && /\bmaison\b/i.test(head)) {
+      r.surface = surfaceFromHeadline(head);
+      found.surface = r.surface ? 'titre' : undefined;
+    }
 
     // Valeurs du DPE (kWh et kg CO2), y compris dans les étiquettes SVG intégrées.
     const svgText = svgImageText(doc);
     set(r, 'energyConsumption', st.energyConsumption, 'données du site');
     set(r, 'gesEmission', st.gesEmission, 'données du site');
+    set(r, 'energyConsumption', labels.energyConsumption, 'étiquette');
+    set(r, 'gesEmission', labels.gesEmission, 'étiquette');
     set(r, 'energyConsumption', firstNumber(text, EP_PATTERNS, { min: 1, max: 1500 }), 'texte');
     set(r, 'energyConsumption', firstNumber(svgText, EP_PATTERNS, { min: 1, max: 1500 }), 'étiquette');
     set(r, 'energyConsumption', scripts.energyConsumption, 'script');
@@ -765,6 +1016,7 @@
     set(r, 'energyClass', firstLetter(svgText, ENERGY_PATTERNS), 'étiquette');
     set(r, 'energyClass', derived && derived.energyClass, 'calculée');
     set(r, 'energyClass', firstLetter(text, [AFTER_LEGEND, ...ENERGY_PATTERNS]), 'texte');
+    set(r, 'energyClass', firstLetter(text, ENERGY_LOWER_OK, { allowLower: true }), 'texte');
     set(r, 'energyClass', scripts.energyClass, 'script');
     set(r, 'gesClass', labels.gesClass, 'étiquette');
     set(r, 'gesClass', st.gesClass, 'données du site');
@@ -784,6 +1036,7 @@
       postal: r.postal || null,
       city: r.city || null,
       department: r.department || null,
+      cityHint: r.cityHint || null,
       surface: r.surface || null,
       energyClass: r.energyClass || null,
       gesClass: r.gesClass || null,
