@@ -226,3 +226,36 @@ test('suivi des biens : le même bien republié ailleurs est signalé, avec l’
   assert.match(await popup.textContent('#biens-view'), /2 annonces/);
   await popup.close();
 });
+
+test('tableau de bord : zone Lille, nouveaux DPE, annonce vue suivie, prix par section', async () => {
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extId}/src/dashboard/dashboard.html`);
+  // Aucune zone encore : la page ouvre le formulaire de création.
+  await page.fill('input[type="search"]', 'Lille');
+  await page.click('.imx-suggest button:has-text("Lille ·")', { timeout: 15000 });
+  await page.selectOption('select.imx-select', 'appartement');
+  await page.fill('input[placeholder="mini"]', '50');
+  await page.fill('input[placeholder="maxi"]', '90');
+  await page.click('button:has-text("Créer la zone")');
+  await page.waitForSelector('.imx-zone-tab.is-active');
+  // Nouveaux DPE de la zone (vraie API ADEME) en liste et en pastilles sur la carte.
+  await page.waitForSelector('.imx-row .imx-row-title', { timeout: 30000 });
+  assert.ok((await page.locator('.leaflet-overlay-pane .leaflet-interactive').count()) > 5);
+  // L'appartement de 72 m² vu au test précédent (59000) est dans la zone : statut et note.
+  const status = page.locator('select.imx-status').first();
+  await status.waitFor({ timeout: 15000 });
+  await status.selectOption('favori');
+  await page.fill('textarea.imx-note', 'Belle lumière, cave humide');
+  await page.keyboard.press('Tab');
+  assert.ok(await page.locator('.imx-row button:has-text("Castorus")').count());
+  // Prix médian par section cadastrale (Statistiques DVF) sur la carte, avec légende.
+  await page.waitForSelector('.imx-legend', { timeout: 30000 });
+  assert.ok((await page.locator('.leaflet-prices-pane path').count()) > 50);
+  assert.match(await page.textContent('.imx-kpis'), /1 favori/);
+  // Après rechargement : la zone, le statut et la note sont gardés.
+  await page.reload();
+  await page.waitForSelector('select.imx-status', { timeout: 30000 });
+  assert.equal(await page.locator('select.imx-status').first().inputValue(), 'favori');
+  assert.equal(await page.locator('textarea.imx-note').first().inputValue(), 'Belle lumière, cave humide');
+  await page.close();
+});

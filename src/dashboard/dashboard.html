@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <title>Immodex+ · tableau de bord</title>
+    <link rel="stylesheet" href="../vendor/leaflet/leaflet.css" />
+    <script src="../ui/styles.js"></script>
+    <style>
+      html, body { height: 100%; }
+      body.imx-popup.imx-dash { width: auto; display: grid; grid-template-rows: auto 1fr; }
+      .imx-dash .imx-popup-header { flex-wrap: wrap; }
+      .imx-dash-zones { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; align-items: center; }
+      .imx-zone-tab { height: 30px; padding: 0 12px; border: 1px solid var(--imx-border); border-radius: 999px; background: var(--imx-bg); color: var(--imx-text-2); font: 600 12.5px var(--imx-font); cursor: pointer; }
+      .imx-zone-tab:hover { border-color: var(--imx-border-strong); color: var(--imx-text); }
+      .imx-zone-tab.is-active { background: var(--imx-accent); border-color: var(--imx-accent); color: #fff; }
+      .imx-dash-layout { display: grid; grid-template-columns: minmax(400px, 540px) 1fr; min-height: 0; }
+      .imx-dash-side { display: grid; gap: 14px; align-content: start; padding: 16px; overflow-y: auto; border-right: 1px solid var(--imx-border); }
+      .imx-dash-map { position: relative; min-height: 420px; }
+      #map { position: absolute; inset: 0; }
+      @media (min-width: 901px) { .imx-dash-layout { height: calc(100vh - 63px); } }
+      @media (max-width: 900px) {
+        .imx-dash-layout { grid-template-columns: 1fr; }
+        .imx-dash-side { border-right: none; overflow: visible; }
+        .imx-dash-map { height: 60vh; order: -1; }
+      }
+      .imx-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+      .imx-kpi { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--imx-border); border-radius: 10px; background: var(--imx-bg); }
+      .imx-kpi strong { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+      .imx-kpi span { font-size: 11.5px; color: var(--imx-text-3); }
+      .imx-row { display: grid; gap: 5px; padding: 11px 0; border-top: 1px solid var(--imx-border); }
+      .imx-row:first-child { border-top: none; padding-top: 2px; }
+      .imx-row.is-ecarte { opacity: 0.55; }
+      .imx-row-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+      .imx-row-title { padding: 0; border: none; background: none; color: var(--imx-text); font: 600 13px var(--imx-font); text-align: left; cursor: pointer; }
+      .imx-row-title:hover { color: var(--imx-accent); }
+      .imx-tag.is-new { background: var(--imx-mid-bg); color: var(--imx-mid); border: 1px solid var(--imx-mid-line); }
+      .imx-seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--imx-bg-muted); }
+      .imx-seg button { height: 24px; padding: 0 8px; border: none; border-radius: 6px; background: transparent; color: var(--imx-text-2); font: 600 12px var(--imx-font); cursor: pointer; }
+      .imx-seg button.is-active { background: var(--imx-bg); color: var(--imx-text); box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12); }
+      .imx-suggest { display: grid; border: 1px solid var(--imx-border); border-radius: var(--imx-radius-sm); overflow: hidden; }
+      .imx-suggest button { padding: 8px 10px; border: none; border-top: 1px solid var(--imx-border); background: var(--imx-bg); color: var(--imx-text); font: 13px var(--imx-font); text-align: left; cursor: pointer; }
+      .imx-suggest button:first-child { border-top: none; }
+      .imx-suggest button:hover { background: var(--imx-accent-soft); }
+      .imx-chip-remove { margin-left: 4px; padding: 0 2px; border: none; background: none; color: var(--imx-text-3); font: 700 13px var(--imx-font); cursor: pointer; }
+      .imx-chip-remove:hover { color: var(--imx-low); }
+      .imx-error { font-size: 12px; color: var(--imx-low); }
+      .imx-note { width: 100%; min-height: 52px; padding: 7px 10px; border: 1px solid var(--imx-border-strong); border-radius: var(--imx-radius-sm); font: 12.5px var(--imx-font); color: var(--imx-text); resize: vertical; outline: none; }
+      .imx-note:focus, .imx-status:focus { border-color: var(--imx-accent); box-shadow: 0 0 0 3px var(--imx-accent-line); }
+      .imx-status { height: 28px; padding: 0 8px; border: 1px solid var(--imx-border-strong); border-radius: var(--imx-radius-sm); background: var(--imx-bg); font: 12px var(--imx-font); color: var(--imx-text); outline: none; }
+      .imx-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 11.5px; color: var(--imx-text-2); }
+      .imx-swatch { display: inline-block; width: 14px; height: 10px; margin-right: 4px; border-radius: 2px; vertical-align: -1px; }
+      .imx-bien-pin { width: 18px; height: 18px; border: 2px solid #fff; border-radius: 5px; background: #7c3aed; box-shadow: 0 1px 4px rgba(15, 23, 42, 0.4); }
+      .imx-bien-pin.is-favori { background: #e11d48; }
+      .imx-bien-pin.is-ecarte { background: #94a3b8; }
+      .leaflet-popup-content { margin: 12px 14px; min-width: 240px; font-family: var(--imx-font); }
+      .leaflet-control-layers { font-family: var(--imx-font); font-size: 12px; }
+    </style>
+  </head>
+  <body class="imx-popup imx-dash">
+    <header class="imx-popup-header">
+      <span class="imx-logo" id="logo"></span>
+      <div class="imx-brand">
+        <span class="imx-title">Tableau de bord</span>
+        <span class="imx-subtitle" id="subtitle">Zones de recherche</span>
+      </div>
+      <nav class="imx-dash-zones" id="zone-tabs" aria-label="Zones"></nav>
+    </header>
+    <div class="imx-dash-layout">
+      <main class="imx-dash-side" id="side"></main>
+      <section class="imx-dash-map" aria-label="Carte de la zone"><div id="map"></div></section>
+    </div>
+    <script src="../vendor/leaflet/leaflet.js"></script>
+    <script src="../ui/components.js"></script>
+    <script type="module" src="dashboard.js"></script>
+  </body>
+</html>

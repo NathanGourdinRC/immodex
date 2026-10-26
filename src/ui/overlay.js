@@ -90,7 +90,13 @@
       kind === 'land'
         ? `Cadastre IGN${result && result.tier != null ? ` · niveau ${result.tier}` : ''}`
         : `${UI.datasetLabel(result && result.dataset)}${result && result.tier != null ? ` · niveau ${result.tier}` : ''}`;
-    return el('div', { class: 'imx-footer' }, el('span', null, source), result && result.cached ? el('span', null, 'depuis le cache') : null);
+    // Historique des prix de cette annonce chez Castorus (lien copié, à coller).
+    return el(
+      'div',
+      { class: 'imx-footer' },
+      el('span', null, source, result && result.cached ? ' · depuis le cache' : ''),
+      UI.castorusButton(location.href)
+    );
   }
 
   function showLoading(payload) {

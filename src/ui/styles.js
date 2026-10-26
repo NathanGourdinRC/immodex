@@ -387,7 +387,8 @@ button, input, select { font-family: inherit; }
 /* ─── Popup ─── */
 body.imx-popup { width: 384px; margin: 0; background: var(--imx-bg-subtle); }
 .imx-popup-header { display: flex; align-items: center; gap: 10px; padding: 14px 16px; background: var(--imx-bg); border-bottom: 1px solid var(--imx-border); }
-.imx-popup-header .imx-version { margin-left: auto; font-size: 11px; color: var(--imx-text-3); }
+.imx-dashboard-btn { margin-left: auto; }
+.imx-popup-header .imx-version { font-size: 11px; color: var(--imx-text-3); }
 .imx-popup-main { display: grid; gap: 14px; padding: 14px 16px 16px; }
 .imx-tabs { display: grid; grid-template-columns: repeat(5, auto); gap: 2px; padding: 3px; border-radius: 10px; background: var(--imx-bg-muted); }
 .imx-tab {

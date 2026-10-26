@@ -129,20 +129,47 @@
   }
 
   // Copie de l'adresse : pratique pour la coller dans une autre recherche.
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const area = el('textarea', { style: 'position:fixed;opacity:0' }, text);
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand('copy');
+      area.remove();
+    }
+  }
+
+  // Pont vers Castorus (historique des prix partagé par ses membres) : pas d'API publique
+  // et ses conditions interdisent toute collecte automatique. On copie donc le lien de
+  // l'annonce et on ouvre sa « Recherche par URL » ; il reste à coller le lien.
+  const CASTORUS_SEARCH = 'https://www.castorus.com/recherche';
+
+  function castorusButton(listingUrl, { ghost = true } = {}) {
+    const label = () => [icon('external', 14), 'Castorus'];
+    const btn = el(
+      'button',
+      { class: `imx-btn imx-btn-sm${ghost ? ' imx-btn-ghost' : ''}`, type: 'button', title: 'Copie le lien de l’annonce et ouvre la recherche par URL de Castorus (historique des prix)' },
+      label()
+    );
+    btn.addEventListener('click', async (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      await copyText(listingUrl);
+      window.open(CASTORUS_SEARCH, '_blank', 'noopener');
+      btn.replaceChildren(icon('check', 14), 'Lien copié, colle-le');
+      setTimeout(() => btn.replaceChildren(...label()), 5000);
+    });
+    return btn;
+  }
+
   function copyButton(text) {
     const btn = el('button', { class: 'imx-btn imx-btn-sm imx-btn-icon', type: 'button', title: 'Copier l’adresse', 'aria-label': 'Copier l’adresse' }, icon('copy', 14));
     btn.addEventListener('click', async (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
-      try {
-        await navigator.clipboard.writeText(text);
-      } catch {
-        const area = el('textarea', { style: 'position:fixed;opacity:0' }, text);
-        document.body.appendChild(area);
-        area.select();
-        document.execCommand('copy');
-        area.remove();
-      }
+      await copyText(text);
       btn.replaceChildren(icon('check', 14));
       setTimeout(() => btn.replaceChildren(icon('copy', 14)), 1500);
     });
@@ -657,6 +684,7 @@
     dpeResults,
     landResults,
     salesBlock,
+    castorusButton,
     letterPicker,
     linkButton,
     sightings,

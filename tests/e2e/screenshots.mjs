@@ -95,5 +95,24 @@ await popup.click('#mode-sites');
 await popup.waitForTimeout(200);
 await popup.screenshot({ path: join(out, '7-popup-sites.png'), fullPage: true });
 
+// Tableau de bord : zone Lille, appartements de 50 à 90 m².
+const dash = await context.newPage();
+await dash.setViewportSize({ width: 1400, height: 900 });
+await dash.goto(`chrome-extension://${id}/src/dashboard/dashboard.html`);
+await dash.fill('input[type="search"]', 'Lille');
+await dash.click('.imx-suggest button:has-text("Lille ·")', { timeout: 15000 });
+await dash.selectOption('select.imx-select', 'appartement');
+await dash.fill('input[placeholder="mini"]', '50');
+await dash.fill('input[placeholder="maxi"]', '90');
+await dash.screenshot({ path: join(out, '11-tableau-de-bord-creation.png') });
+await dash.click('button:has-text("Créer la zone")');
+await dash.waitForSelector('.imx-legend', { timeout: 30000 });
+await dash.waitForSelector('.imx-row .imx-row-title', { timeout: 30000 });
+await dash.waitForTimeout(2500); // tuiles OpenStreetMap
+await dash.screenshot({ path: join(out, '12-tableau-de-bord-zone.png') });
+await dash.locator('.imx-dash-side').evaluate((n) => n.scrollTo(0, n.scrollHeight));
+await dash.waitForTimeout(300);
+await dash.screenshot({ path: join(out, '13-tableau-de-bord-bas.png') });
+
 await context.close();
 console.log('captures dans', out);

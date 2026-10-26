@@ -1,6 +1,6 @@
 {
   "name": "immodex-plus",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "description": "Outils de développement d'Immodex+ (tests). L'extension elle-même n'a aucune dépendance.",
   "type": "module",

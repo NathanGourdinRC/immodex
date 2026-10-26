@@ -33,6 +33,8 @@
 | Annonce republiée (autre site, autre agence, nouvelle annonce) | invisible | **suivi des biens** : chaque annonce ouverte est mémorisée (12 mois, dans Chrome) ; un même bien retrouvé est signalé sur le bouton (« +2 ») avec ses parutions et l'évolution du prix ; onglet **Biens** du popup |
 | Vérifier un candidat | lien Google Maps | + **Street View** à l'adresse de chaque candidat (comparer la façade aux photos) et **carte des candidats** numérotés (OpenStreetMap, dans un onglet) |
 | Prix du marché | rien | **Ventes passées** à l'adresse de chaque candidat (DVF, 5 dernières années) : prix, surface, prix au m², vente de surface proche de l'annonce mise en avant, médianes de la rue et du secteur |
+| Suivre une recherche sur des semaines | rien | **Tableau de bord** (bouton du popup) par zone de communes : nouveaux DPE de la zone (souvent une annonce en préparation), annonces vues avec statut et note, carte des prix médians au m² par section cadastrale |
+| Historique de prix partagé | rien | bouton **Castorus** : copie le lien de l'annonce et ouvre la recherche par URL de Castorus (pas d'API publique, pas de collecte automatique) |
 
 Détails techniques et choix : [docs/plans/2026-10-25-historique-et-sites-nord.md](docs/plans/2026-10-25-historique-et-sites-nord.md).
 
@@ -114,7 +116,7 @@ npm test
 npm run test:e2e
 ```
 
-`npm test` lance les tests unitaires (historique, lecture des annonces, rapprochement ADEME, ventes DVF). `npm run test:e2e` charge l'extension dans un Chromium piloté et rejoue les parcours réels (API ADEME comprises) ; il faut d'abord `npx playwright install chromium`. L'extension elle-même n'a aucune dépendance : `node_modules` ne sert qu'aux tests.
+`npm test` lance les tests unitaires (historique, lecture des annonces, rapprochement ADEME, ventes DVF, zones du tableau de bord). `npm run test:e2e` charge l'extension dans un Chromium piloté et rejoue les parcours réels (API ADEME comprises) ; il faut d'abord `npx playwright install chromium`. L'extension elle-même n'a aucune dépendance : `node_modules` ne sert qu'aux tests.
 
 ---
 
@@ -169,6 +171,8 @@ Trois tiers de tolérance (exact → élargi → très élargi) sont appliqués 
 | BAN (Base Adresse Nationale) | `api-adresse.data.gouv.fr/reverse/` | Reverse geocoding |
 | API Géo (Etalab) | `geo.api.gouv.fr/communes` | Code postal → INSEE |
 | DVF (DGFiP, publié par Etalab) | `app.dvf.etalab.gouv.fr/api/mutations3` | Ventes passées par section cadastrale |
+| Statistiques DVF (data.gouv.fr) | `tabular-api.data.gouv.fr` | Prix médian au m² par commune et par section |
+| Cadastre Etalab | `cadastre.data.gouv.fr/bundler/cadastre-etalab` | Contours des sections cadastrales |
 
 Toutes ces APIs sont **publiques, gratuites, sans clé**. Elles sont financées par l'État via data.gouv.fr.
 

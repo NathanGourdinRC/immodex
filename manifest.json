@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Immodex+",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Adresse réelle d'une annonce immobilière via les DPE (ADEME) et le cadastre (IGN), ventes passées (DVF) et suivi des republications.",
   "icons": {
     "16": "icons/16.png",
@@ -29,7 +29,9 @@
     "https://apicarto.ign.fr/*",
     "https://geo.api.gouv.fr/*",
     "https://api-adresse.data.gouv.fr/*",
-    "https://app.dvf.etalab.gouv.fr/*"
+    "https://app.dvf.etalab.gouv.fr/*",
+    "https://tabular-api.data.gouv.fr/*",
+    "https://cadastre.data.gouv.fr/*"
   ],
   "background": {
     "service_worker": "src/background/service-worker.js",

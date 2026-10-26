@@ -34,6 +34,17 @@ document.getElementById('logo').appendChild(icon('pin', 17));
 document.getElementById('analyze-icon').appendChild(icon('scan', 18));
 document.getElementById('version').textContent = `v${chrome.runtime.getManifest().version}`;
 
+// Tableau de bord des zones de recherche, dans un onglet (déjà ouvert : on le réutilise).
+const dashboardBtn = document.getElementById('dashboard-btn');
+dashboardBtn.append(icon('layers', 14), 'Tableau de bord');
+dashboardBtn.addEventListener('click', async () => {
+  const url = chrome.runtime.getURL('src/dashboard/dashboard.html');
+  const [open] = await chrome.tabs.query({ url: `${url}*` }).catch(() => []);
+  if (open) await chrome.tabs.update(open.id, { active: true });
+  else await chrome.tabs.create({ url });
+  window.close();
+});
+
 // Sélecteurs de lettres : ils renseignent les champs cachés lus par readDpeForm.
 const energyPicker = UI.letterPicker('dpe', '', (v) => (dpeForm.elements.namedItem('energyClass').value = v));
 const gesPicker = UI.letterPicker('ges', '', (v) => (dpeForm.elements.namedItem('gesClass').value = v));
@@ -424,7 +435,7 @@ function groupCard(g) {
           'div',
           { class: 'imx-candidate' },
           el('div', { class: 'imx-candidate-head' }, el('span', null, `${UI.day(s.firstSeen)} · ${s.site || 'annonce'}`), el('span', { class: 'imx-meta' }, UI.priceText((s.prices || []).slice(-1)[0]?.price))),
-          el('div', { class: 'imx-actions' }, UI.linkButton(s.url, 'Voir l’annonce', { iconName: 'external' }))
+          el('div', { class: 'imx-actions' }, UI.linkButton(s.url, 'Voir l’annonce', { iconName: 'external' }), UI.castorusButton(s.url))
         )
       )
     )
