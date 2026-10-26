@@ -480,6 +480,24 @@
   // Échelle désignée par un nom de classe ou d'identifiant : GES, énergie, ou inconnue.
   const scaleOf = (s) => (/ges|climat|co2|gaz|emission/i.test(s) ? 'ges' : /dpe|energ|conso|dep\b|dep-/i.test(s) ? 'dpe' : null);
 
+  // Élément situé dans la vignette d'une autre annonce (annonces similaires de Foncia :
+  // carte avec son propre « dpe-number » et un lien vers une autre page d'annonce).
+  function inOtherListing(node, doc) {
+    if (node.closest(OTHER_LISTINGS)) return true;
+    const box = node.closest('[class*="card" i], [class*="vignette" i], [class*="thumbnail" i], article, li');
+    if (!box || box.querySelector('h1')) return false;
+    const here = (doc.location && doc.location.pathname) || '';
+    for (const a of box.querySelectorAll('a[href]')) {
+      try {
+        const u = new URL(a.getAttribute('href'), doc.baseURI);
+        if (u.pathname !== here && /\d{3,}|annonce|vente|location|achat/i.test(u.pathname)) return true;
+      } catch {
+        // lien illisible : ignoré
+      }
+    }
+    return false;
+  }
+
   function fromLabels(doc) {
     const r = {};
     const put = (scale, letter) => {
@@ -502,12 +520,13 @@
       const letter = ['data-energetic-class', 'data-energy-class', 'data-dpe-class', 'data-classe-energie', 'data-lettre', 'data-letter']
         .map((a) => node.getAttribute(a))
         .find((v) => v && /^[A-Ga-g]$/.test(v.trim()));
-      if (!letter) continue;
+      if (!letter || inOtherListing(node, doc)) continue;
       const explicit = node.hasAttribute('data-energetic-class') || node.hasAttribute('data-energy-class') || node.hasAttribute('data-dpe-class') || node.hasAttribute('data-classe-energie');
       put(explicit ? 'dpe' : scaleOf(`${node.id} ${classOf(node)}`) || 'dpe', letter.trim());
     }
     const numAttr = (sel, attrs) => {
       for (const node of doc.querySelectorAll(sel)) {
+        if (inOtherListing(node, doc)) continue;
         for (const a of attrs) {
           const n = parseNumber(node.getAttribute(a));
           if (n != null && n > 0) return n;
@@ -526,7 +545,7 @@
     const tokenCandidates = [];
     for (const node of doc.querySelectorAll('[class]')) {
       const cls = classOf(node);
-      if (!/dpe|energ|conso|ges\b|ges[-_]|climat|diagnostic|co2/i.test(cls)) continue;
+      if (!/dpe|energ|conso|ges\b|ges[-_]|climat|diagnostic|co2/i.test(cls) || inOtherListing(node, doc)) continue;
       for (const t of cls.split(/\s+/)) {
         const m = t.match(/^(?:number|lettre|letter|classe|class|note|grade|niveau|level|rank)[-_]?([a-g])$/i) || t.match(/^([a-g])$/i);
         if (m) {
@@ -546,6 +565,20 @@
     }
     if (unknown[0]) put('dpe', unknown[0]);
     if (unknown[1]) put('ges', unknown[1]);
+
+    // 3 bis. Valeurs sans unité portées par une classe explicite : <strong class="conso-index">184</strong>,
+    //    <strong class="emi-index">39</strong> (Immotram). « conso-index2 » (le GES rappelé sur
+    //    l'étiquette énergie) ne correspond pas : \b exige la fin du mot après « index ».
+    for (const node of doc.querySelectorAll('[class]')) {
+      const cls = classOf(node);
+      if (node.children.length || !/(?:conso|energ|dpe|emi|ges|co2|climat)[-_]?(?:index|value|valeur|val|chiffre|number|nb|kwh|kg)\b/i.test(cls)) continue;
+      if (inOtherListing(node, doc)) continue;
+      const n = parseNumber((node.textContent || '').replace(/\*/g, ''));
+      if (n == null || n <= 0) continue;
+      if (/emi|ges|co2|climat/i.test(cls)) {
+        if (r.gesEmission == null && n <= 400) r.gesEmission = n;
+      } else if (r.energyConsumption == null && n <= 1500) r.energyConsumption = n;
+    }
 
     // 4. Century 21 : étiquette SVG dont les valeurs sont dans g[data-name="chiffres"]
     //    (consommation puis émissions) ; la lettre, elle, n'est qu'un tracé.

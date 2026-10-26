@@ -372,3 +372,34 @@ test('libellés d’agences : « DPE conso : 144, Lettre : C », « Consommation
   assert.equal(r2.energyClass, 'E');
   assert.equal(r2.gesEmission, 9);
 });
+
+test('Immotram : lettres dans les noms d’images, valeurs sans unité dans conso-index / emi-index', () => {
+  const r = extract(
+    page(
+      long(`<h1>Vente Appartement 151m 2 - 3 chambre(s) - Roubaix, Alfred Mongy</h1>
+        <div class="bloc_product_dpe">
+          <div class="conso"><img id="conso-img" src="./assets/img/dpe/conso-D.svg" alt="Consommation énergétique" />
+            <strong class="conso-index conso-index_D">184</strong><strong class="conso-index2 conso-index2_D">39*</strong></div>
+          <div class="emission"><img id="emi-img" src="./assets/img/dpe/emi-D.svg" alt="Émissions GES" />
+            <strong class="emi-index emi-index_D">39</strong></div>
+        </div>`)
+    )
+  );
+  assert.equal(r.city, 'Roubaix');
+  assert.equal(r.energyClass, 'D');
+  assert.equal(r.energyConsumption, 184);
+  assert.equal(r.gesEmission, 39);
+});
+
+test('valeur sans unité dans la vignette d’une autre annonce : ignorée (Foncia)', () => {
+  const r = extract(
+    page(
+      long(`<h1>Location appartement 41 m² Lille (59000)</h1>
+        <img alt="Diagnostic classe énergie : C indice : 150 kWhEP/m².an" src="/dpe.png">
+        <div class="foncia-card"><a href="/location/lille-59/appartement/331699885.htm">Autre appartement</a>
+          <span class="dpe-values"><span class="dpe-number">137</span><span class="dpe-unit">kWh/m²</span></span></div>`)
+    ),
+    'https://fr.foncia.com/location/lille-59/appartement/331682132.htm'
+  );
+  assert.equal(r.energyConsumption, 150);
+});
