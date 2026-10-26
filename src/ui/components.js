@@ -145,12 +145,26 @@
   // et ses conditions interdisent toute collecte automatique. On copie donc le lien de
   // l'annonce et on ouvre sa « Recherche par URL » ; il reste à coller le lien.
   const CASTORUS_SEARCH = 'https://www.castorus.com/recherche';
+  // Castorus suit surtout les grands portails (vérifié sur Bien'ici le 26/10/2026) et
+  // écarte les sites de particuliers : pas de bouton là où il ne trouverait rien.
+  const CASTORUS_EXCLUDED = /(^|\.)(leboncoin\.fr|pap\.fr)$/;
 
   function castorusButton(listingUrl, { ghost = true } = {}) {
+    let host = '';
+    try {
+      host = new URL(listingUrl).hostname;
+    } catch {
+      return null;
+    }
+    if (CASTORUS_EXCLUDED.test(host)) return null;
     const label = () => [icon('external', 14), 'Castorus'];
     const btn = el(
       'button',
-      { class: `imx-btn imx-btn-sm${ghost ? ' imx-btn-ghost' : ''}`, type: 'button', title: 'Copie le lien de l’annonce et ouvre la recherche par URL de Castorus (historique des prix)' },
+      {
+        class: `imx-btn imx-btn-sm${ghost ? ' imx-btn-ghost' : ''}`,
+        type: 'button',
+        title: 'Copie le lien de l’annonce et ouvre la recherche par URL de Castorus (historique des prix). Castorus suit surtout les grands portails comme Bien’ici ; les sites d’agences y sont rarement connus.',
+      },
       label()
     );
     btn.addEventListener('click', async (ev) => {
