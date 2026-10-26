@@ -30,6 +30,7 @@
 | DPE affiché en image | rien | la carte demande les lettres lues sur l'étiquette |
 | Interface | style Pokédex | interface sobre : classes aux couleurs officielles du DPE, jauge de confiance, boutons Maps / ADEME / copier pour chaque candidat, bouton en onglet au bord droit (ne masque plus les bandeaux cookies) |
 | Agence non couverte | rien | « Activer sur ce site » dans le popup : le bouton automatique y est ajouté en un clic |
+| Annonce republiée (autre site, autre agence, nouvelle annonce) | invisible | **suivi des biens** : chaque annonce ouverte est mémorisée (12 mois, dans Chrome) ; un même bien retrouvé est signalé sur le bouton (« +2 ») avec ses parutions et l'évolution du prix ; onglet **Biens** du popup |
 
 Détails techniques et choix : [docs/plans/2026-10-25-historique-et-sites-nord.md](docs/plans/2026-10-25-historique-et-sites-nord.md).
 
@@ -96,7 +97,7 @@ Un bouton flottant **Immodex+** apparaît en bas à droite. Clique dessus :
 
 ### Recherche manuelle
 
-Clique sur l'icône Immodex+ dans la barre d'outils : un popup s'ouvre avec quatre onglets (**Logement** / **Terrain** / **Historique** / **Sites**).
+Clique sur l'icône Immodex+ dans la barre d'outils : un popup s'ouvre avec cinq onglets (**Logement** / **Terrain** / **Historique** / **Biens** / **Sites**).
 
 - **Analyser la page ouverte** lit l'annonce de l'onglet actif (n'importe quel site), remplit le formulaire et lance la recherche.
 - Sur une agence non couverte, un bandeau propose **Activer** : Chrome demande l'autorisation pour ce seul site, puis le bouton automatique y apparaît à chaque visite. L'onglet **Sites** liste les sites intégrés et ceux que tu as ajoutés (avec « Retirer »).

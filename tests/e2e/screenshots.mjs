@@ -46,6 +46,22 @@ await page.waitForSelector('.imx-prompt');
 await page.waitForTimeout(300);
 await page.screenshot({ path: join(out, '3-carte-question.png') });
 
+// Suivi des biens : le même appartement chez deux agences, à deux prix.
+const flat = (price) => `<!doctype html><html><head><title>Appartement Lille</title></head><body style="font-family:Arial;margin:40px">
+<h1>Vente appartement 3 pièces Lille</h1><p>Rue de test 59000 Lille · Appartement 72 m² 3 pièces</p><p>Prix : ${price} €</p>
+<p>${'Appartement traversant et calme. '.repeat(20)}</p><p>Consommation énergétique : 233 kWh / m² / an</p><p>Émission de Co2 : 41 kg Co2 / m² / an</p></body></html>`;
+await context.route('https://www.vacherand.fr/immobilier/shot-suivi-1', (r) => r.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: flat('315 000') }));
+await context.route('https://www.abrinor.fr/annonce/shot-suivi-2', (r) => r.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: flat('295 000') }));
+await page.goto('https://www.vacherand.fr/immobilier/shot-suivi-1');
+await page.waitForTimeout(2500);
+await page.goto('https://www.abrinor.fr/annonce/shot-suivi-2');
+await page.waitForFunction(() => /\+1/.test(document.getElementById('immodex-root')?.shadowRoot?.getElementById('immodex-floating-btn')?.textContent || ''), null, { timeout: 10000 });
+await page.screenshot({ path: join(out, '8-bouton-deja-vu.png') });
+await page.click('#immodex-floating-btn');
+await page.waitForSelector('.imx-address', { timeout: 30000 }).catch(() => {});
+await page.waitForTimeout(300);
+await page.screenshot({ path: join(out, '9-carte-deja-vu.png') });
+
 const popup = await context.newPage();
 await popup.setViewportSize({ width: 384, height: 900 });
 await popup.goto(`chrome-extension://${id}/src/popup/popup.html`);
@@ -58,6 +74,9 @@ await popup.screenshot({ path: join(out, '5-popup-formulaire.png'), fullPage: tr
 await popup.click('#mode-history');
 await popup.waitForSelector('.imx-history-item');
 await popup.screenshot({ path: join(out, '6-popup-historique.png'), fullPage: true });
+await popup.click('#mode-biens');
+await popup.waitForTimeout(300);
+await popup.screenshot({ path: join(out, '10-popup-biens.png'), fullPage: true });
 await popup.click('#mode-sites');
 await popup.waitForTimeout(200);
 await popup.screenshot({ path: join(out, '7-popup-sites.png'), fullPage: true });

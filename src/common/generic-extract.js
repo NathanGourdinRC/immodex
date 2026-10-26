@@ -805,6 +805,7 @@
     gesEmission: ['gesvalue', 'emissionges', 'valeurges', 'emissionvalue', 'ges.value'],
     date: ['datedpefr', 'dpedate', 'dpeexecutiondate', 'daterealisationdpe', 'datedpe', 'epcges.date', 'epc.date', 'dpe.date'],
     type: ['propertytype', 'typebien', 'realestatetype', 'prod_type', 'itemtype', 'type'],
+    price: ['price', 'prix', 'prixvente', 'prix_vente', 'price2', 'itemprice', 'prixaffiche', 'loyer', 'rent'],
   };
   const ANCHORS = new Set([...KEYS.surface, ...KEYS.land, ...KEYS.energyClass, ...KEYS.energyIndex, 'dpe', 'epcges', 'dpeinfos', 'logementinfos'].filter((k) => !k.includes('.')));
 
@@ -875,6 +876,7 @@
       gesEmission: first(KEYS.gesEmission, num(0, 400)),
       dateRange: first(KEYS.date, structuredDate),
       type: first(KEYS.type, (v) => (typeof v === 'string' ? v : null)),
+      price: first(KEYS.price, (v) => toAmount(v)),
     };
   }
 
@@ -1171,5 +1173,62 @@
     return extractFromDocument(document);
   }
 
-  window.__immodexGeneric = { extractPage, extractPageAsync, extractFromDocument, deriveClasses, postalAndCity, dpeDateRange };
+  // ─── Prix et type de transaction (suivi des biens) ───
+
+  // « 294 000 », « 460.000 », « 1 157,50 » : séparateurs de milliers, décimales éventuelles.
+  function toAmount(v) {
+    if (v == null || v === '') return null;
+    if (typeof v === 'number') return isFinite(v) && v > 0 ? Math.round(v) : null;
+    const t = String(v).replace(/[   ]/g, ' ').trim();
+    const thousands = t.match(/^(\d{1,3}(?:[ .]\d{3})+)(?:,(\d{1,2}))?$/);
+    const n = thousands ? parseFloat(thousands[1].replace(/[ .]/g, '') + (thousands[2] ? `.${thousands[2]}` : '')) : parseFloat(t.replace(',', '.'));
+    return isFinite(n) && n > 0 ? Math.round(n) : null;
+  }
+
+  // Location ou vente, d'après l'adresse de la page et le titre.
+  function detectTransaction(doc) {
+    const url = (doc.location && doc.location.href) || doc.URL || '';
+    return /locations?\b|\/louer|-louer|a-louer|loyer/i.test(url) || /\b(?:location|à louer|a louer|loyer)\b/i.test(headline(doc)) ? 'location' : 'vente';
+  }
+
+  const AMOUNT = '(\\d{1,3}(?:[ .\\u202f\\u00a0]\\d{3})+|\\d{3,8})(?:,\\d{1,2})?';
+  const PRICE_LABELLED = new RegExp(`(?:prix|loyer)[^\\d\\n€]{0,40}?${AMOUNT}\\s*(?:€|euros?)`, 'i');
+  const PRICE_ANY = new RegExp(`${AMOUNT}\\s*(?:€|euros?)(?!\\s*(?:\\/|par)\\s*m)`, 'gi');
+  // Montants qui ne sont pas le prix : honoraires, charges, mensualité, dépôt, taxe…
+  const NOT_PRICE_BEFORE = /(?:honoraires?|charges?|mensualit[ée]s?|[àa] partir de|d[ée]p[ôo]t|frais|taxe|provision|garantie|soit|dont|budget|estim)[^\d\n]{0,25}$/i;
+
+  // Prix de l'annonce : données du site, puis titre, puis libellé « Prix », puis premier
+  // montant plausible du texte. Les bornes dépendent de la transaction (vente ou loyer).
+  function extractPrice(doc, transaction = detectTransaction(doc)) {
+    const [min, max] = transaction === 'location' ? [100, 20000] : [10000, 30000000];
+    const ok = (n) => (n != null && n >= min && n <= max ? n : null);
+    for (const o of readJsonLd(doc)) {
+      const n = ok(toAmount(o.price ?? (o.offers && !Array.isArray(o.offers) ? o.offers.price : null)));
+      if (n) return n;
+    }
+    for (const sel of ['meta[property="product:price:amount"]', 'meta[property="og:price:amount"]', '[itemprop="price"][content]']) {
+      const n = ok(toAmount(doc.querySelector(sel)?.getAttribute('content')));
+      if (n) return n;
+    }
+    const st = fromStructured(doc, null);
+    if (ok(st.price)) return st.price;
+    const head = headline(doc);
+    const text = mainText(doc);
+    for (const source of [head, text]) {
+      const m = source.match(PRICE_LABELLED);
+      if (m && ok(toAmount(m[1]))) return toAmount(m[1]);
+    }
+    for (const source of [head, text.slice(0, 4000)]) {
+      PRICE_ANY.lastIndex = 0;
+      let m;
+      while ((m = PRICE_ANY.exec(source))) {
+        if (NOT_PRICE_BEFORE.test(source.slice(Math.max(0, m.index - 40), m.index))) continue;
+        const n = ok(toAmount(m[1]));
+        if (n) return n;
+      }
+    }
+    return null;
+  }
+
+  window.__immodexGeneric = { extractPage, extractPageAsync, extractFromDocument, extractPrice, detectTransaction, deriveClasses, postalAndCity, dpeDateRange };
 })();

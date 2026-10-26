@@ -81,6 +81,19 @@ button, input, select { font-family: inherit; }
 .imx-launcher.is-saved { background: #047857; }
 .imx-launcher.is-saved:hover { background: #065f46; }
 .imx-launcher svg { flex: none; }
+/* Pastille « ce bien apparaît dans N autres annonces » */
+.imx-launcher-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: #fbbf24;
+  color: #3b2400;
+  font: 800 11px/1 var(--imx-font);
+}
+.imx-seen { padding: 12px; border: 1px solid #fde68a; border-radius: 12px; background: #fffbeb; }
+.imx-seen .imx-candidate { border-top-color: #fde68a; }
 
 /* ─── Carte ─── */
 .imx-card {
@@ -362,9 +375,10 @@ body.imx-popup { width: 384px; margin: 0; background: var(--imx-bg-subtle); }
 .imx-popup-header { display: flex; align-items: center; gap: 10px; padding: 14px 16px; background: var(--imx-bg); border-bottom: 1px solid var(--imx-border); }
 .imx-popup-header .imx-version { margin-left: auto; font-size: 11px; color: var(--imx-text-3); }
 .imx-popup-main { display: grid; gap: 14px; padding: 14px 16px 16px; }
-.imx-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; padding: 3px; border-radius: 10px; background: var(--imx-bg-muted); }
+.imx-tabs { display: grid; grid-template-columns: repeat(5, auto); gap: 2px; padding: 3px; border-radius: 10px; background: var(--imx-bg-muted); }
 .imx-tab {
   height: 30px;
+  padding: 0 6px;
   border: none;
   border-radius: 8px;
   background: transparent;

@@ -403,3 +403,18 @@ test('valeur sans unité dans la vignette d’une autre annonce : ignorée (Fonc
   );
   assert.equal(r.energyConsumption, 150);
 });
+
+// ─── Prix (suivi des biens) ───
+
+test('prix : JSON-LD, titre, libellé, et pas les honoraires ni le prix au m²', () => {
+  const win = (html, url) => {
+    const w = loadPage(html, url);
+    return w.__immodexGeneric.extractPrice(w.document);
+  };
+  const offer = { '@type': 'Product', offers: { '@type': 'Offer', price: '294000', priceCurrency: 'EUR' } };
+  assert.equal(win(page('<h1>Maison</h1>', `<script type="application/ld+json">${JSON.stringify(offer)}</script>`)), 294000);
+  assert.equal(win(page('<h1>Vente maison 113 m² Lambersart (59130)</h1><p>460.000 €</p>')), 460000);
+  assert.equal(win(page('<h1>Appartement Lille</h1><p>Honoraires : 9 500 € TTC</p><p>Prix : 249 000 €</p><p>4 156 €/m²</p>')), 249000);
+  // location : loyer mensuel
+  assert.equal(win(page('<h1>Location appartement 41 m² Lille</h1><p>Loyer charges comprises 676,39 € / mois</p>'), 'https://fr.foncia.com/location/lille-59/1.htm'), 676);
+});

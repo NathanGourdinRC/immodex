@@ -40,6 +40,8 @@
     scan: ['M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3', 'M8 12h8'],
     plus: ['M12 5v14M5 12h14'],
     edit: ['M4 20h4L19 9l-4-4L4 16v4z'],
+    external: ['M14 4h6v6', 'M20 4l-9 9', 'M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5'],
+    repeat: ['M17 2l4 4-4 4', 'M3 11V9a3 3 0 0 1 3-3h15', 'M7 22l-4-4 4-4', 'M21 13v2a3 3 0 0 1-3 3H3'],
   };
 
   function icon(name, size = 16) {
@@ -340,6 +342,60 @@
     return el('div', { style: 'display:grid;gap:14px' }, best, candidateList(rows, `Autres parcelles (${rows.length})`));
   }
 
+  // ─── Suivi des biens : parutions précédentes du même bien ───
+
+  const LEVEL_LABEL = { same: 'même DPE', probable: 'très probable', possible: 'à vérifier' };
+  const day = (ts) => {
+    const d = new Date(ts);
+    return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
+  };
+  const priceText = (n) => (n ? `${num(n)} €` : 'prix non lu');
+
+  // Évolution du prix sur toutes les parutions sûres : du plus ancien au plus récent.
+  function priceTrend(ownPrices, sureMatches) {
+    const all = [...sureMatches.flatMap((m) => m.prices || []), ...(ownPrices || [])].filter((p) => p && p.price).sort((x, y) => x.at - y.at);
+    if (all.length < 2) return null;
+    const first = all[0];
+    const last = ownPrices && ownPrices.length ? ownPrices[ownPrices.length - 1] : all[all.length - 1];
+    if (first.price === last.price) return null;
+    const pct = ((last.price - first.price) / first.price) * 100;
+    return `Prix : ${priceText(first.price)} le ${day(first.at)} → ${priceText(last.price)} (${pct > 0 ? '+' : '−'}${num(Math.abs(pct), 1)} %)`;
+  }
+
+  function sightings(data) {
+    if (!data || !data.sighting) return null;
+    const matches = data.matches || [];
+    const sure = matches.filter((m) => m.level !== 'possible');
+    const maybe = matches.filter((m) => m.level === 'possible');
+    const trend = priceTrend(data.sighting.prices, sure);
+    if (!sure.length && !maybe.length && !trend) return null;
+    const row = (m) =>
+      el(
+        'div',
+        { class: 'imx-candidate' },
+        el(
+          'div',
+          { class: 'imx-candidate-head' },
+          el('div', { class: 'imx-candidate-address' }, `${day(m.firstSeen)} · ${m.site || 'annonce'}`),
+          el('span', { class: `imx-pill is-${m.level === 'possible' ? 'mid' : 'good'}` }, LEVEL_LABEL[m.level])
+        ),
+        el('div', { class: 'imx-meta' }, [priceText(m.price), m.address].filter(Boolean).join(' · ')),
+        el('div', { class: 'imx-actions' }, linkButton(m.url, 'Voir l’annonce', { iconName: 'external' }))
+      );
+    const title = sure.length
+      ? `Déjà vu dans ${sure.length} autre${sure.length > 1 ? 's' : ''} annonce${sure.length > 1 ? 's' : ''}`
+      : maybe.length
+        ? 'Peut-être déjà vu (à vérifier sur les photos)'
+        : 'Historique du prix';
+    return el(
+      'div',
+      { class: 'imx-section imx-seen' },
+      el('div', { class: 'imx-label' }, title),
+      trend ? message('notice', 'repeat', trend) : null,
+      el('div', { class: 'imx-candidates' }, [...sure, ...maybe].slice(0, 6).map(row))
+    );
+  }
+
   // ─── Sélecteur de lettre (classe énergie ou GES) ───
 
   function letterPicker(scale, initial, onChange) {
@@ -401,5 +457,8 @@
     landResults,
     letterPicker,
     linkButton,
+    sightings,
+    priceText,
+    day,
   };
 })();

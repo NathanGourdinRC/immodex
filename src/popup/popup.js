@@ -7,7 +7,7 @@ const ENERGY_CLASSES = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
 const POPUP_STATE_KEY = 'immodex.popup.state.v1';
 const POPUP_STATE_TTL_MS = 60 * 60 * 1000;
 // Scripts du bouton automatique, injectés sur les sites ajoutés depuis l'onglet Sites.
-const CONTENT_JS = ['src/common/extract.js', 'src/common/generic-extract.js', 'src/ui/styles.js', 'src/ui/components.js', 'src/ui/overlay.js', 'src/content/generic.js'];
+const CONTENT_JS = ['src/common/extract.js', 'src/common/generic-extract.js', 'src/ui/styles.js', 'src/ui/components.js', 'src/ui/overlay.js', 'src/content/generic.js', 'src/content/tracker.js'];
 const SITE_SCRIPT_PREFIX = 'site-';
 
 const dpeForm = document.getElementById('dpe-form');
@@ -16,8 +16,10 @@ const tabs = {
   dpe: document.getElementById('mode-dpe'),
   land: document.getElementById('mode-land'),
   history: document.getElementById('mode-history'),
+  biens: document.getElementById('mode-biens'),
   sites: document.getElementById('mode-sites'),
 };
+const biensView = document.getElementById('biens-view');
 const analyzeBtn = document.getElementById('analyze-btn');
 const siteBar = document.getElementById('site-bar');
 const historyView = document.getElementById('history-view');
@@ -191,14 +193,17 @@ function setMode(next) {
   for (const [name, tab] of Object.entries(tabs)) tab.classList.toggle('is-active', name === mode);
   dpeForm.classList.toggle('imx-hidden', mode !== 'dpe');
   landForm.classList.toggle('imx-hidden', mode !== 'land');
-  analyzeBtn.classList.toggle('imx-hidden', mode === 'history' || mode === 'sites');
-  siteBar.classList.toggle('imx-hidden', mode === 'history' || mode === 'sites' || !siteBar.childElementCount);
+  const listMode = mode === 'history' || mode === 'biens' || mode === 'sites';
+  analyzeBtn.classList.toggle('imx-hidden', listMode);
+  siteBar.classList.toggle('imx-hidden', listMode || !siteBar.childElementCount);
   historyView.classList.toggle('imx-hidden', mode !== 'history');
+  biensView.classList.toggle('imx-hidden', mode !== 'biens');
   sitesView.classList.toggle('imx-hidden', mode !== 'sites');
   setStatus(null, '');
   setEntryBar(null);
   resultsBox.replaceChildren();
   if (mode === 'history') loadHistory();
+  if (mode === 'biens') renderBiens();
   if (mode === 'sites') renderSites();
 }
 
@@ -377,6 +382,85 @@ historyClearBtn.addEventListener('click', async () => {
   chrome.storage.session.remove(POPUP_STATE_KEY).catch(() => {});
   loadHistory();
 });
+
+// ─── Biens suivis (republications et évolution des prix) ───
+
+function groupTitle(g) {
+  if (g.address) return g.address;
+  const fp = g.fp || {};
+  const type = fp.kind === 'land' ? 'Terrain' : fp.buildingType === 'maison' ? 'Maison' : fp.buildingType === 'appartement' ? 'Appartement' : 'Logement';
+  return `${type} ${fp.surface ? `${UI.num(fp.surface)} m²` : ''} · ${[fp.postal, fp.city].filter(Boolean).join(' ')}`.replace(/\s+·/, ' ·');
+}
+
+function groupTrend(g) {
+  if (!g.firstPrice || !g.lastPrice || g.firstPrice === g.lastPrice) return g.lastPrice ? UI.priceText(g.lastPrice) : null;
+  const pct = ((g.lastPrice - g.firstPrice) / g.firstPrice) * 100;
+  return `${UI.priceText(g.firstPrice)} → ${UI.priceText(g.lastPrice)} (${pct > 0 ? '+' : '−'}${UI.num(Math.abs(pct), 1)} %)`;
+}
+
+function groupCard(g) {
+  const fp = g.fp || {};
+  return el(
+    'div',
+    { class: 'imx-panel' },
+    el(
+      'div',
+      { class: 'imx-section-head' },
+      el('div', { class: 'imx-history-address' }, groupTitle(g)),
+      g.count > 1 ? el('span', { class: 'imx-pill is-mid' }, `${g.count} annonces`) : null
+    ),
+    el(
+      'div',
+      { class: 'imx-meta' },
+      [fp.transaction === 'location' ? 'Location' : 'Vente', [fp.energyClass, fp.gesClass].filter(Boolean).join('/') || null, groupTrend(g), `vu depuis le ${UI.day(g.firstSeen)}`]
+        .filter(Boolean)
+        .join(' · ')
+    ),
+    el(
+      'div',
+      { class: 'imx-candidates' },
+      g.sightings.map((s) =>
+        el(
+          'div',
+          { class: 'imx-candidate' },
+          el('div', { class: 'imx-candidate-head' }, el('span', null, `${UI.day(s.firstSeen)} · ${s.site || 'annonce'}`), el('span', { class: 'imx-meta' }, UI.priceText((s.prices || []).slice(-1)[0]?.price))),
+          el('div', { class: 'imx-actions' }, UI.linkButton(s.url, 'Voir l’annonce', { iconName: 'external' }))
+        )
+      )
+    )
+  );
+}
+
+async function renderBiens() {
+  let groups = [];
+  try {
+    const res = await chrome.runtime.sendMessage({ type: 'SIGHTINGS_GROUPS' });
+    groups = res && res.ok ? res.groups : [];
+  } catch {
+    groups = [];
+  }
+  const total = groups.reduce((n, g) => n + g.count, 0);
+  const repeated = groups.filter((g) => g.count > 1);
+  const singles = groups.filter((g) => g.count === 1);
+  const clear = el('button', { type: 'button', class: 'imx-btn imx-btn-sm' }, 'Tout effacer');
+  clear.addEventListener('click', async () => {
+    if (!confirm('Effacer le suivi de toutes les annonces vues ?')) return;
+    await chrome.runtime.sendMessage({ type: 'SIGHTINGS_CLEAR' });
+    renderBiens();
+  });
+  // replaceChildren écrirait « null » pour une partie absente : on filtre.
+  const parts = [
+    total
+      ? UI.notice(`${total} annonce${total > 1 ? 's' : ''} vue${total > 1 ? 's' : ''} · ${repeated.length} bien${repeated.length > 1 ? 's' : ''} retrouvé${repeated.length > 1 ? 's' : ''} dans plusieurs annonces`)
+      : UI.notice('Aucune annonce suivie pour le moment : chaque annonce ouverte sur un site couvert est enregistrée automatiquement.'),
+    repeated.length ? el('div', { class: 'imx-label' }, 'Biens vus dans plusieurs annonces') : null,
+    ...repeated.map(groupCard),
+    singles.length ? el('div', { class: 'imx-label' }, `Annonces vues une fois (${singles.length})`) : null,
+    ...singles.slice(0, 30).map(groupCard),
+    total ? el('div', { class: 'imx-section-head' }, el('small', { class: 'imx-meta' }, 'Gardé 12 mois, uniquement dans ce Chrome.'), clear) : null,
+  ];
+  biensView.replaceChildren(...parts.filter(Boolean));
+}
 
 // ─── Sites couverts ───
 

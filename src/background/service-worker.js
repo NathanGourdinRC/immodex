@@ -1,7 +1,9 @@
 import { runLookup, runLandLookup } from '../common/match.js';
 import { createHistoryStore } from '../common/history.js';
+import { createPropertyStore } from '../common/properties.js';
 
 const history = createHistoryStore(chrome.storage.local);
+const properties = createPropertyStore(chrome.storage.local);
 // Critères envoyés par « Modifier les champs » depuis une annonce, relus par le popup.
 const PREFILL_KEY = 'immodex.prefill.v1';
 const PREFILL_TTL_MS = 10 * 60 * 1000;
@@ -234,6 +236,20 @@ async function recordHistory(message, sender, result) {
   }
 }
 
+// Adresse trouvée sans ambiguïté (score ≥ 90, 10 points d'avance) : son numéro de DPE
+// devient l'identifiant du bien dans le suivi des annonces, plus sûr que l'empreinte.
+async function linkDpe(message, sender, result) {
+  const page = pageOf(message, sender);
+  const [top, second] = (result && result.candidates) || [];
+  if (!page || !top || !top.record || !top.record.id) return;
+  if (top.score < 90 || (second && top.score - second.score < 10)) return;
+  try {
+    await properties.setDpe(page.url, top.record.id, top.record.address || null);
+  } catch (e) {
+    console.warn('[immodex] property link failed:', e);
+  }
+}
+
 // Réponse asynchrone commune : `true` garde le canal ouvert jusqu'à sendResponse.
 function respond(promise, sendResponse) {
   promise
@@ -248,10 +264,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return respond(
       handleLookup(message.payload || {}).then(async (result) => {
         const entry = await recordHistory(message, sender, result);
+        await linkDpe(message, sender, result);
         return { result, historyId: entry ? entry.id : null };
       }),
       sendResponse
     );
+  }
+  if (message.type === 'SIGHTING_RECORD') {
+    const page = pageOf(message, sender);
+    if (!page) return respond(Promise.resolve({ sighting: null, matches: [] }), sendResponse);
+    return respond(
+      properties.record({ url: page.url, title: page.title, fp: message.fp || {}, price: message.price || null }).then((r) => r || { sighting: null, matches: [] }),
+      sendResponse
+    );
+  }
+  if (message.type === 'SIGHTING_GET') {
+    const url = message.url || (sender.tab && sender.tab.url);
+    return respond(properties.get(url).then((r) => r || { sighting: null, matches: [] }), sendResponse);
+  }
+  if (message.type === 'SIGHTINGS_GROUPS') {
+    return respond(properties.groups().then((groups) => ({ groups })), sendResponse);
+  }
+  if (message.type === 'SIGHTINGS_CLEAR') {
+    return respond(properties.clear().then(() => ({})), sendResponse);
   }
   if (message.type === 'HISTORY_LIST') {
     return respond(history.list().then((entries) => ({ entries })), sendResponse);

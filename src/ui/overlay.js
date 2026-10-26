@@ -13,6 +13,8 @@
 
   let shadow = null;
   let currentCard = null;
+  // Parutions précédentes du bien de cette page (suivi des biens), fournies par tracker.js.
+  let seen = null;
 
   function ensureShadow() {
     let host = document.getElementById(HOST_ID);
@@ -77,7 +79,9 @@
         )
       : null;
     // replaceChildren écrirait « null » pour un pied absent : on filtre.
-    currentCard.replaceChildren(...[header(subtitle), el('div', { class: 'imx-body' }, savedNotice, criteriaSection(payload, onModify), body), footer].filter(Boolean));
+    currentCard.replaceChildren(
+      ...[header(subtitle), el('div', { class: 'imx-body' }, savedNotice, criteriaSection(payload, onModify), UI.sightings(seen), body), footer].filter(Boolean)
+    );
     return currentCard;
   }
 
@@ -204,12 +208,25 @@
 
   const launcher = { label: LABEL_SEARCH, saved: false, onClick: null, observer: null };
 
+  // Pastille du bouton : nombre d'autres annonces du même bien (« +2 »), ou « ? »
+  // quand la correspondance reste à vérifier.
+  function seenBadge() {
+    const matches = (seen && seen.matches) || [];
+    const sure = matches.filter((m) => m.level !== 'possible').length;
+    if (sure) return { text: `+${sure}`, title: `Ce bien apparaît dans ${sure} autre${sure > 1 ? 's' : ''} annonce${sure > 1 ? 's' : ''}` };
+    if (matches.length) return { text: '?', title: 'Ce bien ressemble à une annonce déjà vue (à vérifier)' };
+    return null;
+  }
+
   function buildLauncher() {
+    const badge = seenBadge();
+    const title = `Immodex+ : ${launcher.label}${badge ? ` · ${badge.title}` : ''}`;
     const btn = el(
       'button',
-      { class: `imx-launcher${launcher.saved ? ' is-saved' : ''}`, id: 'immodex-floating-btn', type: 'button', title: `Immodex+ : ${launcher.label}`, 'aria-label': `Immodex+ : ${launcher.label}` },
+      { class: `imx-launcher${launcher.saved ? ' is-saved' : ''}`, id: 'immodex-floating-btn', type: 'button', title, 'aria-label': title },
       icon(launcher.saved ? 'clock' : 'pin', 17),
-      el('span', { class: 'imx-launcher-label' }, launcher.label)
+      el('span', { class: 'imx-launcher-label' }, launcher.label),
+      badge ? el('span', { class: 'imx-launcher-badge' }, badge.text) : null
     );
     btn.addEventListener('click', (ev) => {
       ev.preventDefault();
@@ -242,6 +259,14 @@
   function setLauncherState(saved) {
     launcher.saved = saved;
     launcher.label = saved ? LABEL_SAVED : LABEL_SEARCH;
+    const root = ensureShadow();
+    const old = root.getElementById('immodex-floating-btn');
+    if (old) old.replaceWith(buildLauncher());
+  }
+
+  // Données du suivi des biens pour la page en cours (ou null après une navigation).
+  function setSightings(data) {
+    seen = data && data.sighting ? data : null;
     const root = ensureShadow();
     const old = root.getElementById('immodex-floating-btn');
     if (old) old.replaceWith(buildLauncher());
@@ -365,5 +390,6 @@
     runLookup,
     startLookup,
     showSaved,
+    setSightings,
   };
 })();

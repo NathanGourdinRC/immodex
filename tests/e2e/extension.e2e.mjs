@@ -176,3 +176,36 @@ test('étiquette en image : la carte demande les lettres puis cherche', async ()
 // l'onglet (permission activeTab) qu'après un vrai clic sur l'icône de
 // l'extension, ce qu'un navigateur piloté ne peut pas faire. La lecture elle-même
 // est couverte par les tests unitaires et par le bouton flottant ci-dessus.
+
+const sameFlat = (price) => `<!doctype html><html><head><title>Appartement Lille</title></head><body>
+<h1>Vente appartement 3 pièces Lille</h1><p>Rue de test 59000 Lille · Appartement 72 m² 3 pièces</p>
+<p>Prix : ${price} €</p><p>${'Appartement traversant et calme, proche du métro. '.repeat(15)}</p>
+<p>Consommation énergétique : 233 kWh / m² / an</p><p>Émission de Co2 : 41 kg Co2 / m² / an</p></body></html>`;
+const FIRST_AD = 'https://www.vacherand.fr/immobilier/vente-appartement-lille/ref-suivi-1';
+const SECOND_AD = 'https://www.abrinor.fr/annonce/appartement-lille-suivi-2';
+
+test('suivi des biens : le même bien republié ailleurs est signalé, avec l’évolution du prix', async () => {
+  await context.route(FIRST_AD, (route) => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: sameFlat('315 000') }));
+  await context.route(SECOND_AD, (route) => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: sameFlat('295 000') }));
+  const page = await context.newPage();
+  await page.goto(FIRST_AD);
+  await page.locator('#immodex-floating-btn').waitFor();
+  await page.waitForTimeout(2500); // le suivi enregistre l'annonce 1,5 s après le chargement
+  await page.goto(SECOND_AD);
+  await page.waitForFunction(() => /\+1/.test(document.getElementById('immodex-root')?.shadowRoot?.getElementById('immodex-floating-btn')?.textContent || ''), null, { timeout: 10000 });
+  await page.click('#immodex-floating-btn');
+  await page.waitForSelector('.imx-seen');
+  const seenText = await page.textContent('.imx-seen');
+  assert.match(seenText, /Déjà vu dans 1 autre annonce/);
+  assert.match(seenText, /vacherand\.fr/);
+  assert.match(seenText, /315\s000\s€ .*→ 295\s000\s€/);
+  await page.close();
+
+  // Onglet « Biens » du popup : le bien apparaît avec ses deux annonces.
+  const popup = await context.newPage();
+  await popup.goto(popupUrl());
+  await popup.click('#mode-biens');
+  await popup.waitForSelector('#biens-view .imx-pill');
+  assert.match(await popup.textContent('#biens-view'), /2 annonces/);
+  await popup.close();
+});

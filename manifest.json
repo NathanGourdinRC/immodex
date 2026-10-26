@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Immodex+",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Trouve l'adresse réelle d'une annonce immobilière (Leboncoin, Bienici, SeLoger et sites d'agences) via le registre ADEME des DPE et le cadastre IGN. Historique des recherches sur 7 jours.",
   "icons": {
     "16": "icons/16.png",
@@ -44,10 +44,12 @@
       ],
       "js": [
         "src/common/extract.js",
+        "src/common/generic-extract.js",
         "src/ui/styles.js",
         "src/ui/components.js",
         "src/ui/overlay.js",
-        "src/content/leboncoin.js"
+        "src/content/leboncoin.js",
+        "src/content/tracker.js"
       ],
       "run_at": "document_idle"
     },
@@ -58,10 +60,12 @@
       ],
       "js": [
         "src/common/extract.js",
+        "src/common/generic-extract.js",
         "src/ui/styles.js",
         "src/ui/components.js",
         "src/ui/overlay.js",
-        "src/content/bienici.js"
+        "src/content/bienici.js",
+        "src/content/tracker.js"
       ],
       "run_at": "document_idle"
     },
@@ -72,10 +76,12 @@
       ],
       "js": [
         "src/common/extract.js",
+        "src/common/generic-extract.js",
         "src/ui/styles.js",
         "src/ui/components.js",
         "src/ui/overlay.js",
-        "src/content/seloger.js"
+        "src/content/seloger.js",
+        "src/content/tracker.js"
       ],
       "run_at": "document_idle"
     },
@@ -184,7 +190,8 @@
         "src/ui/styles.js",
         "src/ui/components.js",
         "src/ui/overlay.js",
-        "src/content/generic.js"
+        "src/content/generic.js",
+        "src/content/tracker.js"
       ],
       "run_at": "document_idle"
     }
