@@ -87,7 +87,7 @@
     const header = el(
       'div',
       { class: 'immodex-header' },
-      el('div', { class: 'immodex-title' }, 'Immodex'),
+      el('div', { class: 'immodex-title' }, 'Immodex+'),
       el('button', { class: 'immodex-close', onclick: closeCard }, '×')
     );
     card.appendChild(header);

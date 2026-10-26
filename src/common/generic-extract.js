@@ -136,14 +136,16 @@
   // Bloc principal de l'annonce si la page en déclare un, sinon toute la page.
   // Texte visible d'un bloc. innerText (Chrome) ignore déjà scripts et styles ;
   // sans innerText (tests sous jsdom), on les retire d'une copie avant de lire.
+  // Texte d'un bloc, y compris ce qui est masqué : beaucoup de sites rangent la
+  // consommation et la date du DPE dans un onglet ou un bloc replié, qu'innerText
+  // ignorerait (Vacherand). On lit donc une copie sans scripts ni styles.
   function rawText(node) {
-    if (typeof node.innerText === 'string' && node.innerText !== '') return node.innerText;
     const copy = node.cloneNode(true);
-    for (const s of copy.querySelectorAll('script, style, noscript, template')) s.remove();
+    for (const s of copy.querySelectorAll('script, style, noscript, template, svg defs')) s.remove();
     // Comme innerText : un retour à la ligne après chaque bloc, pour ne pas coller
     // « B » et « Description » en « BDescription ».
-    for (const b of copy.querySelectorAll('p, div, li, br, h1, h2, h3, h4, h5, h6, section, article, tr, dt, dd, ul, ol, header, footer, table')) {
-      b.appendChild(b.ownerDocument.createTextNode('\n'));
+    for (const b of copy.querySelectorAll('p, div, li, br, h1, h2, h3, h4, h5, h6, section, article, tr, td, th, dt, dd, ul, ol, header, footer, table, span')) {
+      b.appendChild(b.ownerDocument.createTextNode(b.tagName === 'SPAN' ? ' ' : '\n'));
     }
     return copy.textContent || '';
   }
