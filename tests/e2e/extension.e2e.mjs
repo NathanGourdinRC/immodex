@@ -141,10 +141,20 @@ test('site d’agence (lecture générique) : bouton flottant et résultat direc
   assert.match(await page.textContent('.imx-chips'), /201 kWh/);
   // Street View sur le meilleur candidat, et carte de tous les candidats dans un nouvel onglet.
   assert.ok(await page.locator('.imx-result a[href*="map_action=pano"]').count());
+  // Ventes passées (DVF, vraie API) : le 30 rue Racine a des ventes, dont un T3 de 63 m²
+  // proche des 65 m² de l'annonce, mis en avant.
+  await page.click('.imx-result button:has-text("Ventes passées")');
+  await page.waitForSelector('.imx-result .imx-sales', { timeout: 30000 });
+  assert.match(await page.textContent('.imx-result .imx-sales'), /Ventes à cette adresse/);
+  assert.ok((await page.locator('.imx-result .imx-sale').count()) >= 1);
+  assert.ok((await page.locator('.imx-result .imx-sale.is-match').count()) >= 1);
   const [mapPage] = await Promise.all([context.waitForEvent('page'), page.click('text=Carte des')]);
   await mapPage.waitForSelector('.imx-pin');
   assert.match(mapPage.url(), /src\/map\/map\.html#/);
   assert.ok((await mapPage.locator('.imx-pin').count()) >= 2);
+  // Même bouton dans la bulle du meilleur candidat, ouverte d'office.
+  await mapPage.click('.leaflet-popup button:has-text("Ventes passées")');
+  await mapPage.waitForSelector('.leaflet-popup .imx-sales', { timeout: 30000 });
   await mapPage.close();
   await page.close();
 });

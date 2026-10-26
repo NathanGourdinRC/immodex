@@ -43,6 +43,7 @@
     external: ['M14 4h6v6', 'M20 4l-9 9', 'M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5'],
     eye: ['M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z', 'circle:12,12,3'],
     repeat: ['M17 2l4 4-4 4', 'M3 11V9a3 3 0 0 1 3-3h15', 'M7 22l-4-4 4-4', 'M21 13v2a3 3 0 0 1-3 3H3'],
+    euro: ['M4 10h12', 'M4 14h9', 'M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12c0 4.4 3.5 8 7.8 8 2 0 3.8-.8 5.2-2'],
   };
 
   function icon(name, size = 16) {
@@ -246,18 +247,158 @@
 
   // « Carte des candidats » : ouvre une page de l'extension avec tous les candidats
   // numérotés sur un fond OpenStreetMap (onglet ouvert par le service worker).
-  function mapButton(points, kind, title) {
+  function mapButton(points, kind, title, ref) {
     if (points.length < 2) return null;
     const btn = el('button', { class: 'imx-btn imx-btn-block', type: 'button' }, icon('map', 15), `Carte des ${points.length} candidats`);
     btn.addEventListener('click', (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
-      chrome.runtime.sendMessage({ type: 'OPEN_MAP', data: { kind, title, points } }).catch(() => {});
+      chrome.runtime.sendMessage({ type: 'OPEN_MAP', data: { kind, title, points, ref } }).catch(() => {});
     });
     return btn;
   }
 
-  function dpeResults(result) {
+  // ─── Ventes passées (DVF) ───
+  // Chargées à la demande : une requête cadastre puis une requête DVF par candidat,
+  // affichées sous ses boutons. `ref` porte la surface de l'annonce pour repérer
+  // la vente qui lui ressemble (souvent le même logement vendu il y a quelques années).
+
+  const NATURES = {
+    "Vente en l'état futur d'achèvement": 'Vente sur plan (VEFA)',
+    'Vente terrain à bâtir': 'Terrain à bâtir',
+    Echange: 'Échange',
+  };
+
+  const closeTo = (value, ref, abs, rel) => value != null && !!ref && Math.abs(value - ref) <= Math.max(abs, ref * rel);
+
+  function saleMatches(sale, ref) {
+    if (!ref || !ref.surface) return false;
+    if (ref.kind === 'land') return closeTo(sale.terrain, ref.surface, 20, 0.05);
+    const home = sale.main.length === 1 ? sale.main[0] : null;
+    return !!home && (closeTo(home.surface, ref.surface, 3, 0.07) || closeTo(home.carrez, ref.surface, 3, 0.07));
+  }
+
+  function saleDescription(sale) {
+    const parts = [];
+    if (sale.main.length > 1) parts.push(`${sale.main.length} logements vendus ensemble`);
+    else if (sale.main.length === 1) {
+      const home = sale.main[0];
+      parts.push([home.type, home.surface ? `${num(home.surface)} m²` : null, home.pieces ? `${num(home.pieces)} p.` : null].filter(Boolean).join(' '));
+      if (home.carrez && (!home.surface || Math.abs(home.carrez - home.surface) >= 1)) parts.push(`Carrez ${num(home.carrez, 2)} m²`);
+      if (home.type === 'Maison' && sale.terrain) parts.push(`terrain ${num(sale.terrain)} m²`);
+    } else if (sale.locaux) parts.push(sale.locaux > 1 ? `${sale.locaux} locaux d’activité` : 'Local d’activité');
+    else if (sale.terrain) parts.push(`Terrain ${num(sale.terrain)} m²`);
+    if (sale.dependances) parts.push(sale.dependances > 1 ? `${sale.dependances} dépendances` : '1 dépendance');
+    return parts.join(' · ');
+  }
+
+  function saleRow(sale, ref) {
+    const match = saleMatches(sale, ref);
+    const unit = sale.pricePerM2
+      ? `${num(sale.pricePerM2)} €/m²`
+      : !sale.main.length && sale.terrain && sale.price
+        ? `${num(sale.price / sale.terrain)} €/m² de terrain`
+        : null;
+    const nature = sale.nature && sale.nature !== 'Vente' ? NATURES[sale.nature] || sale.nature : null;
+    return el(
+      'div',
+      { class: `imx-sale${match ? ' is-match' : ''}` },
+      el(
+        'div',
+        { class: 'imx-sale-head' },
+        el('span', { class: 'imx-sale-price' }, sale.price ? `${num(sale.price)} €` : 'prix non publié'),
+        el('span', { class: 'imx-meta' }, formatDate(sale.date))
+      ),
+      el('div', { class: 'imx-meta' }, [saleDescription(sale), unit].filter(Boolean).join(' · ')),
+      match || nature
+        ? el(
+            'div',
+            { class: 'imx-sale-tags' },
+            match ? el('span', { class: 'imx-tag is-good' }, 'Surface proche de l’annonce') : null,
+            nature ? el('span', { class: 'imx-tag' }, nature) : null
+          )
+        : null
+    );
+  }
+
+  // Repères de prix : médiane des ventes d'un seul logement du même type, dans la rue et
+  // dans la section cadastrale (quelques pâtés de maisons autour de l'adresse).
+  function salesBenchmarks(dvf) {
+    const what = dvf.type === 'Maison' ? 'maisons' : dvf.type === 'Appartement' ? 'appartements' : 'logements';
+    const items = [];
+    if (dvf.street) items.push(`rue ${num(dvf.street.median)} €/m² (${dvf.street.count} vente${dvf.street.count > 1 ? 's' : ''})`);
+    if (dvf.section) items.push(`secteur ${num(dvf.section.median)} €/m² (${dvf.section.count})`);
+    return items.length ? el('div', { class: 'imx-sales-bench', title: 'Secteur : section cadastrale autour de l’adresse' }, `Médiane ${what} : ${items.join(' · ')}`) : null;
+  }
+
+  const MAX_SALES = 8;
+
+  function salesPanel(dvf, ref) {
+    const years = dvf.period ? `${dvf.period.from.slice(0, 4)}-${dvf.period.to.slice(0, 4)}` : null;
+    const rows = dvf.sales.slice(0, MAX_SALES).map((sale) => saleRow(sale, ref));
+    const none = dvf.sections && dvf.sections.length ? 'Aucune vente enregistrée à cette adresse sur la période.' : 'Pas de parcelle cadastrale à cet endroit.';
+    return el(
+      'div',
+      { class: 'imx-sales' },
+      el('div', { class: 'imx-label' }, `Ventes à cette adresse${years ? ` · ${years}` : ''}`),
+      rows.length ? el('div', { class: 'imx-sales-list' }, rows) : el('div', { class: 'imx-meta' }, none),
+      dvf.sales.length > MAX_SALES ? el('div', { class: 'imx-meta' }, `+ ${dvf.sales.length - MAX_SALES} ventes plus anciennes`) : null,
+      salesBenchmarks(dvf),
+      el('div', { class: 'imx-sales-source' }, 'Source : DVF (DGFiP), ventes publiées par Etalab')
+    );
+  }
+
+  function salesBlock(query, ref, { ghost = false, onChange = null } = {}) {
+    const panel = el('div', { class: 'imx-sales-slot' });
+    const button = el(
+      'button',
+      { class: `imx-btn imx-btn-sm${ghost ? ' imx-btn-ghost' : ''}`, type: 'button', 'aria-expanded': 'false', title: 'Ventes enregistrées à cette adresse ces 5 dernières années (DVF)' },
+      icon('euro', 14),
+      'Ventes passées'
+    );
+    let state = 'idle';
+    const changed = () => onChange && onChange();
+    button.addEventListener('click', async (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (state === 'loading') return;
+      // Second clic : on replie le panneau.
+      if (state === 'open') {
+        panel.replaceChildren();
+        state = 'idle';
+        button.setAttribute('aria-expanded', 'false');
+        changed();
+        return;
+      }
+      state = 'loading';
+      panel.replaceChildren(loading('Recherche des ventes passées…'));
+      changed();
+      try {
+        const res = await chrome.runtime.sendMessage({ type: 'DVF_LOOKUP', query });
+        if (!res || !res.ok) throw new Error((res && res.error) || 'pas de réponse');
+        panel.replaceChildren(salesPanel(res.dvf, ref));
+        state = 'open';
+        button.setAttribute('aria-expanded', 'true');
+      } catch (e) {
+        panel.replaceChildren(alert('Ventes passées indisponibles pour le moment (service DVF injoignable).'));
+        state = 'idle';
+      }
+      changed();
+    });
+    return { button, panel };
+  }
+
+  // Type de logement pour les repères de prix : celui de l'annonce, sinon celui du DPE.
+  function homeType(payload, record) {
+    const t = String((payload && payload.buildingType) || record.buildingType || '').toLowerCase();
+    if (t.includes('maison')) return 'maison';
+    if (t.includes('appartement') || t.includes('collectif')) return 'appartement';
+    return null;
+  }
+
+  const dpeSalesQuery = (record, payload) => ({ lat: record.lat, lon: record.lon, address: record.address || null, type: homeType(payload, record) });
+
+  function dpeResults(result, payload) {
     const candidates = (result && result.candidates) || [];
     if (!candidates.length) {
       return empty(
@@ -269,6 +410,8 @@
     const [top, ...others] = candidates;
     const c = confidence(top.score, 'dpe');
     const address = top.record.address || '(adresse inconnue)';
+    const ref = { kind: 'dpe', surface: payload && payload.surface ? Number(payload.surface) : null };
+    const topSales = hasCoords(top.record) ? salesBlock(dpeSalesQuery(top.record, payload), ref) : null;
     const best = el(
       'div',
       { class: `imx-result is-${c.level}` },
@@ -281,12 +424,15 @@
         linkButton(links.gmaps(top.record.address, top.record.postal, top.record.city), 'Voir sur Maps', { variant: 'imx-btn-primary', iconName: 'map' }),
         hasCoords(top.record) ? streetViewButton(top.record.lat, top.record.lon, true) : null,
         top.record.id ? linkButton(links.ademe(top.record.id), 'Fiche ADEME', { iconName: 'file' }) : null,
+        topSales ? topSales.button : null,
         copyButton(address)
-      )
+      ),
+      topSales ? topSales.panel : null
     );
     const rows = others.map((alt) => {
       const altAddress = alt.record.address || '(adresse inconnue)';
       const ac = confidence(alt.score, 'dpe');
+      const sales = hasCoords(alt.record) ? salesBlock(dpeSalesQuery(alt.record, payload), ref, { ghost: true }) : null;
       return el(
         'div',
         { class: 'imx-candidate' },
@@ -299,24 +445,29 @@
           linkButton(links.gmaps(alt.record.address, alt.record.postal, alt.record.city), 'Maps', { iconName: 'map' }),
           hasCoords(alt.record) ? streetViewButton(alt.record.lat, alt.record.lon, false) : null,
           alt.record.id ? linkButton(links.ademe(alt.record.id), 'ADEME', { variant: 'imx-btn-ghost', iconName: 'file' }) : null,
+          sales ? sales.button : null,
           copyButton(altAddress)
-        )
+        ),
+        sales ? sales.panel : null
       );
     });
     const points = candidates
       .map((c, i) => ({ c, n: i + 1 }))
       .filter(({ c }) => hasCoords(c.record))
-      .map(({ c, n }) => ({ n, lat: c.record.lat, lon: c.record.lon, label: c.record.address || '(adresse inconnue)', meta: recordMeta(c.record), score: c.score, ademeId: c.record.id || null }));
+      .map(({ c, n }) => ({ n, lat: c.record.lat, lon: c.record.lon, label: c.record.address || '(adresse inconnue)', meta: recordMeta(c.record), score: c.score, ademeId: c.record.id || null, type: homeType(payload, c.record) }));
     return el(
       'div',
       { style: 'display:grid;gap:14px' },
       best,
       candidateList(rows, `Autres candidats (${rows.length})`),
-      mapButton(points, 'dpe', `${points.length} logements candidats`)
+      mapButton(points, 'dpe', `${points.length} logements candidats`, ref)
     );
   }
 
-  function parcelActions(parcel, primary) {
+  const landSalesQuery = (parcel) =>
+    parcel.idu ? { idu: parcel.idu } : Array.isArray(parcel.centroid) ? { lon: parcel.centroid[0], lat: parcel.centroid[1] } : null;
+
+  function parcelActions(parcel, primary, sales) {
     if (!Array.isArray(parcel.centroid)) return null;
     const [lon, lat] = parcel.centroid;
     return el(
@@ -325,7 +476,8 @@
       linkButton(links.gmapsCoord(lon, lat), primary ? 'Voir sur Maps' : 'Maps', { variant: primary ? 'imx-btn-primary' : '', iconName: 'map' }),
       linkButton(links.geoportail(lon, lat), 'Géoportail', { iconName: 'layers' }),
       streetViewButton(lat, lon, false),
-      primary ? linkButton(links.cadastrePhoto(lon, lat), 'Cadastre + photo', { variant: 'imx-btn-ghost' }) : null
+      primary ? linkButton(links.cadastrePhoto(lon, lat), 'Cadastre + photo', { variant: 'imx-btn-ghost' }) : null,
+      sales ? sales.button : null
     );
   }
 
@@ -339,12 +491,15 @@
     return [parcel.idu, parcel.section ? `section ${parcel.section}` : null, parcel.numero ? `n° ${parcel.numero}` : null].filter(Boolean).join(' · ');
   }
 
-  function landResults(result) {
+  function landResults(result, payload) {
     const candidates = (result && result.candidates) || [];
     if (!candidates.length) return empty('Aucune parcelle correspondante dans le cadastre IGN pour ces critères.');
     const [top, ...others] = candidates;
     const c = confidence(top.score, 'land');
     const p = top.parcel;
+    const ref = { kind: 'land', surface: payload && payload.surface ? Number(payload.surface) : null };
+    const topQuery = landSalesQuery(p);
+    const topSales = topQuery ? salesBlock(topQuery, ref) : null;
     const best = el(
       'div',
       { class: `imx-result is-${c.level}` },
@@ -357,30 +512,34 @@
         el('div', { class: 'imx-parcel' }, parcelId(p))
       ),
       scoreBlock(top.score, 'land'),
-      parcelActions(p, true)
+      parcelActions(p, true, topSales),
+      topSales ? topSales.panel : null
     );
     const rows = others.map((alt) => {
       const ap = alt.parcel;
       const ac = confidence(alt.score, 'land');
+      const altQuery = landSalesQuery(ap);
+      const sales = altQuery ? salesBlock(altQuery, ref, { ghost: true }) : null;
       return el(
         'div',
         { class: 'imx-candidate' },
         el('div', { class: 'imx-candidate-head' }, el('div', { class: 'imx-candidate-address' }, ap.address || ap.street || ap.idu || '(parcelle)'), el('span', { class: `imx-pill is-${ac.level}` }, `${alt.score}`)),
         el('div', { class: 'imx-meta' }, parcelMeta(ap)),
         el('div', { class: 'imx-parcel' }, parcelId(ap)),
-        parcelActions(ap, false)
+        parcelActions(ap, false, sales),
+        sales ? sales.panel : null
       );
     });
     const points = candidates
       .map((c, i) => ({ c, n: i + 1 }))
       .filter(({ c }) => Array.isArray(c.parcel.centroid))
-      .map(({ c, n }) => ({ n, lon: c.parcel.centroid[0], lat: c.parcel.centroid[1], label: c.parcel.address || c.parcel.street || c.parcel.idu || '(parcelle)', meta: parcelMeta(c.parcel), score: c.score }));
+      .map(({ c, n }) => ({ n, lon: c.parcel.centroid[0], lat: c.parcel.centroid[1], label: c.parcel.address || c.parcel.street || c.parcel.idu || '(parcelle)', meta: parcelMeta(c.parcel), score: c.score, idu: c.parcel.idu || null }));
     return el(
       'div',
       { style: 'display:grid;gap:14px' },
       best,
       candidateList(rows, `Autres parcelles (${rows.length})`),
-      mapButton(points, 'land', `${points.length} parcelles candidates`)
+      mapButton(points, 'land', `${points.length} parcelles candidates`, ref)
     );
   }
 
@@ -497,6 +656,7 @@
     loading,
     dpeResults,
     landResults,
+    salesBlock,
     letterPicker,
     linkButton,
     sightings,

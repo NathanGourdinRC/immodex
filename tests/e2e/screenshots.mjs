@@ -38,10 +38,18 @@ await page.click('#immodex-floating-btn');
 await page.waitForSelector('.imx-address', { timeout: 30000 });
 await page.waitForTimeout(300);
 await page.screenshot({ path: join(out, '2-carte-resultat.png') });
+await page.click('.imx-result button:has-text("Ventes passées")');
+await page.waitForSelector('.imx-result .imx-sales', { timeout: 30000 });
+await page.waitForTimeout(200);
+await page.locator('.imx-result .imx-sales').scrollIntoViewIfNeeded();
+await page.screenshot({ path: join(out, '2c-ventes-passees.png') });
 const [mapPage] = await Promise.all([context.waitForEvent('page'), page.click('text=Carte des')]);
 await mapPage.setViewportSize({ width: 1100, height: 700 });
 await mapPage.waitForSelector('.imx-pin');
 await mapPage.waitForTimeout(2500); // tuiles OpenStreetMap
+await mapPage.click('.leaflet-popup button:has-text("Ventes passées")');
+await mapPage.waitForSelector('.leaflet-popup .imx-sales', { timeout: 30000 });
+await mapPage.waitForTimeout(400);
 await mapPage.screenshot({ path: join(out, '2b-carte-des-candidats.png') });
 await mapPage.close();
 

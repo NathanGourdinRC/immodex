@@ -40,7 +40,7 @@ async function loadStores() {
         }
       }
     } catch (e) {
-      // session storage unavailable — fall back to memory only
+      // session storage unavailable : fall back to memory only
     }
     storesLoaded = true;
   })();

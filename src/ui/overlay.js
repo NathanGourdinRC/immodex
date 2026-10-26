@@ -195,12 +195,12 @@
 
   // Après un résultat, la recherche est dans l'historique : le bouton le signale.
   function showResult(payload, result, onModify, saved) {
-    render({ subtitle: 'Registre ADEME des DPE', saved, payload, onModify, body: UI.dpeResults(result), footer: footerFor(result, 'dpe') });
+    render({ subtitle: 'Registre ADEME des DPE', saved, payload, onModify, body: UI.dpeResults(result, payload), footer: footerFor(result, 'dpe') });
     setLauncherState(true);
   }
 
   function showLandResult(payload, result, onModify, saved) {
-    render({ subtitle: 'Cadastre IGN', saved, payload, onModify, body: UI.landResults(result), footer: footerFor(result, 'land') });
+    render({ subtitle: 'Cadastre IGN', saved, payload, onModify, body: UI.landResults(result, payload), footer: footerFor(result, 'land') });
     setLauncherState(true);
   }
 

@@ -294,7 +294,7 @@
   }
 
   ui.onNavigate(() => {
-    console.log('[immodex] SPA nav — reset');
+    console.log('[immodex] SPA nav, reset');
     STATE.lastPayload = null;
     STATE.injectedFor = null;
     ui.closeCard();

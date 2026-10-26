@@ -28,6 +28,9 @@ for (const p of points) {
     icon: L.divIcon({ className: '', html: `<div class="imx-pin is-${level}"><span>${p.n}</span></div>`, iconSize: [30, 30], iconAnchor: [15, 30], popupAnchor: [0, -28] }),
     title: `${p.n}. ${p.label}`,
   }).addTo(map);
+  // Ventes passées : la bulle grandit quand le panneau s'ouvre, Leaflet la recadre.
+  const query = data.kind === 'land' ? (p.idu ? { idu: p.idu } : { lat: p.lat, lon: p.lon }) : { lat: p.lat, lon: p.lon, address: p.label, type: p.type || null };
+  const sales = UI.salesBlock(query, data.ref || null, { onChange: () => marker.getPopup() && marker.getPopup().update() });
   const content = el(
     'div',
     { style: 'display:grid;gap:8px' },
@@ -39,10 +42,12 @@ for (const p of points) {
       { class: 'imx-actions' },
       UI.linkButton(UI.links.gmapsCoord(p.lon, p.lat), 'Maps', { iconName: 'map' }),
       UI.linkButton(UI.links.streetView(p.lat, p.lon), 'Street View', { iconName: 'eye' }),
-      p.ademeId ? UI.linkButton(UI.links.ademe(p.ademeId), 'ADEME', { variant: 'imx-btn-ghost', iconName: 'file' }) : null
-    )
+      p.ademeId ? UI.linkButton(UI.links.ademe(p.ademeId), 'ADEME', { variant: 'imx-btn-ghost', iconName: 'file' }) : null,
+      sales.button
+    ),
+    sales.panel
   );
-  marker.bindPopup(content);
+  marker.bindPopup(content, { maxWidth: 340, maxHeight: 460 });
   if (p.n === 1) firstMarker = marker;
 }
 

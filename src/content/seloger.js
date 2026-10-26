@@ -277,7 +277,7 @@
   }
 
   ui.onNavigate(() => {
-    console.log('[immodex seloger] SPA nav — reset');
+    console.log('[immodex seloger] SPA nav, reset');
     ui.closeCard();
     ui.resetFloatingButton();
     setTimeout(init, 200);

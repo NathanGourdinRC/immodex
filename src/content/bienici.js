@@ -341,7 +341,7 @@
   }
 
   ui.onNavigate(() => {
-    console.log('[immodex bienici] SPA nav — reset');
+    console.log('[immodex bienici] SPA nav, reset');
     STATE.injectedFor = null;
     ui.closeCard();
     ui.resetFloatingButton();

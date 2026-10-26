@@ -207,13 +207,13 @@ function setMode(next) {
   if (mode === 'sites') renderSites();
 }
 
-function renderResult(kind, result) {
+function renderResult(kind, result, payload) {
   const meta =
     kind === 'land'
       ? `Cadastre IGN${result.tier != null ? ` · niveau ${result.tier}` : ''}${result.total != null ? ` · ${result.total} parcelle(s)` : ''}`
       : `${UI.datasetLabel(result.dataset)}${result.tier != null ? ` · niveau ${result.tier}` : ''}`;
   resultsBox.replaceChildren(
-    el('div', { class: 'imx-panel' }, kind === 'land' ? UI.landResults(result) : UI.dpeResults(result), el('small', { class: 'imx-meta' }, meta))
+    el('div', { class: 'imx-panel' }, kind === 'land' ? UI.landResults(result, payload) : UI.dpeResults(result, payload), el('small', { class: 'imx-meta' }, meta))
   );
 }
 
@@ -233,7 +233,7 @@ async function search(payload) {
     const response = await chrome.runtime.sendMessage({ type: 'LOOKUP', payload, page: currentPage });
     if (!response || response.ok !== true) return setStatus('error', response?.error || 'Erreur inconnue');
     setStatus(null, '');
-    renderResult(payload.kind, response.result);
+    renderResult(payload.kind, response.result, payload);
     saveState(response.historyId);
   } catch (err) {
     setStatus('error', String(err.message || err));
@@ -372,7 +372,7 @@ function showEntry(entry, { fromRestore = false } = {}) {
     el('span', { class: 'imx-meta' }, `${fromRestore ? 'Dernier résultat' : 'Enregistré'} le ${UI.formatDateTime(entry.createdAt)}`),
     entry.page ? UI.linkButton(entry.page.url, 'Annonce', { variant: 'imx-btn-ghost' }) : null,
   ]);
-  renderResult(entry.kind, entry.result || { candidates: [] });
+  renderResult(entry.kind, entry.result || { candidates: [] }, entry.payload);
   saveState(entry.id);
 }
 

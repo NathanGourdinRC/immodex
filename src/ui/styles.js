@@ -293,6 +293,20 @@ button, input, select { font-family: inherit; }
 .imx-candidate:first-child { border-top: none; padding-top: 2px; }
 .imx-candidate-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .imx-candidate-address { font-size: 13px; font-weight: 600; }
+/* ─── Ventes passées (DVF) ─── */
+.imx-sales-slot:empty { display: none; }
+.imx-sales { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--imx-border); border-radius: var(--imx-radius-sm); background: var(--imx-bg-subtle); }
+.imx-sales-list { display: grid; gap: 2px; }
+.imx-sale { display: grid; gap: 1px; padding: 6px 8px; margin: 0 -8px; border-radius: 6px; }
+.imx-sale + .imx-sale { border-top: 1px solid var(--imx-border); border-top-left-radius: 0; border-top-right-radius: 0; }
+.imx-sale.is-match { background: var(--imx-good-bg); box-shadow: inset 3px 0 0 var(--imx-good-solid); }
+.imx-sale-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.imx-sale-price { font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.imx-sale-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.imx-tag { display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 600; background: var(--imx-bg-muted); color: var(--imx-text-2); }
+.imx-tag.is-good { background: #fff; color: var(--imx-good); border: 1px solid var(--imx-good-line); }
+.imx-sales-bench { font-size: 12px; color: var(--imx-text-2); padding-top: 6px; border-top: 1px dashed var(--imx-border-strong); }
+.imx-sales-source { font-size: 11px; color: var(--imx-text-3); }
 .imx-diffs { font-size: 11.5px; color: var(--imx-mid); }
 
 /* Messages */

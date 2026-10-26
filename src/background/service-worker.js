@@ -1,6 +1,7 @@
 import { runLookup, runLandLookup } from '../common/match.js';
 import { createHistoryStore } from '../common/history.js';
 import { createPropertyStore } from '../common/properties.js';
+import { salesAt } from '../common/dvf.js';
 
 const history = createHistoryStore(chrome.storage.local);
 const properties = createPropertyStore(chrome.storage.local);
@@ -65,7 +66,7 @@ async function loadPersistedCache() {
       }
     }
   } catch (e) {
-    // chrome.storage.session unavailable — ignore
+    // chrome.storage.session unavailable : ignore
   }
 }
 
@@ -250,6 +251,23 @@ async function linkDpe(message, sender, result) {
   }
 }
 
+// Ventes passées (DVF) : résultat gardé pour la session du navigateur, la base ne change
+// que deux fois par an et une section cadastrale pèse plusieurs centaines de lignes.
+const DVF_STORAGE_KEY = 'immodex.cache.dvf.v1';
+const MAX_DVF_ENTRIES = 60;
+
+async function dvfLookup(query) {
+  const key = [query.idu || '', query.lat != null ? Number(query.lat).toFixed(5) : '', query.lon != null ? Number(query.lon).toFixed(5) : '', query.address || '', query.type || ''].join('|');
+  const stored = (await chrome.storage.session.get(DVF_STORAGE_KEY).catch(() => ({})))[DVF_STORAGE_KEY] || {};
+  if (stored[key]) return { dvf: stored[key] };
+  const dvf = await salesAt(query);
+  const keys = Object.keys(stored);
+  for (const old of keys.slice(0, Math.max(0, keys.length - MAX_DVF_ENTRIES + 1))) delete stored[old];
+  stored[key] = dvf;
+  await chrome.storage.session.set({ [DVF_STORAGE_KEY]: stored }).catch(() => {});
+  return { dvf };
+}
+
 // Réponse asynchrone commune : `true` garde le canal ouvert jusqu'à sendResponse.
 function respond(promise, sendResponse) {
   promise
@@ -284,6 +302,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   if (message.type === 'SIGHTINGS_GROUPS') {
     return respond(properties.groups().then((groups) => ({ groups })), sendResponse);
+  }
+  if (message.type === 'DVF_LOOKUP') {
+    return respond(dvfLookup(message.query || {}), sendResponse);
   }
   if (message.type === 'OPEN_MAP') {
     // Page de l'extension ouverte dans un nouvel onglet, à côté de l'annonce.
@@ -343,6 +364,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   if (message.type === 'CACHE_CLEAR') {
     memoryCache.clear();
+    chrome.storage.session.remove(DVF_STORAGE_KEY).catch(() => {});
     landCache.clear();
     persistCache();
     persistLandCache();
