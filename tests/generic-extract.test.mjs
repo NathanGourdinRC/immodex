@@ -418,3 +418,8 @@ test('prix : JSON-LD, titre, libellé, et pas les honoraires ni le prix au m²',
   // location : loyer mensuel
   assert.equal(win(page('<h1>Location appartement 41 m² Lille</h1><p>Loyer charges comprises 676,39 € / mois</p>'), 'https://fr.foncia.com/location/lille-59/1.htm'), 676);
 });
+
+test('prix : « Prix hors honoraires » ignoré au profit du prix affiché (century21.fr)', () => {
+  const w = loadPage(page('<h1>Maison à vendre 6 pièces - 180 m2</h1><p>LA MADELEINE - 59 Ref : 2187</p><p>499 000 €</p><p>Honoraires charge acquéreur : 3,96 % TTC</p><p>Prix hors honoraires : 480000€</p>'));
+  assert.equal(w.__immodexGeneric.extractPrice(w.document), 499000);
+});

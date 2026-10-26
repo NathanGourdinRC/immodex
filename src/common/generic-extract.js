@@ -1214,9 +1214,15 @@
     if (ok(st.price)) return st.price;
     const head = headline(doc);
     const text = mainText(doc);
+    // « Prix hors honoraires : 480 000 € » ou « net vendeur » n'est pas le prix affiché
+    // (century21.fr : 499 000 € honoraires inclus) : ces libellés sont écartés.
     for (const source of [head, text]) {
-      const m = source.match(PRICE_LABELLED);
-      if (m && ok(toAmount(m[1]))) return toAmount(m[1]);
+      const g = new RegExp(PRICE_LABELLED.source, 'gi');
+      let m;
+      while ((m = g.exec(source))) {
+        if (/hors\s+(?:honoraires|frais)|net\s+vendeur|hors\s+charges/i.test(m[0])) continue;
+        if (ok(toAmount(m[1]))) return toAmount(m[1]);
+      }
     }
     for (const source of [head, text.slice(0, 4000)]) {
       PRICE_ANY.lastIndex = 0;
