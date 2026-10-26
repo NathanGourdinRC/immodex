@@ -3,6 +3,9 @@
 // l'extracteur générique (src/common/generic-extract.js).
 (function () {
   'use strict';
+  // Une seule fois par page, même si le popup réinjecte le script (« Activer sur ce site »).
+  if (window.__immodexGenericLoaded) return;
+  window.__immodexGenericLoaded = true;
 
   const ui = window.__immodexOverlay;
   const gen = window.__immodexGeneric;

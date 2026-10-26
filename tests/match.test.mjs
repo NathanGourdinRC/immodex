@@ -33,5 +33,15 @@ test('consommation identique : gros bonus de score', () => {
   assert.equal(withValues.score - without.score, 35);
   assert.ok(withValues.reasons.includes('consommation identique'));
   const far = scoreRecord({ ...rec, energyConsumption: 240 }, base);
-  assert.ok(far.diffs.some((d) => d.startsWith('conso 240')));
+  assert.ok(far.diffs.some((d) => d.startsWith('240 kWh')));
+});
+
+test('fiche du registre incohérente (code postal de l’adresse différent) : fortement pénalisée', () => {
+  const good = { postal: '59000', address: '3 Rue Nationale 59000 Lille', surface: 75, energyClass: 'D', gesClass: 'D' };
+  const bad = { ...good, address: 'Impasse Blériot 62160 Bully-les-Mines' };
+  const p = { postal: '59000', surface: 75, energyClass: 'D', gesClass: 'D' };
+  const sg = scoreRecord(good, p);
+  const sb = scoreRecord(bad, p);
+  assert.equal(sg.score - sb.score, 40);
+  assert.ok(sb.diffs.some((d) => d.includes('incohérente')));
 });

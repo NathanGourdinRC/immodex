@@ -3,125 +3,98 @@
   <head>
     <meta charset="utf-8" />
     <title>Immodex+</title>
-    <link rel="stylesheet" href="popup.css" />
+    <script src="../ui/styles.js"></script>
   </head>
-  <body class="pkdx-body">
-    <header class="pkdx-header">
-      <div class="pkdx-lens" aria-hidden="true">
-        <span class="pkdx-lens-glint"></span>
+  <body class="imx-popup">
+    <header class="imx-popup-header">
+      <span class="imx-logo" id="logo"></span>
+      <div class="imx-brand">
+        <span class="imx-title">Immodex+</span>
+        <span class="imx-subtitle">Adresse réelle d'une annonce immobilière</span>
       </div>
-      <div class="pkdx-header-text">
-        <h1>IMMODEX+</h1>
-        <p class="subtitle">Registre ADEME · Cadastre IGN</p>
-      </div>
+      <span class="imx-version" id="version"></span>
     </header>
 
-    <div class="pkdx-screen">
-      <div class="mode-toggle" role="tablist">
-        <button type="button" id="mode-dpe" class="mode-btn active" role="tab">DPE</button>
-        <button type="button" id="mode-land" class="mode-btn" role="tab">TERRAIN</button>
-        <button type="button" id="mode-history" class="mode-btn" role="tab">HISTORIQUE</button>
+    <main class="imx-popup-main">
+      <div class="imx-tabs" role="tablist">
+        <button type="button" id="mode-dpe" class="imx-tab is-active" role="tab">Logement</button>
+        <button type="button" id="mode-land" class="imx-tab" role="tab">Terrain</button>
+        <button type="button" id="mode-history" class="imx-tab" role="tab">Historique</button>
+        <button type="button" id="mode-sites" class="imx-tab" role="tab">Sites</button>
       </div>
 
-      <div id="analyze-bar">
-        <button type="button" id="analyze-btn" title="Lit l'annonce ouverte dans l'onglet actif et lance la recherche">ANALYSER CETTE PAGE</button>
-      </div>
+      <button type="button" id="analyze-btn" class="imx-analyze" title="Lit l'annonce ouverte dans l'onglet actif et lance la recherche">
+        <span class="imx-analyze-icon" id="analyze-icon"></span>
+        <span class="imx-analyze-text">
+          <strong>Analyser la page ouverte</strong>
+          <span>Lit l'annonce de l'onglet actif et lance la recherche</span>
+        </span>
+      </button>
 
-      <form id="dpe-form" autocomplete="off">
-        <div class="row">
-          <label>Code postal
-            <input type="text" name="postal" maxlength="5" inputmode="numeric" placeholder="ou la ville" />
-          </label>
-          <label>Ville (facultatif)
-            <input type="text" name="city" />
-          </label>
+      <div id="site-bar" class="imx-site-bar imx-hidden"></div>
+
+      <form id="dpe-form" class="imx-panel imx-form" autocomplete="off">
+        <div class="imx-grid">
+          <label class="imx-field"><span>Code postal</span><input class="imx-input" type="text" name="postal" maxlength="5" inputmode="numeric" placeholder="59000" /></label>
+          <label class="imx-field"><span>Ville</span><input class="imx-input" type="text" name="city" placeholder="si pas de code postal" /></label>
         </div>
-        <div class="row">
-          <label>Surface (m²)
-            <input type="number" name="surface" min="1" max="2000" required />
-          </label>
-          <label>Type
-            <select name="buildingType">
-              <option value="">·</option>
+        <div class="imx-grid">
+          <label class="imx-field"><span>Surface (m²)</span><input class="imx-input" type="number" name="surface" min="1" max="2000" placeholder="65" /></label>
+          <label class="imx-field"><span>Type</span>
+            <select class="imx-select" name="buildingType">
+              <option value="">Indifférent</option>
               <option value="appartement">Appartement</option>
               <option value="maison">Maison</option>
             </select>
           </label>
         </div>
-        <div class="row">
-          <label>Classe énergie
-            <select name="energyClass">
-              <option value="">·</option>
-              <option>A</option><option>B</option><option>C</option><option>D</option>
-              <option>E</option><option>F</option><option>G</option>
-            </select>
-          </label>
-          <label>Classe GES
-            <select name="gesClass">
-              <option value="">·</option>
-              <option>A</option><option>B</option><option>C</option><option>D</option>
-              <option>E</option><option>F</option><option>G</option>
-            </select>
-          </label>
+        <div class="imx-field"><span class="imx-field-label">Classe énergie</span><div id="energy-picker"></div></div>
+        <div class="imx-field"><span class="imx-field-label">Classe GES</span><div id="ges-picker"></div></div>
+        <div class="imx-grid">
+          <label class="imx-field"><span>Conso (kWh/m²/an)</span><input class="imx-input" type="number" name="energyConsumption" min="0" max="2000" placeholder="facultatif" /></label>
+          <label class="imx-field"><span>GES (kg CO₂/m²/an)</span><input class="imx-input" type="number" name="gesEmission" min="0" max="500" placeholder="facultatif" /></label>
         </div>
-        <div class="row">
-          <label>Conso (kWh/m²/an)
-            <input type="number" name="energyConsumption" min="0" max="2000" placeholder="facultatif" />
-          </label>
-          <label>GES (kg CO2/m²/an)
-            <input type="number" name="gesEmission" min="0" max="500" placeholder="facultatif" />
-          </label>
-        </div>
-        <div class="row">
-          <label>Date DPE
-            <input type="text" name="date" placeholder="JJ/MM/AAAA, MM/AAAA, AAAA" />
-          </label>
-        </div>
+        <label class="imx-field"><span>Date du DPE</span><input class="imx-input" type="text" name="date" placeholder="JJ/MM/AAAA, MM/AAAA ou AAAA (facultatif)" /></label>
+        <input type="hidden" name="energyClass" value="" />
+        <input type="hidden" name="gesClass" value="" />
         <input type="hidden" name="isNewBuild" value="" />
         <input type="hidden" name="department" value="" />
-        <button type="submit" id="dpe-submit">RECHERCHER</button>
+        <button type="submit" id="dpe-submit" class="imx-btn imx-btn-primary imx-btn-block">Rechercher l'adresse</button>
       </form>
 
-      <form id="land-form" class="hidden" autocomplete="off">
-        <div class="row">
-          <label>Code postal
-            <input type="text" name="postal" maxlength="5" inputmode="numeric" required />
-          </label>
-          <label>Surface terrain (m²)
-            <input type="number" name="surface" min="1" max="999999" required />
-          </label>
+      <form id="land-form" class="imx-panel imx-form imx-hidden" autocomplete="off">
+        <div class="imx-grid">
+          <label class="imx-field"><span>Code postal</span><input class="imx-input" type="text" name="postal" maxlength="5" inputmode="numeric" placeholder="59000" /></label>
+          <label class="imx-field"><span>Ville</span><input class="imx-input" type="text" name="city" placeholder="facultatif" /></label>
         </div>
-        <div class="row">
-          <label>Ville (facultatif)
-            <input type="text" name="city" />
-          </label>
-          <label>Section (facultatif)
-            <input type="text" name="section" maxlength="2" />
-          </label>
+        <div class="imx-grid">
+          <label class="imx-field"><span>Surface du terrain (m²)</span><input class="imx-input" type="number" name="surface" min="1" max="999999" placeholder="500" /></label>
+          <label class="imx-field"><span>Section cadastrale</span><input class="imx-input" type="text" name="section" maxlength="2" placeholder="facultatif" /></label>
         </div>
-        <button type="submit" id="land-submit">RECHERCHER</button>
+        <button type="submit" id="land-submit" class="imx-btn imx-btn-primary imx-btn-block">Rechercher la parcelle</button>
       </form>
 
-      <section id="history-view" class="hidden">
-        <div id="history-list"></div>
-        <div id="history-actions">
-          <button type="button" id="history-clear">TOUT EFFACER</button>
-          <span class="history-note">Gardé 7 jours, 50 recherches max.</span>
+      <section id="history-view" class="imx-hidden" style="display: grid; gap: 10px">
+        <div id="history-list" class="imx-history"></div>
+        <div class="imx-section-head">
+          <small class="imx-meta">Gardé 7 jours, 50 recherches maximum.</small>
+          <button type="button" id="history-clear" class="imx-btn imx-btn-sm">Tout effacer</button>
         </div>
       </section>
 
-      <section id="entry-bar" class="hidden"></section>
-      <section id="status" class="status hidden"></section>
-      <section id="results"></section>
-    </div>
+      <section id="sites-view" class="imx-panel imx-hidden"></section>
 
-    <footer class="pkdx-footer">
-      <a id="gh-link" href="https://github.com/NathanGourdinRC/immodex" target="_blank" rel="noopener noreferrer" title="GitHub">
-        <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
-      </a>
-      <a href="https://www.tonoid.com/fr" target="_blank" rel="noopener" id="tonoid-link">d'après Immodex de tonoïd</a>
+      <section id="entry-bar" class="imx-section-head imx-hidden"></section>
+      <section id="status" class="imx-hidden"></section>
+      <section id="results"></section>
+    </main>
+
+    <footer class="imx-popup-footer">
+      <a href="https://github.com/NathanGourdinRC/immodex" target="_blank" rel="noopener noreferrer">Code source</a>
+      <a href="https://github.com/tonoid/immodex" target="_blank" rel="noopener noreferrer">D'après Immodex de tonoïd</a>
     </footer>
 
+    <script src="../ui/components.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

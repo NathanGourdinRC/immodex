@@ -78,6 +78,17 @@ function buildFilters(payload, dataset, tier) {
   return filters;
 }
 
+// Écarts affichés à l'utilisateur, en clair : « DPE du 07/05/2023 (annonce : 05/10/2026) ».
+function frDate(iso) {
+  const [y, m, d] = String(iso).slice(0, 10).split('-');
+  return d ? `${d}/${m}/${y}` : String(iso);
+}
+
+function frRange(range) {
+  if (!range) return '';
+  return range.gte === range.lte ? frDate(range.gte) : `${frDate(range.gte)} au ${frDate(range.lte)}`;
+}
+
 function scoreRecord(record, payload) {
   let score = 0;
   const reasons = [];
@@ -95,9 +106,9 @@ function scoreRecord(record, payload) {
       reasons.push('surface ±1');
     } else if (diff <= 3) {
       score += 10;
-      diffs.push(`surface ${record.surface} vs ${payload.surface}`);
+      diffs.push(`surface ${record.surface} m² (annonce : ${payload.surface})`);
     } else {
-      diffs.push(`surface ${record.surface} vs ${payload.surface}`);
+      diffs.push(`surface ${record.surface} m² (annonce : ${payload.surface})`);
     }
   }
 
@@ -112,7 +123,7 @@ function scoreRecord(record, payload) {
       const days = Math.abs(target - got) / (1000 * 60 * 60 * 24);
       if (days <= 7) score += 18;
       else if (days <= 30) score += 8;
-      diffs.push(`date ${recordIso} vs ${payload.dateRange.gte}…${payload.dateRange.lte}`);
+      diffs.push(`DPE du ${frDate(recordIso)} (annonce : ${frRange(payload.dateRange)})`);
     }
   }
 
@@ -121,7 +132,7 @@ function scoreRecord(record, payload) {
       score += 15;
       reasons.push(`classe ${record.energyClass}`);
     } else {
-      diffs.push(`classe ${record.energyClass} vs ${payload.energyClass}`);
+      diffs.push(`classe ${record.energyClass} (annonce : ${payload.energyClass})`);
     }
   }
 
@@ -130,7 +141,7 @@ function scoreRecord(record, payload) {
       score += 15;
       reasons.push(`GES ${record.gesClass}`);
     } else {
-      diffs.push(`GES ${record.gesClass} vs ${payload.gesClass}`);
+      diffs.push(`GES ${record.gesClass} (annonce : ${payload.gesClass})`);
     }
   }
 
@@ -142,7 +153,7 @@ function scoreRecord(record, payload) {
     } else {
       if (diff <= 1.5) score += 15;
       else if (diff <= 5) score += 5;
-      diffs.push(`conso ${Math.round(Number(record.energyConsumption))} vs ${payload.energyConsumption}`);
+      diffs.push(`${Math.round(Number(record.energyConsumption))} kWh (annonce : ${payload.energyConsumption})`);
     }
   }
 
@@ -153,7 +164,7 @@ function scoreRecord(record, payload) {
       reasons.push('émissions identiques');
     } else {
       if (diff <= 1) score += 5;
-      diffs.push(`émissions ${Math.round(Number(record.gesEmission))} vs ${payload.gesEmission}`);
+      diffs.push(`${Math.round(Number(record.gesEmission))} kg CO₂ (annonce : ${payload.gesEmission})`);
     }
   }
 
@@ -165,7 +176,16 @@ function scoreRecord(record, payload) {
     }
   }
 
-  return { score: Math.min(100, score), reasons, diffs };
+  // Fiche incohérente dans le registre : rangée sous un code postal, mais dont
+  // l'adresse en porte un autre (vu à Lille : 59000 avec une adresse à Bully-les-Mines 62160).
+  // Le géocodage de la fiche est faux : on la fait passer derrière les autres.
+  const addressPostal = String(record.address || '').match(/\b(\d{5})\b/);
+  if (addressPostal && record.postal && addressPostal[1] !== String(record.postal)) {
+    score -= 40;
+    diffs.push(`adresse incohérente dans le registre (${addressPostal[1]} au lieu de ${record.postal})`);
+  }
+
+  return { score: Math.max(0, Math.min(100, score)), reasons, diffs };
 }
 
 function pickDataset(payload) {
@@ -277,9 +297,9 @@ function scoreParcel(parcel, payload, inseeCount) {
     }
     if (diff > 10) {
       score -= 10;
-      diffs.push(`contenance ${parcel.contenance} vs ${payload.surface}`);
+      diffs.push(`contenance ${parcel.contenance} m² (annonce : ${payload.surface})`);
     } else if (diff > 0) {
-      diffs.push(`contenance ${parcel.contenance} vs ${payload.surface}`);
+      diffs.push(`contenance ${parcel.contenance} m² (annonce : ${payload.surface})`);
     }
   }
 

@@ -49,34 +49,34 @@ test('popup : recherche par ville et consommation, puis réaffichage après ferm
   await page.goto(popupUrl());
   await page.fill('#dpe-form [name=city]', 'Lille');
   await page.fill('#dpe-form [name=surface]', '65');
-  await page.selectOption('#dpe-form [name=energyClass]', 'D');
-  await page.selectOption('#dpe-form [name=gesClass]', 'B');
+  await page.click('#energy-picker [data-letter="D"]');
+  await page.click('#ges-picker [data-letter="B"]');
   await page.fill('#dpe-form [name=energyConsumption]', '201');
   await page.fill('#dpe-form [name=gesEmission]', '7');
   await page.click('#dpe-submit');
-  await page.waitForSelector('.result-address', { timeout: 30000 });
-  assert.match(await page.textContent('.result-address'), new RegExp(TARGET));
-  assert.match(await page.textContent('#status'), /tier 0/);
+  await page.waitForSelector('.imx-address', { timeout: 30000 });
+  assert.match(await page.textContent('.imx-address'), new RegExp(TARGET));
+  assert.match(await page.textContent('#results'), /niveau 0/);
 
   // Le popup est détruit (fermeture) puis rouvert : le résultat revient.
   await page.close();
   const again = await context.newPage();
   await again.goto(popupUrl());
-  await again.waitForSelector('#entry-bar:not(.hidden)');
+  await again.waitForSelector('#entry-bar:not(.imx-hidden)');
   assert.match(await again.textContent('#entry-bar'), /Dernier résultat/);
-  assert.match(await again.textContent('.result-address'), new RegExp(TARGET));
+  assert.match(await again.textContent('.imx-address'), new RegExp(TARGET));
   assert.equal(await again.inputValue('#dpe-form [name=city]'), 'Lille');
 
   // Onglet historique : l'entrée est listée, rouvrable, supprimable.
   await again.click('#mode-history');
-  await again.waitForSelector('.history-item');
-  assert.match(await again.textContent('.history-item'), new RegExp(TARGET));
-  await again.click('.history-item');
-  await again.waitForSelector('.result-address');
+  await again.waitForSelector('.imx-history-item');
+  assert.match(await again.textContent('.imx-history-item'), new RegExp(TARGET));
+  await again.click('.imx-history-item');
+  await again.waitForSelector('.imx-address');
   await again.click('#mode-history');
-  await again.waitForSelector('.history-item');
-  await again.click('.history-del');
-  await again.waitForSelector('#history-list .empty');
+  await again.waitForSelector('.imx-history-item');
+  await again.click('.imx-history-item button');
+  await again.waitForSelector('#history-list .imx-notice');
   await again.close();
 });
 
@@ -107,16 +107,16 @@ test('annonce : bouton flottant, résultat, puis résultat enregistré après re
   await btn.waitFor();
   assert.match(await btn.textContent(), /trouver/i);
   await btn.click();
-  await page.waitForSelector('.immodex-address', { timeout: 30000 });
-  assert.match(await page.textContent('.immodex-address'), new RegExp(TARGET));
+  await page.waitForSelector('.imx-address', { timeout: 30000 });
+  assert.match(await page.textContent('.imx-address'), new RegExp(TARGET));
 
   // Rechargement : la carte a disparu, le bouton annonce un résultat enregistré.
   await page.reload();
-  await page.waitForFunction(() => /enregistr/i.test(document.getElementById('immodex-floating-btn')?.textContent || ''));
+  await page.waitForFunction(() => /voir les adresses/i.test(document.getElementById('immodex-root')?.shadowRoot?.getElementById('immodex-floating-btn')?.textContent || ''));
   await page.click('#immodex-floating-btn');
-  await page.waitForSelector('.immodex-saved');
-  assert.match(await page.textContent('.immodex-saved'), /Résultat enregistré/);
-  assert.match(await page.textContent('.immodex-address'), new RegExp(TARGET));
+  await page.waitForSelector('.imx-notice');
+  assert.match(await page.textContent('.imx-notice'), /Résultat enregistré/);
+  assert.match(await page.textContent('.imx-address'), new RegExp(TARGET));
   await page.close();
 });
 
@@ -136,9 +136,9 @@ test('site d’agence (lecture générique) : bouton flottant et résultat direc
   await page.locator('#immodex-floating-btn').waitFor();
   await page.click('#immodex-floating-btn');
   // Consommation lue sur la page : pas de question, recherche précise directe.
-  await page.waitForSelector('.immodex-address', { timeout: 30000 });
-  assert.match(await page.textContent('.immodex-address'), new RegExp(TARGET));
-  assert.match(await page.textContent('.immodex-fields'), /201 kWh/);
+  await page.waitForSelector('.imx-address', { timeout: 30000 });
+  assert.match(await page.textContent('.imx-address'), new RegExp(TARGET));
+  assert.match(await page.textContent('.imx-chips'), /201 kWh/);
   await page.close();
 });
 
@@ -156,18 +156,18 @@ test('étiquette en image : la carte demande les lettres puis cherche', async ()
   await page.goto(ABRINOR_URL);
   await page.locator('#immodex-floating-btn').waitFor();
   await page.click('#immodex-floating-btn');
-  await page.waitForSelector('.immodex-classes select', { timeout: 8000 }).catch(async (e) => {
-    console.log('CARTE:', await page.locator('.immodex-card').innerText().catch(() => 'aucune carte'));
+  await page.waitForSelector('.imx-prompt .imx-letters', { timeout: 8000 }).catch(async (e) => {
+    console.log('CARTE:', await page.locator('.imx-card').innerText().catch(() => 'aucune carte'));
     throw e;
   });
-  const selects = page.locator('.immodex-classes select');
-  await selects.nth(0).selectOption('D');
-  await selects.nth(1).selectOption('B');
-  await page.fill('.immodex-date-prompt input', '05/10/2026');
-  await page.click('.immodex-date-prompt button');
-  await page.waitForSelector('.immodex-address', { timeout: 30000 });
-  assert.match(await page.textContent('.immodex-fields'), /Classe énergie\s*D/);
-  assert.match(await page.textContent('.immodex-address'), new RegExp(TARGET));
+  const pickers = page.locator('.imx-prompt .imx-letters');
+  await pickers.nth(0).locator('[data-letter="D"]').click();
+  await pickers.nth(1).locator('[data-letter="B"]').click();
+  await page.fill('.imx-prompt input', '05/10/2026');
+  await page.click('.imx-prompt .imx-btn-primary');
+  await page.waitForSelector('.imx-address', { timeout: 30000 });
+  assert.match(await page.textContent('.imx-chips'), /D\s*Énergie/);
+  assert.match(await page.textContent('.imx-address'), new RegExp(TARGET));
   await page.close();
 });
 
