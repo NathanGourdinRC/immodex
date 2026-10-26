@@ -285,6 +285,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'SIGHTINGS_GROUPS') {
     return respond(properties.groups().then((groups) => ({ groups })), sendResponse);
   }
+  if (message.type === 'OPEN_MAP') {
+    // Page de l'extension ouverte dans un nouvel onglet, à côté de l'annonce.
+    const url = `${chrome.runtime.getURL('src/map/map.html')}#${encodeURIComponent(JSON.stringify(message.data || {}))}`;
+    const opts = { url };
+    if (sender.tab) Object.assign(opts, { index: sender.tab.index + 1, windowId: sender.tab.windowId });
+    return respond(chrome.tabs.create(opts).then(() => ({})), sendResponse);
+  }
   if (message.type === 'SIGHTINGS_CLEAR') {
     return respond(properties.clear().then(() => ({})), sendResponse);
   }

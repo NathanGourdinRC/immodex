@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <title>Immodex+ · carte des candidats</title>
+    <link rel="stylesheet" href="../vendor/leaflet/leaflet.css" />
+    <script src="../ui/styles.js"></script>
+    <style>
+      html, body { height: 100%; margin: 0; }
+      body.imx-popup { width: auto; display: grid; grid-template-rows: auto 1fr; }
+      #map { min-height: 300px; }
+      .imx-pin {
+        display: flex; align-items: center; justify-content: center;
+        width: 30px; height: 30px; border-radius: 999px 999px 999px 0; transform: rotate(-45deg);
+        border: 2px solid #fff; box-shadow: 0 2px 6px rgba(15, 23, 42, 0.35);
+      }
+      .imx-pin span { transform: rotate(45deg); color: #fff; font: 800 13px var(--imx-font); }
+      .imx-pin.is-good { background: #12b76a; }
+      .imx-pin.is-mid { background: #f79009; }
+      .imx-pin.is-low { background: #f04438; }
+      .leaflet-popup-content { margin: 12px 14px; min-width: 240px; font-family: var(--imx-font); }
+    </style>
+  </head>
+  <body class="imx-popup">
+    <header class="imx-popup-header">
+      <span class="imx-logo" id="logo"></span>
+      <div class="imx-brand">
+        <span class="imx-title">Carte des candidats</span>
+        <span class="imx-subtitle" id="subtitle"></span>
+      </div>
+    </header>
+    <div id="map"></div>
+    <script src="../vendor/leaflet/leaflet.js"></script>
+    <script src="../ui/components.js"></script>
+    <script src="map.js"></script>
+  </body>
+</html>

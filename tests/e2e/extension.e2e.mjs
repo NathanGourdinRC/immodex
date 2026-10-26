@@ -139,6 +139,13 @@ test('site d’agence (lecture générique) : bouton flottant et résultat direc
   await page.waitForSelector('.imx-address', { timeout: 30000 });
   assert.match(await page.textContent('.imx-address'), new RegExp(TARGET));
   assert.match(await page.textContent('.imx-chips'), /201 kWh/);
+  // Street View sur le meilleur candidat, et carte de tous les candidats dans un nouvel onglet.
+  assert.ok(await page.locator('.imx-result a[href*="map_action=pano"]').count());
+  const [mapPage] = await Promise.all([context.waitForEvent('page'), page.click('text=Carte des')]);
+  await mapPage.waitForSelector('.imx-pin');
+  assert.match(mapPage.url(), /src\/map\/map\.html#/);
+  assert.ok((await mapPage.locator('.imx-pin').count()) >= 2);
+  await mapPage.close();
   await page.close();
 });
 

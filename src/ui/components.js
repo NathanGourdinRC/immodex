@@ -41,6 +41,7 @@
     plus: ['M12 5v14M5 12h14'],
     edit: ['M4 20h4L19 9l-4-4L4 16v4z'],
     external: ['M14 4h6v6', 'M20 4l-9 9', 'M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5'],
+    eye: ['M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z', 'circle:12,12,3'],
     repeat: ['M17 2l4 4-4 4', 'M3 11V9a3 3 0 0 1 3-3h15', 'M7 22l-4-4 4-4', 'M21 13v2a3 3 0 0 1-3 3H3'],
   };
 
@@ -108,6 +109,8 @@
     gmaps: (address, postal, city) =>
       `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([address, postal, city].filter(Boolean).join(', '))}`,
     gmapsCoord: (lon, lat) => `https://www.google.com/maps?q=${lat.toFixed(6)},${lon.toFixed(6)}`,
+    // Vue de la rue à ces coordonnées (adresse officielle « Maps URLs » de Google).
+    streetView: (lat, lon) => `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat.toFixed(6)},${lon.toFixed(6)}`,
     ademe: (id) => `https://observatoire-dpe-audit.ademe.fr/afficher-dpe/${encodeURIComponent(id)}`,
     geoportail: (lon, lat) =>
       `https://www.geoportail.gouv.fr/carte?c=${lon.toFixed(6)},${lat.toFixed(6)}&z=19&l0=CADASTRALPARCELS.PARCELLAIRE_EXPRESS::GEOPORTAIL:OGC:WMTS(1)&permalink=yes`,
@@ -238,6 +241,22 @@
     return el('div', { class: 'imx-section' }, el('div', { class: 'imx-label' }, title), el('div', { class: 'imx-candidates' }, rows));
   }
 
+  const hasCoords = (o) => o && isFinite(o.lat) && isFinite(o.lon) && o.lat != null && o.lon != null;
+  const streetViewButton = (lat, lon, primary) => linkButton(links.streetView(lat, lon), 'Street View', { variant: primary ? '' : 'imx-btn-ghost', iconName: 'eye' });
+
+  // « Carte des candidats » : ouvre une page de l'extension avec tous les candidats
+  // numérotés sur un fond OpenStreetMap (onglet ouvert par le service worker).
+  function mapButton(points, kind, title) {
+    if (points.length < 2) return null;
+    const btn = el('button', { class: 'imx-btn imx-btn-block', type: 'button' }, icon('map', 15), `Carte des ${points.length} candidats`);
+    btn.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      chrome.runtime.sendMessage({ type: 'OPEN_MAP', data: { kind, title, points } }).catch(() => {});
+    });
+    return btn;
+  }
+
   function dpeResults(result) {
     const candidates = (result && result.candidates) || [];
     if (!candidates.length) {
@@ -260,6 +279,7 @@
         'div',
         { class: 'imx-actions' },
         linkButton(links.gmaps(top.record.address, top.record.postal, top.record.city), 'Voir sur Maps', { variant: 'imx-btn-primary', iconName: 'map' }),
+        hasCoords(top.record) ? streetViewButton(top.record.lat, top.record.lon, true) : null,
         top.record.id ? linkButton(links.ademe(top.record.id), 'Fiche ADEME', { iconName: 'file' }) : null,
         copyButton(address)
       )
@@ -277,12 +297,23 @@
           'div',
           { class: 'imx-actions' },
           linkButton(links.gmaps(alt.record.address, alt.record.postal, alt.record.city), 'Maps', { iconName: 'map' }),
+          hasCoords(alt.record) ? streetViewButton(alt.record.lat, alt.record.lon, false) : null,
           alt.record.id ? linkButton(links.ademe(alt.record.id), 'ADEME', { variant: 'imx-btn-ghost', iconName: 'file' }) : null,
           copyButton(altAddress)
         )
       );
     });
-    return el('div', { style: 'display:grid;gap:14px' }, best, candidateList(rows, `Autres candidats (${rows.length})`));
+    const points = candidates
+      .map((c, i) => ({ c, n: i + 1 }))
+      .filter(({ c }) => hasCoords(c.record))
+      .map(({ c, n }) => ({ n, lat: c.record.lat, lon: c.record.lon, label: c.record.address || '(adresse inconnue)', meta: recordMeta(c.record), score: c.score, ademeId: c.record.id || null }));
+    return el(
+      'div',
+      { style: 'display:grid;gap:14px' },
+      best,
+      candidateList(rows, `Autres candidats (${rows.length})`),
+      mapButton(points, 'dpe', `${points.length} logements candidats`)
+    );
   }
 
   function parcelActions(parcel, primary) {
@@ -293,6 +324,7 @@
       { class: 'imx-actions' },
       linkButton(links.gmapsCoord(lon, lat), primary ? 'Voir sur Maps' : 'Maps', { variant: primary ? 'imx-btn-primary' : '', iconName: 'map' }),
       linkButton(links.geoportail(lon, lat), 'Géoportail', { iconName: 'layers' }),
+      streetViewButton(lat, lon, false),
       primary ? linkButton(links.cadastrePhoto(lon, lat), 'Cadastre + photo', { variant: 'imx-btn-ghost' }) : null
     );
   }
@@ -339,7 +371,17 @@
         parcelActions(ap, false)
       );
     });
-    return el('div', { style: 'display:grid;gap:14px' }, best, candidateList(rows, `Autres parcelles (${rows.length})`));
+    const points = candidates
+      .map((c, i) => ({ c, n: i + 1 }))
+      .filter(({ c }) => Array.isArray(c.parcel.centroid))
+      .map(({ c, n }) => ({ n, lon: c.parcel.centroid[0], lat: c.parcel.centroid[1], label: c.parcel.address || c.parcel.street || c.parcel.idu || '(parcelle)', meta: parcelMeta(c.parcel), score: c.score }));
+    return el(
+      'div',
+      { style: 'display:grid;gap:14px' },
+      best,
+      candidateList(rows, `Autres parcelles (${rows.length})`),
+      mapButton(points, 'land', `${points.length} parcelles candidates`)
+    );
   }
 
   // ─── Suivi des biens : parutions précédentes du même bien ───

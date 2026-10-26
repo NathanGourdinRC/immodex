@@ -20,6 +20,7 @@ const FIELD_MAP = {
     gesEmission: 'emission_ges_5_usages_par_m2',
     buildingType: 'type_batiment',
     constructionYear: 'annee_construction',
+    geopoint: '_geopoint',
   },
   newBuild: {
     id: 'numero_dpe',
@@ -34,6 +35,7 @@ const FIELD_MAP = {
     gesEmission: 'emission_ges_5_usages_par_m2',
     buildingType: 'type_batiment',
     constructionYear: 'annee_construction',
+    geopoint: '_geopoint',
   },
   legacy: {
     id: 'numero_dpe',
@@ -48,6 +50,7 @@ const FIELD_MAP = {
     gesEmission: 'estimation_ges',
     buildingType: 'tr002_type_batiment_description',
     constructionYear: 'annee_construction',
+    geopoint: '_geopoint',
   },
 };
 
@@ -75,6 +78,12 @@ function buildAdemeUrl({ dataset, filters, size = 20, sort }) {
   };
 }
 
+// « 50.6292,3.0054 » → { lat, lon } (coordonnées du logement géocodé par la BAN).
+function geopoint(value) {
+  const m = String(value || '').match(/^(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)$/);
+  return m ? { lat: Number(m[1]), lon: Number(m[2]) } : { lat: null, lon: null };
+}
+
 function normalizeRecord(raw, fieldMap) {
   return {
     id: raw[fieldMap.id] ?? null,
@@ -89,6 +98,7 @@ function normalizeRecord(raw, fieldMap) {
     gesEmission: raw[fieldMap.gesEmission] ?? null,
     buildingType: raw[fieldMap.buildingType] ?? null,
     constructionYear: raw[fieldMap.constructionYear] ?? null,
+    ...geopoint(raw[fieldMap.geopoint]),
     raw,
   };
 }

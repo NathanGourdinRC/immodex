@@ -31,6 +31,7 @@
 | Interface | style Pokédex | interface sobre : classes aux couleurs officielles du DPE, jauge de confiance, boutons Maps / ADEME / copier pour chaque candidat, bouton en onglet au bord droit (ne masque plus les bandeaux cookies) |
 | Agence non couverte | rien | « Activer sur ce site » dans le popup : le bouton automatique y est ajouté en un clic |
 | Annonce republiée (autre site, autre agence, nouvelle annonce) | invisible | **suivi des biens** : chaque annonce ouverte est mémorisée (12 mois, dans Chrome) ; un même bien retrouvé est signalé sur le bouton (« +2 ») avec ses parutions et l'évolution du prix ; onglet **Biens** du popup |
+| Vérifier un candidat | lien Google Maps | + **Street View** à l'adresse de chaque candidat (comparer la façade aux photos) et **carte des candidats** numérotés (OpenStreetMap, dans un onglet) |
 
 Détails techniques et choix : [docs/plans/2026-10-25-historique-et-sites-nord.md](docs/plans/2026-10-25-historique-et-sites-nord.md).
 
