@@ -45,3 +45,11 @@ test('fiche du registre incohérente (code postal de l’adresse différent) : f
   assert.equal(sg.score - sb.score, 40);
   assert.ok(sb.diffs.some((d) => d.includes('incohérente')));
 });
+
+test('consommation nettement différente de l’annonce : la confiance baisse', () => {
+  const p = { surface: 80, energyClass: 'C', gesClass: 'C', buildingType: 'maison', energyConsumption: 144, gesEmission: 22 };
+  const rec = { surface: 80, energyClass: 'C', gesClass: 'C', buildingType: 'maison', energyConsumption: 114, gesEmission: 21.5 };
+  const s = scoreRecord(rec, p).score;
+  // surface exacte 30 + classes 30 + type 10 - écart de 30 kWh 25 = 45 : plus « élevée » (≥ 80)
+  assert.ok(s < 80, `score ${s}`);
+});

@@ -153,6 +153,10 @@ function scoreRecord(record, payload) {
     } else {
       if (diff <= 1.5) score += 15;
       else if (diff <= 5) score += 5;
+      // Une consommation nettement différente de celle de l'annonce désigne presque
+      // toujours un autre logement : la confiance ne doit pas rester « élevée ».
+      else if (diff > 20) score -= 25;
+      else score -= 10;
       diffs.push(`${Math.round(Number(record.energyConsumption))} kWh (annonce : ${payload.energyConsumption})`);
     }
   }
@@ -164,6 +168,7 @@ function scoreRecord(record, payload) {
       reasons.push('émissions identiques');
     } else {
       if (diff <= 1) score += 5;
+      else if (diff > 3) score -= 5;
       diffs.push(`${Math.round(Number(record.gesEmission))} kg CO₂ (annonce : ${payload.gesEmission})`);
     }
   }

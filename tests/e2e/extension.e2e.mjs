@@ -163,7 +163,8 @@ test('étiquette en image : la carte demande les lettres puis cherche', async ()
   const pickers = page.locator('.imx-prompt .imx-letters');
   await pickers.nth(0).locator('[data-letter="D"]').click();
   await pickers.nth(1).locator('[data-letter="B"]').click();
-  await page.fill('.imx-prompt input', '05/10/2026');
+  await page.fill('.imx-prompt input[type="number"] >> nth=0', '201');
+  await page.fill('.imx-prompt input[type="text"]', '05/10/2026');
   await page.click('.imx-prompt .imx-btn-primary');
   await page.waitForSelector('.imx-address', { timeout: 30000 });
   assert.match(await page.textContent('.imx-chips'), /D\s*Énergie/);

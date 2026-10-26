@@ -116,7 +116,25 @@
       value: payload.dateRange ? UI.formatRangeInput(payload.dateRange) : null,
     });
     const error = el('div', { class: 'imx-hidden' });
-    const withClasses = (p) => (askClasses ? { ...p, energyClass: energy.value || p.energyClass || null, gesClass: ges.value || p.gesClass || null } : p);
+    // Valeurs de l'étiquette (kWh et kg CO₂) : recopiées par l'utilisateur, elles
+    // déclenchent la recherche précise, souvent décisive en ville dense.
+    const numberInput = (placeholder) => el('input', { class: 'imx-input', type: 'number', min: '0', max: '2000', placeholder });
+    const consoInput = numberInput('ex. 185');
+    const gesInput = numberInput('ex. 40');
+    const readNumber = (input) => {
+      const n = parseFloat(String(input.value).replace(',', '.'));
+      return isFinite(n) && n > 0 ? n : null;
+    };
+    const withClasses = (p) => {
+      if (!askClasses) return p;
+      return {
+        ...p,
+        energyClass: energy.value || p.energyClass || null,
+        gesClass: ges.value || p.gesClass || null,
+        energyConsumption: p.energyConsumption ?? readNumber(consoInput),
+        gesEmission: p.gesEmission ?? readNumber(gesInput),
+      };
+    };
 
     const submit = (useDate) => {
       const raw = useDate ? input.value.trim() : '';
@@ -146,7 +164,16 @@
             el('span', { class: 'imx-label' }, 'Étiquette DPE de l’annonce'),
             el('small', { class: 'imx-meta' }, 'La page ne donne pas les lettres en texte : lis-les sur l’étiquette (facultatif).'),
             el('div', { class: 'imx-field' }, el('span', null, 'Classe énergie'), energy.node),
-            el('div', { class: 'imx-field' }, el('span', null, 'Classe GES'), ges.node)
+            el('div', { class: 'imx-field' }, el('span', null, 'Classe GES'), ges.node),
+            payload.energyConsumption == null
+              ? el(
+                  'div',
+                  { class: 'imx-grid' },
+                  el('label', { class: 'imx-field' }, el('span', null, 'kWh/m²/an'), consoInput),
+                  el('label', { class: 'imx-field' }, el('span', null, 'kg CO₂/m²/an'), gesInput)
+                )
+              : null,
+            payload.energyConsumption == null ? el('small', { class: 'imx-meta' }, 'Les chiffres de l’étiquette rendent la recherche bien plus précise.') : null
           )
         : null,
       el('label', { class: 'imx-field' }, el('span', null, 'Date du DPE (facultatif)'), input, el('small', null, 'Sans date, la recherche se fait sur la surface et les classes.')),
