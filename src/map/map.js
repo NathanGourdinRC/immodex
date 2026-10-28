@@ -16,10 +16,7 @@ const points = (data.points || []).filter((p) => isFinite(p.lat) && isFinite(p.l
 document.getElementById('subtitle').textContent = data.title || `${points.length} candidat(s)`;
 
 const map = L.map('map', { zoomControl: true });
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  maxZoom: 19,
-  attribution: '&copy; contributeurs OpenStreetMap',
-}).addTo(map);
+L.control.layers(window.__immodexTiles.addBaseLayers(map), null, { collapsed: false }).addTo(map);
 
 let firstMarker = null;
 for (const p of points) {

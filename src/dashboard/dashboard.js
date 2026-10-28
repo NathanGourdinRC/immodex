@@ -22,7 +22,7 @@ const STATUS_ORDER = { favori: 0, 'a-voir': 1, '': 2, visite: 3, ecarte: 4 };
 // ─── Carte ───
 
 const map = L.map('map', { zoomControl: true }).setView([50.6292, 3.0573], 11);
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; contributeurs OpenStreetMap' }).addTo(map);
+const baseLayers = window.__immodexTiles.addBaseLayers(map);
 // Sections colorées sous les points : sinon elles masqueraient les DPE et capteraient les clics.
 map.createPane('prices').style.zIndex = 350;
 const layers = {
@@ -32,7 +32,7 @@ const layers = {
   biens: L.layerGroup().addTo(map),
 };
 L.control
-  .layers(null, { 'Prix au m² par section': layers.prices, Communes: layers.contours, 'Nouveaux DPE': layers.dpe, 'Annonces vues': layers.biens }, { collapsed: false })
+  .layers(baseLayers, { 'Prix au m² par section': layers.prices, Communes: layers.contours, 'Nouveaux DPE': layers.dpe, 'Annonces vues': layers.biens }, { collapsed: false })
   .addTo(map);
 // Marqueurs par identifiant, pour centrer la carte depuis la liste.
 const markers = new Map();
