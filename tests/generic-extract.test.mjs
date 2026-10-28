@@ -423,3 +423,25 @@ test('prix : « Prix hors honoraires » ignoré au profit du prix affiché (cent
   const w = loadPage(page('<h1>Maison à vendre 6 pièces - 180 m2</h1><p>LA MADELEINE - 59 Ref : 2187</p><p>499 000 €</p><p>Honoraires charge acquéreur : 3,96 % TTC</p><p>Prix hors honoraires : 480000€</p>'));
   assert.equal(w.__immodexGeneric.extractPrice(w.document), 499000);
 });
+
+// ─── Agences du lac d'Annecy ───
+
+test('ville du titre suivie d’un mot de liaison (« Annecy avec grand balcon », Berthet)', () => {
+  const r = extract(page('<h1>Appartement 2 pièces Annecy avec grand balcon en exclusivité</h1><main><p>Surface 40 m²</p><p>Classe énergie : D</p></main>'));
+  assert.equal(r.city, 'Annecy');
+});
+
+test('ville après le libellé « Localisation » (Sur Les Toits)', () => {
+  const r = extract(page('<h1>Type 3 rez-de-jardin proche lac</h1><main><dl><dt>Localisation</dt><dd>Annecy Le vieux</dd><dt>Surface</dt><dd>75</dd></dl></main>'));
+  assert.match(r.city, /^Annecy/);
+});
+
+test('ville au-dessus de son libellé « Ville » (Perle du Semnoz)', () => {
+  const r = extract(page('<h1>Maison de 227 m2</h1><main><div><div>227 m²</div><div>Surface</div></div><div><div>Seynod</div><div>Ville</div></div></main>'));
+  assert.equal(r.city, 'Seynod');
+});
+
+test('ville dans l’adresse « /acheter/maison-saint-jorioz-50 » (Compimmo)', () => {
+  const r = extract(page('<main><p>Maison 139 m²</p><p>Classe énergie : B</p></main>'), 'https://www.compimmo.com/acheter/maison-saint-jorioz-50');
+  assert.equal(r.city, 'Saint Jorioz');
+});

@@ -21,7 +21,7 @@
 
 | | Immodex (original) | Immodex+ |
 | --- | --- | --- |
-| Sites lus | Leboncoin, Bienici, SeLoger | + 15 sites retenus pour la métropole lilloise (voir [Utilisation](#utilisation)), et n'importe quelle annonce via « Analyser cette page » |
+| Sites lus | Leboncoin, Bienici, SeLoger | + 15 portails et réseaux, 82 agences de la métropole lilloise et 89 sites du lac d'Annecy (voir [Utilisation](#utilisation)), et n'importe quelle annonce via « Analyser cette page » |
 | Résultats après changement d'onglet | perdus | **historique 7 jours** (50 recherches), réaffiché à la réouverture du popup et sur l'annonce |
 | Liens des autres candidats (popup) | aucun | Google Maps et fiche ADEME pour chaque candidat |
 | Ville sans code postal (« Lille ») | impossible | codes postaux de la commune retrouvés automatiquement |
@@ -90,6 +90,7 @@ Ouvre n'importe quelle annonce sur :
 | [Figaro Immobilier](https://immobilier.lefigaro.fr/), [PAP](https://www.pap.fr/), [ParuVendu](https://www.paruvendu.fr/), [Notaires](https://www.immobilier.notaires.fr/) | ✓ | ✓ |
 | Réseaux : [IAD](https://www.iadfrance.fr/), [Orpi](https://www.orpi.com/), [Safti](https://www.safti.fr/), [Century 21](https://www.century21.fr/), [Laforêt](https://www.laforet.com/), [Foncia](https://fr.foncia.com/), [Citya](https://www.citya.com/), [Square Habitat](https://www.squarehabitat.fr/) | ✓ | ✓ |
 | Agences de la métropole lilloise : [Vacherand](https://www.vacherand.fr/), [Abrinor](https://www.abrinor.fr/) et 80 autres, de Lille à Armentières, Roubaix, Tourcoing et Seclin (liste : [docs/agences-lilloises.json](docs/agences-lilloises.json)) | ✓ | ✓ |
+| Lac d'Annecy : 72 agences d'Annecy (avec Annecy-le-Vieux, Seynod, Cran-Gevrier, Meythet et Pringy), Saint-Jorioz, Sévrier, Duingt et des communes voisines, 13 réseaux (ERA, Swixim, Barnes, Lamy, Sextant, Propriétés Privées…) et 4 portails (FNAIM, LeSiteImmo, 36 Heures Immo, French-Property). Liste, lecture mesurée et sites écartés : [docs/agences-annecy.json](docs/agences-annecy.json) | ✓ | ✓ |
 | Tout autre site d'annonce (sites d'agences Apimo, Netty, La Boîte Immo…) | via « Analyser la page ouverte », ou bouton automatique après « Activer sur ce site » | idem |
 
 Logic-Immo, Superimmo, MeilleursAgents et Efficity bloquent les robots : l'extension fonctionne quand même en navigation normale via « Analyser cette page », mais ces sites n'ont pas été testés.

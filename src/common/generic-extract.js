@@ -346,7 +346,8 @@
   // Un nombre à 5 chiffres après « Réf. », « Mandat », « Tél. »… n'est pas un code postal.
   const POSTAL_BLOCKERS = /(?:r[ée]f(?:[ée]rence)?|mandat|n[°o]|t[ée]l(?:[ée]phone)?|siret|siren|rcs|carte\s+pro|prix|€)\.?\s*:?\s*$/i;
   // Libellés de fiche qui suivent souvent un code postal et ne sont pas des villes.
-  const NOT_CITIES = /^(?:Type|Chambres?|Pi[eè]ces?|Surface|Prix|D[ée]tails?|Appeler|Contacter|Voir|R[ée]f(?:[ée]rence)?|Mandat|Description|Honoraires|Charges|Copropri[ée]t[ée]|Euros?|Ville|Commune|Agence|Contact|T[ée]l[ée]phone|Email|Mail)$/i;
+  // (« Code », « Adresse »… : libellé suivant quand la valeur de « Ville » est vide.)
+  const NOT_CITIES = /^(?:Type|Chambres?|Pi[eè]ces?|Surface|Prix|D[ée]tails?|Appeler|Contacter|Voir|R[ée]f(?:[ée]rence)?|Mandat|Description|Honoraires|Charges|Copropri[ée]t[ée]|Euros?|Ville|Commune|Agence|Contact|T[ée]l[ée]phone|Email|Mail|Code|Adresse|Quartier|Secteur|Pays|D[ée]partement|R[ée]gion|Localisation|Nombre|Situation|Select|S[ée]lectionner|Choisir|Toutes?)(?:\s|$)/i;
   const VALID_POSTAL = /^(?:0[1-9]|[1-8]\d|9[0-5]|97|98)\d{3}$/;
 
   function cleanCity(raw) {
@@ -373,14 +374,21 @@
 
   // Code postal et ville présentés par des libellés : « Code postal : 59000 », « Ville : LILLE ».
   const LABELED_POSTAL = /code\s*postal\s*:?\s*(\d{5})\b/i;
-  const LABELED_CITY = new RegExp(`(?:^|\\n)[ \\t]*(?:[Vv]ille|VILLE|[Cc]ommune|COMMUNE)[ \\t]*:?[ \\t]*(${CITY})`);
+  // La valeur peut être sur la ligne suivante (liste « dt / dd » : « Localisation » puis « Annecy Le vieux »).
+  const LABELED_CITY = new RegExp(`(?:^|\\n)[ \\t]*(?:[Vv]ille|VILLE|[Cc]ommune|COMMUNE|[Ll]ocalisation|LOCALISATION)[ \\t]*:?[ \\t]*(?:\\n[ \\t]*)*(${CITY})`);
+  // Valeur au-dessus de son libellé : « Seynod » puis « Ville » (thème Bricks, Perle du Semnoz).
+  const CITY_ABOVE_LABEL = new RegExp(`(?:^|\\n)[ \\t]*(${CITY})[ \\t]*\\n[ \\t]*(?:Ville|Commune|Localisation)[ \\t]*(?:\\n|$)`);
 
   // Ville du titre sans code postal, sous les formes vues sur les sites d'agences :
   const HEAD_CITY_PATTERNS = [
     // « Maison à COMINES • 228 000 € », « Maison à vendre à Halluin »
     new RegExp(`(?:^|\\s)[àa][ \\t]+(${CITY})`, 'g'),
-    // « Appartement à vendre Lille Réf. VA2276 », « Appartement 25m² Lille », « 3 chambre(s) - Roubaix, Alfred Mongy »
-    new RegExp(`(?:vendre|louer|m\\s*[²2]|pi[eè]ces?|chambres?(?:\\(s\\))?)[ \\t]*[-–,]?[ \\t]+(${CITY})(?=[ \\t]*(?:[-–,•|:(]|R[ée]f|$))`, 'g'),
+    // « Appartement à vendre Lille Réf. VA2276 », « Appartement 25m² Lille », « 3 chambre(s) - Roubaix, Alfred Mongy »,
+    // « Appartement 2 pièces Annecy avec grand balcon » (Berthet : la ville suivie d'un mot de liaison)
+    new RegExp(
+      `(?:vendre|louer|m\\s*[²2]|pi[eè]ces?|chambres?(?:\\(s\\))?)[ \\t]*[-–,]?[ \\t]+(${CITY})(?=[ \\t]*(?:[-–,•|:(]|R[ée]f|$)|[ \\t]+(?:avec|en|au|aux|sur|dans|proche|vue|centre|hyper|quartier|secteur)\\b)`,
+      'g'
+    ),
     // « MOUVAUX ST GERMAIN: Maison trois chambres »
     new RegExp(`^(${CITY})[ \\t]*:`, 'g'),
     // « centre ville de Wervicq-Sud », « proche de Lambersart » (sans drapeau /i : la
@@ -389,7 +397,8 @@
     // « Vente Maison Marcq-en-Barœul »
     new RegExp(`(?:Vente|Location|Achat)[ \\t]+(?:Maison|Appartement|Terrain|Studio|Immeuble|Loft|Duplex)[ \\t]+(${CITY})`, 'g'),
   ];
-  const NOT_HEAD_CITIES = /^(?:Vendre|Louer|Saisir|Voir|Proximit[ée]|Maisons?|Appartements?|Vente|Location|Terrains?|Studio|Fermes?|Luxe|Exception|Lotissement|Neuf|Ancien)$/i;
+  // (une voie n'est pas une ville : « garage de 16 m² rue Henry Bordeaux »)
+  const NOT_HEAD_CITIES = /^(?:Vendre|Louer|Saisir|Voir|Proximit[ée]|Maisons?|Appartements?|Vente|Location|Terrains?|Studio|Fermes?|Luxe|Exception|Lotissement|Neuf|Ancien|Rue|Avenue|Boulevard|Chemin|Route|Place|All[ée]e|Impasse|Quai)$/i;
 
   function headlineCity(head) {
     // Le titre est la jointure h1 | og:title | <title> : chaque partie est lue à part.
@@ -440,6 +449,9 @@
     const segments = path.split('/').filter(Boolean);
     const i = segments.findIndex((s) => /^(?:vente|ventes|location|locations|achat|acheter|louer)$/.test(s));
     if (i >= 0) {
+      // « /acheter/maison-saint-jorioz-50 » (Compimmo) : type, ville, puis numéro du bien.
+      const typedId = (segments[i + 1] || '').match(/^(?:appartement|maison|terrain|studio|villa|chalet|loft|duplex|immeuble)s?-([a-z][a-z-]{2,40}?)-\d+$/);
+      if (typedId && !URL_STOP.has(typedId[1].split('-')[0])) return toCity(typedId[1]);
       for (const s of segments.slice(i + 1)) {
         if (URL_STOP.has(s) || /\d/.test(s)) continue;
         if (/^[a-z][a-z-]{2,40}$/.test(s)) return toCity(s);
@@ -948,7 +960,7 @@
     const labeledCity = text.match(LABELED_CITY);
     if (labeledPostal && VALID_POSTAL.test(labeledPostal[1])) {
       set(r, 'postal', labeledPostal[1], 'texte');
-      if (labeledCity) set(r, 'city', cleanCity(labeledCity[1]), 'texte');
+      if (labeledCity && !NOT_CITIES.test(cleanCity(labeledCity[1]))) set(r, 'city', cleanCity(labeledCity[1]), 'texte');
     }
     const crumbs = cleanText(Array.from(doc.querySelectorAll('nav, [class*="breadcrumb" i], [class*="ariane" i]')).map((n) => rawText(n)).join(' | '));
     const pcCrumbs = postalAndCity(crumbs);
@@ -974,7 +986,9 @@
         r.department = cd.department;
       }
       set(r, 'city', headCity, 'titre');
-      if (labeledCity) set(r, 'city', cleanCity(labeledCity[1]), 'texte');
+      if (labeledCity && !NOT_CITIES.test(cleanCity(labeledCity[1]))) set(r, 'city', cleanCity(labeledCity[1]), 'texte');
+      const cityAbove = text.match(CITY_ABOVE_LABEL);
+      if (cityAbove && !NOT_CITIES.test(cleanCity(cityAbove[1]))) set(r, 'city', cleanCity(cityAbove[1]), 'texte');
       if (!r.city) set(r, 'city', urlCity, 'adresse de la page');
     }
     // Indice de ville (titre, sinon adresse de la page) quand il diffère de la ville lue :

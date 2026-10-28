@@ -1,0 +1,1205 @@
+{
+  "source": "Recensement du 28/10/2026 : registre SIRENE (codes 68.31Z et 68.32A à Annecy, Saint-Jorioz, Sévrier et Duingt), annuaire des agences de Bien’ici (ces communes et leurs voisines du lac), recherche des réseaux et portails. Lecture mesurée sur une annonce par site (complète : localisation, surface et classe ou consommation ; partielle : souvent une étiquette DPE en image, la carte demande alors les lettres).",
+  "retenus": [
+    {
+      "nom": "2A IMMOBILIER",
+      "ville": "Annecy",
+      "domaine": "2a-immo.fr",
+      "categorie": "agence",
+      "plateforme": "Drupal (déduit des chemins /sites/2a-immo.fr/themes/custom/)",
+      "exemple": "https://www.2a-immo.fr/vente/appartement/annecy/vente-appartement-4-pieces-annecy-ref-4647-lp",
+      "lecture": "complète",
+      "sources": [
+        "sirene",
+        "bienici"
+      ]
+    },
+    {
+      "nom": "4807 IMMOBILIER, AGENCE AGIS CHAPPUIS, LANSARD IMMOBILIER",
+      "ville": "Annecy",
+      "domaine": "4807immobilier.com",
+      "categorie": "agence",
+      "plateforme": null,
+      "exemple": "https://www.4807immobilier.com/achat-74/appartement/annecy/22345/h-153330",
+      "lecture": "partielle",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "AGENCE BFM",
+      "ville": "Annecy",
+      "domaine": "agencebfm-immo.com",
+      "categorie": "agence",
+      "plateforme": "Netty (site réalisé par Modelo)",
+      "exemple": "https://www.agencebfm-immo.com/vente/appartement-t2-2-pieces-annecy-74000,VA5204",
+      "lecture": "complète",
+      "sources": [
+        "sirene",
+        "bienici"
+      ]
+    },
+    {
+      "nom": "Agence Centrale",
+      "ville": "Annecy",
+      "domaine": "agcentrale.fr",
+      "categorie": "agence",
+      "plateforme": "immo-facile",
+      "exemple": null,
+      "lecture": "non mesurée",
+      "sources": [
+        "bienici"
+      ]
+    },
+    {
+      "nom": "AGENCE CENTRALE",
+      "ville": "Annecy",
+      "domaine": "agence-immobiliere-annecy.fr",
+      "categorie": "agence",
+      "plateforme": "Orisha / Immo-facile (wizzim-poliris)",
+      "exemple": "https://www.agence-immobiliere-annecy.fr/fiches/3-33-30_61142733/t4-de-96m2-en-plein-centre-ville.html",
+      "lecture": "complète",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "Albigny Immobilier",
+      "ville": "Annecy Le Vieux",
+      "domaine": "albigny-immobilier.com",
+      "categorie": "agence",
+      "plateforme": "hektor",
+      "exemple": "https://www.albigny-immobilier.com/vente/74-haute-savoie/1-annecy-le-vieux/1-maison/t6/22536-maison-t6-annecy-le-vieux-avec-maison-d-invites/",
+      "lecture": "partielle",
+      "sources": [
+        "bienici"
+      ]
+    },
+    {
+      "nom": "ALFRED PROPERTY (ALFRED PROPERTY)",
+      "ville": "Annecy",
+      "domaine": "alfred-property.com",
+      "categorie": "agence",
+      "plateforme": "Modelo (Netty probable)",
+      "exemple": "https://www.alfred-property.com/fr/vente/appartement-t3-3-pieces-talloires-montmin-74290,VA1960",
+      "lecture": "partielle",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "ALKIMMO (ALK IMMO  ALAIN KAING)",
+      "ville": "Annecy",
+      "domaine": "alkimmo.com",
+      "categorie": "agence",
+      "plateforme": "WordPress",
+      "exemple": "https://www.alkimmo.com/bien-immobilier/t3-terrasse-annecy/",
+      "lecture": "partielle",
+      "sources": [
+        "sirene",
+        "bienici"
+      ]
+    },
+    {
+      "nom": "ALTHENOR",
+      "ville": "Annecy",
+      "domaine": "althenor.fr",
+      "categorie": "agence",
+      "plateforme": "WordPress (thème althenor-horizon, flux Whise probable)",
+      "exemple": "https://althenor.fr/property/7633031/",
+      "lecture": "complète",
+      "sources": [
+        "sirene",
+        "bienici"
+      ]
+    },
+    {
+      "nom": "ALTISS",
+      "ville": "Annecy",
+      "domaine": "altiss.fr",
+      "categorie": "agence",
+      "plateforme": "La Boîte Immo",
+      "exemple": "https://www.altiss.fr/vente/1-annecy/appartement/18-charmant-t2-vieille-ville-d-annecy",
+      "lecture": "partielle",
+      "sources": [
+        "sirene",
+        "bienici"
+      ]
+    },
+    {
+      "nom": "BARNES MONT-BLANC ANNECY",
+      "ville": "Annecy",
+      "domaine": "barnes-montblanc.com",
+      "categorie": "agence",
+      "plateforme": "apimo",
+      "exemple": null,
+      "lecture": "non mesurée",
+      "sources": [
+        "bienici"
+      ]
+    },
+    {
+      "nom": "BERTHET IMMOBILIER (BERTHET IMMOBILIER)",
+      "ville": "Annecy",
+      "domaine": "berthet-immobilier.fr",
+      "categorie": "agence",
+      "plateforme": "WordPress (Elementor, plugin d'annonces probablement Estatik)",
+      "exemple": "https://www.berthet-immobilier.fr/propriete/appartement-2-pieces-annecy-avec-grand-balcon-en-exclusivite/",
+      "lecture": "complète",
+      "sources": [
+        "sirene",
+        "bienici"
+      ]
+    },
+    {
+      "nom": "BOUTTAZ IMMOBILIER",
+      "ville": "Annecy",
+      "domaine": "bouttaz-immobilier.fr",
+      "categorie": "agence",
+      "plateforme": "Adapt Immo",
+      "exemple": "https://www.bouttaz-immobilier.fr/fr/detail.htm?cle=74027751",
+      "lecture": "complète",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "Cabinet LAURENS IMMO CONSEILS",
+      "ville": "Annecy",
+      "domaine": "le-cabinet-immobilier.fr",
+      "categorie": "agence",
+      "plateforme": "hektor",
+      "exemple": "https://www.le-cabinet-immobilier.fr/properties/maison-avec-3-chambres-en-vente-499000-eur-a-la-balme-de-silli/",
+      "lecture": "complète",
+      "sources": [
+        "bienici"
+      ]
+    },
+    {
+      "nom": "Century 21 CD Immobilier",
+      "ville": "Annecy",
+      "domaine": "century21-cd-immobilier-annecy.com",
+      "categorie": "agence",
+      "plateforme": null,
+      "exemple": null,
+      "lecture": "non mesurée",
+      "sources": [
+        "bienici"
+      ]
+    },
+    {
+      "nom": "COMPAGNIE IMMOBILIERE DU LAC",
+      "ville": "Saint-Jorioz",
+      "domaine": "compimmo.com",
+      "categorie": "agence",
+      "plateforme": null,
+      "exemple": "https://www.compimmo.com/acheter/maison-saint-jorioz-50",
+      "lecture": "complète",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "CP IMMOBILIER",
+      "ville": "Annecy",
+      "domaine": "cp-immobilier.fr",
+      "categorie": "agence",
+      "plateforme": "La Boîte Immo",
+      "exemple": "https://www.cp-immobilier.fr/vente/1-annecy/appartement/1353-annecy-centre-appartement-de-caractere-de-129-m-avec-4-chambres-proche-lac-et-vieille-ville",
+      "lecture": "partielle",
+      "sources": [
+        "sirene",
+        "bienici"
+      ]
+    },
+    {
+      "nom": "DARNEZ TRANSACTION",
+      "ville": "Annecy",
+      "domaine": "darnezimmobilier.fr",
+      "categorie": "agence",
+      "plateforme": "La Boîte Immo (la-boite-immo.com, images staticlbi.com)",
+      "exemple": "https://www.darnezimmobilier.fr/vente/1-annecy/appartement/t3/42-appartement-a-proximite-du-centre-ville/",
+      "lecture": "complète",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "DESTINATION IMMOBILIER (DESTINATION IMMOBILIER)",
+      "ville": "Annecy",
+      "domaine": "destination-immobilier.com",
+      "categorie": "agence",
+      "plateforme": "La Boite Immo",
+      "exemple": "https://www.destination-immobilier.com/vente/765-fort-de-france/appartement/t2/97989-joli-t2-dans-un-quartier-recherche-a-prix-doux/",
+      "lecture": "partielle",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "DUINGT IMMO",
+      "ville": "Duingt",
+      "domaine": "duingtimmobilier.com",
+      "categorie": "agence",
+      "plateforme": "WordPress",
+      "exemple": "https://duingtimmobilier.com/annonces/maison-vue-lac-dannecy/",
+      "lecture": "complète",
+      "sources": [
+        "sirene",
+        "bienici"
+      ]
+    },
+    {
+      "nom": "ENTRE LAC ET CIMES IMMOBILIER",
+      "ville": "Annecy",
+      "domaine": "entrelacetcimes-immobilier.com",
+      "categorie": "agence",
+      "plateforme": "hektor",
+      "exemple": "https://www.entrelacetcimes-immobilier.com/vente/1-annecy/garage/124-garage-ferme-securise-de-16-m-rue-henry-bordeaux",
+      "lecture": "partielle",
+      "sources": [
+        "bienici"
+      ]
+    },
+    {
+      "nom": "EVIDENCE HABITAT",
+      "ville": "Annecy",
+      "domaine": "evidence-habitat.com",
+      "categorie": "agence",
+      "plateforme": "ubiflow-easybusiness",
+      "exemple": null,
+      "lecture": "non mesurée",
+      "sources": [
+        "bienici"
+      ]
+    },
+    {
+      "nom": "EXPERTIMMO",
+      "ville": "Annecy",
+      "domaine": "expertimmo74.fr",
+      "categorie": "agence",
+      "plateforme": null,
+      "exemple": null,
+      "lecture": "non mesurée",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "FANTIN IMMOBILIER",
+      "ville": "Annecy",
+      "domaine": "fantin-immobilier.fr",
+      "categorie": "agence",
+      "plateforme": "La Boîte Immo",
+      "exemple": "https://www.fantin-immobilier.fr/vente/74-haute-savoie/1-annecy/2-appartement/t5/1830-annecy-centre-ville-courier/",
+      "lecture": "partielle",
+      "sources": [
+        "sirene",
+        "bienici"
+      ]
+    },
+    {
+      "nom": "FAR-immo",
+      "ville": "Annecy",
+      "domaine": "far-immo.com",
+      "categorie": "agence",
+      "plateforme": "ubiflow-easybusiness",
+      "exemple": "https://www.far-immo.com/annonce/vente-appartement-annecy-hyper-centre-VMV690.asp",
+      "lecture": "complète",
+      "sources": [
+        "bienici"
+      ]
+    },
+    {
+      "nom": "FORCAPRIMM SAS",
+      "ville": "Annecy",
+      "domaine": "forcaprimm.com",
+      "categorie": "agence",
+      "plateforme": "Adapt Immo",
+      "exemple": "https://www.forcaprimm.com/fr/detail.htm?cle=7300331651&monnaie=2",
+      "lecture": "partielle",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "GERIMALP",
+      "ville": "Annecy",
+      "domaine": "gerimalp.fr",
+      "categorie": "agence",
+      "plateforme": "Neotimm (extranet client) ; photos sur immo.webf.fr",
+      "exemple": "https://www.gerimalp.fr/bien-77542",
+      "lecture": "complète",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "Guy Hoquet Annecy",
+      "ville": "Annecy",
+      "domaine": "guy-hoquet.com",
+      "categorie": "agence",
+      "plateforme": "guy-hoquet-immo-facile",
+      "exemple": null,
+      "lecture": "non mesurée",
+      "sources": [
+        "bienici"
+      ]
+    },
+    {
+      "nom": "HARMONY IMMO",
+      "ville": "Annecy",
+      "domaine": "harmony-immo.fr",
+      "categorie": "agence",
+      "plateforme": "La Boite Immo",
+      "exemple": "https://www.harmony-immo.fr/vente/5-annecy/maison/t5/5707-maison-familiale-au-calme-a-annecy-cran-gevrier/",
+      "lecture": "complète",
+      "sources": [
+        "sirene",
+        "bienici"
+      ]
+    },
+    {
+      "nom": "HECTOR IMMO",
+      "ville": "Annecy",
+      "domaine": "hector-immo.fr",
+      "categorie": "agence",
+      "plateforme": "Netty (site réalisé par Modelo)",
+      "exemple": "https://www.hector-immo.fr/vente/transmission-d-entreprise-restaurant-bar-annecy-74000,VE001",
+      "lecture": "partielle",
+      "sources": [
+        "sirene",
+        "bienici"
+      ]
+    },
+    {
+      "nom": "HERIAM",
+      "ville": "Annecy",
+      "domaine": "heriam.fr",
+      "categorie": "agence",
+      "plateforme": "WordPress",
+      "exemple": "https://www.heriam.fr/property/maison-de-ville-quartier-pommaries-annecy-le-vieux/",
+      "lecture": "complète",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "HESTIA IMMOBILIER DE PRESTIGE",
+      "ville": "Annecy",
+      "domaine": "hestia-prestige.com",
+      "categorie": "agence",
+      "plateforme": "Apimo",
+      "exemple": "https://www.hestia-prestige.com/fr/propriete/vente+appartement+annecy+t3-centre-ville-annecy+85654125",
+      "lecture": "complète",
+      "sources": [
+        "sirene",
+        "bienici"
+      ]
+    },
+    {
+      "nom": "HISTOIRES IMMOBILIERES",
+      "ville": "Annecy",
+      "domaine": "histoiresimmobilieres.fr",
+      "categorie": "agence",
+      "plateforme": null,
+      "exemple": "https://www.histoiresimmobilieres.fr/biens-immobiliers-a-vendre-savoie-haute-savoie/tres-beau-t4-avec-terrasse-de-27-m2-a-proximite-du-lac-dannecy",
+      "lecture": "complète",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "IMMO COMVOUS",
+      "ville": "Annecy",
+      "domaine": "immocomvous.fr",
+      "categorie": "agence",
+      "plateforme": null,
+      "exemple": "https://www.immocomvous.fr/logement/t4-1er/",
+      "lecture": "partielle",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "IMMO'V",
+      "ville": "Annecy",
+      "domaine": "immo-v.fr",
+      "categorie": "agence",
+      "plateforme": "WordPress (thème Resideo)",
+      "exemple": "https://immo-v.fr/properties/appartement-contemporain-dexception/",
+      "lecture": "complète",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "IMMOBILIERE ANNECIENNE",
+      "ville": "Annecy",
+      "domaine": "aia-immo.com",
+      "categorie": "agence",
+      "plateforme": "hektor",
+      "exemple": "https://www.aia-immo.com/commerces/vente/74-haute-savoie/1-annecy/5-murs-commerciaux/t/2492-nouveau-murs-commerciaux-proche-centre-ville/",
+      "lecture": "partielle",
+      "sources": [
+        "bienici"
+      ]
+    },
+    {
+      "nom": "IMMOBY.ME",
+      "ville": "Annecy",
+      "domaine": "immoby.me",
+      "categorie": "agence",
+      "plateforme": "ubiflow-easybusiness",
+      "exemple": "https://www.immoby.me/annonce-immobiliere-vente-maison-villaz-immoby.me-agence-immobiliere-annecy-342",
+      "lecture": "complète",
+      "sources": [
+        "sirene",
+        "bienici"
+      ]
+    },
+    {
+      "nom": "IMMONESSENCE",
+      "ville": "Annecy",
+      "domaine": "immonessence.com",
+      "categorie": "agence",
+      "plateforme": "Apimo",
+      "exemple": "https://www.immonessence.com/fr/propriete/vente+appartement+annecy+appartement-espace-professionnel-jardin-prive-en-plein-centre-ville-de-annecy+85619595",
+      "lecture": "partielle",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "JOIE&FRERE",
+      "ville": "Annecy",
+      "domaine": "joieetfrere.com",
+      "categorie": "agence",
+      "plateforme": "Netty",
+      "exemple": "https://www.joieetfrere.com/immobilier/appartement-t2-3-annecy-vente-fr_VA1949.htm",
+      "lecture": "complète",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "L IMMOBILIERE DE VALMONT",
+      "ville": "Annecy",
+      "domaine": "valmont74.fr",
+      "categorie": "agence",
+      "plateforme": "hektor",
+      "exemple": "https://www.valmont74.fr/vente/1-annecy/appartement/23585-bel-appartement-t2-dans-la-residence-green-square-au-pied-de-la-colline-d-annecy-le-vieux",
+      "lecture": "complète",
+      "sources": [
+        "bienici"
+      ]
+    },
+    {
+      "nom": "l'Adresse Annecy",
+      "ville": "Annecy",
+      "domaine": "ladresse-annecy.com",
+      "categorie": "agence",
+      "plateforme": null,
+      "exemple": null,
+      "lecture": "non mesurée",
+      "sources": [
+        "bienici"
+      ]
+    },
+    {
+      "nom": "L'AGENCE IMMO DU LAC",
+      "ville": "Sévrier",
+      "domaine": "lagenceimmodulac.com",
+      "categorie": "agence",
+      "plateforme": "WordPress (Elementor)",
+      "exemple": "https://www.lagenceimmodulac.com/biens/maison-pieds-dans-leau-talloires-montmin/",
+      "lecture": "complète",
+      "sources": [
+        "sirene",
+        "bienici"
+      ]
+    },
+    {
+      "nom": "L'ENDROIT IMMOBILIER",
+      "ville": "Annecy",
+      "domaine": "lendroit-immobilier.fr",
+      "categorie": "agence",
+      "plateforme": "Apimo",
+      "exemple": "https://lendroit-immobilier.fr/en/property/sale+apartment+annecy+86189276",
+      "lecture": "complète",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "LAPORTE IMMOBILIER",
+      "ville": "Annecy Le Vieux",
+      "domaine": "laporte-immobilier.com",
+      "categorie": "agence",
+      "plateforme": "hektor",
+      "exemple": "https://www.laporte-immobilier.com/vente/3319-fontcouverte-la-toussuire/chalet/6836-chalet-de-prestige-avec-vue-sur-les-aiguilles-d-arves-prestige",
+      "lecture": "partielle",
+      "sources": [
+        "bienici"
+      ]
+    },
+    {
+      "nom": "LES PORTIQUES DE L'IMMOBILIER",
+      "ville": "Epagny Metz-Tessy",
+      "domaine": "portiques-immobilier.fr",
+      "categorie": "agence",
+      "plateforme": null,
+      "exemple": "https://portiques-immobilier.fr/propriete/chambery-t4-a-10-mn-a-pied-du-centre-ville/",
+      "lecture": "partielle",
+      "sources": [
+        "bienici"
+      ]
+    },
+    {
+      "nom": "MONOD IMMO PRO",
+      "ville": "Annecy",
+      "domaine": "monodimmobilier.com",
+      "categorie": "agence",
+      "plateforme": "adapt-immo",
+      "exemple": "https://www.monodimmobilier.com/annonce/7400238346_6/125-achat-bien-immobilier-annecy.htm",
+      "lecture": "complète",
+      "sources": [
+        "sirene",
+        "bienici"
+      ]
+    },
+    {
+      "nom": "MUGNIER",
+      "ville": "Annecy",
+      "domaine": "74immo.com",
+      "categorie": "agence",
+      "plateforme": "hektor",
+      "exemple": "https://www.74immo.com/vente/ANN1738",
+      "lecture": "partielle",
+      "sources": [
+        "bienici"
+      ]
+    },
+    {
+      "nom": "Nestenn Annecy Nord",
+      "ville": "Epagny Metz-Tessy",
+      "domaine": "nestenn.com",
+      "categorie": "agence",
+      "plateforme": null,
+      "exemple": "https://immobilier-annecy-nord.nestenn.com/epagny-metz-tessy-_-maison-contemporaine-de-175-m-avec-piscine-jardin-et-sous-sol-complet-avec-garage-ref-39645471",
+      "lecture": "complète",
+      "sources": [
+        "bienici"
+      ]
+    },
+    {
+      "nom": "NUANCES IMMO",
+      "ville": "Annecy",
+      "domaine": "nuances-immo.fr",
+      "categorie": "agence",
+      "plateforme": null,
+      "exemple": null,
+      "lecture": "non mesurée",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "OMMI Immobilier",
+      "ville": null,
+      "domaine": "ommi-immobilier.fr",
+      "categorie": "agence",
+      "plateforme": null,
+      "exemple": "https://ommi-immobilier.fr/fr/vente-immobilier/biens/b30-falcon",
+      "lecture": "partielle",
+      "sources": [
+        "decouverte"
+      ]
+    },
+    {
+      "nom": "Oratio Immobilier",
+      "ville": "Annecy",
+      "domaine": "oratioimmobilier.com",
+      "categorie": "agence",
+      "plateforme": "apimo",
+      "exemple": "https://oratioimmobilier.com/fr/propriete/vente+appartement+saint-jean-de-sixt+superbe-2-pieces-neuf-avec-terrasse-et-vue-montagnes-emplacement-d-exception+86881019",
+      "lecture": "partielle",
+      "sources": [
+        "bienici"
+      ]
+    },
+    {
+      "nom": "PASCAL TRANSACTION",
+      "ville": "Annecy",
+      "domaine": "pascal-immo.fr",
+      "categorie": "agence",
+      "plateforme": "Immo-Facile (Orisha)",
+      "exemple": "https://www.pascal-immo.fr/fiches/3-33-30_60539294/annecy-le-vieux-t4-de-95-m2-renove-a-deux-pas-du-lac.html",
+      "lecture": "complète",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "PEAK DEVELOPPEMENT",
+      "ville": "Annecy",
+      "domaine": "peakimmobilier.com",
+      "categorie": "agence",
+      "plateforme": "WordPress (Elementor, theme Spades-Habitat)",
+      "exemple": "https://peakimmobilier.com/property/annecy-t3-au-calme-balcon-et-garage-ferme/",
+      "lecture": "complète",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "PERLE DU SEMNOZ IMMOBILIER",
+      "ville": "Annecy",
+      "domaine": "perledusemnoz.fr",
+      "categorie": "agence",
+      "plateforme": "WordPress",
+      "exemple": "https://perledusemnoz.fr/maison-de-227-m2-terrain-de-2000-m2/",
+      "lecture": "complète",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "PREUX Immobilier",
+      "ville": "Annecy",
+      "domaine": "preuximmobilier.fr",
+      "categorie": "agence",
+      "plateforme": "netty",
+      "exemple": "https://www.preuximmobilier.fr/fr/vente/appartement/saint-pierre-en-faucigny/74800",
+      "lecture": "partielle",
+      "sources": [
+        "bienici"
+      ]
+    },
+    {
+      "nom": "Propriétés du Lac",
+      "ville": "St Jorioz",
+      "domaine": "proprietesdulac.com",
+      "categorie": "agence",
+      "plateforme": "hektor",
+      "exemple": null,
+      "lecture": "non mesurée",
+      "sources": [
+        "bienici"
+      ]
+    },
+    {
+      "nom": "RENEE COSTES",
+      "ville": "Annecy",
+      "domaine": "costes-viager.com",
+      "categorie": "agence",
+      "plateforme": null,
+      "exemple": "https://www.costes-viager.com/acheter/haute-savoie-74/annecy/appartement-2pieces-422574018",
+      "lecture": "complète",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "RESONANCE IMMOBILIERE",
+      "ville": "Annecy",
+      "domaine": "resonance-immobiliere.com",
+      "categorie": "agence",
+      "plateforme": "adapt-immo",
+      "exemple": "https://www.resonance-immobiliere.com/fr/annonce/vente-appartement-neuf-dingy-saint-clair-p-r7-74023609.html",
+      "lecture": "partielle",
+      "sources": [
+        "bienici"
+      ]
+    },
+    {
+      "nom": "RIVES IMMOBILIER",
+      "ville": "Annecy",
+      "domaine": "rives-immo.fr",
+      "categorie": "agence",
+      "plateforme": "WordPress",
+      "exemple": "https://www.rives-immo.fr/property/rive-ouest-villa-contemporaine/",
+      "lecture": "complète",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "RUE PARALLÈLE",
+      "ville": "Annecy",
+      "domaine": "rue-parallele.com",
+      "categorie": "agence",
+      "plateforme": "netty",
+      "exemple": null,
+      "lecture": "non mesurée",
+      "sources": [
+        "bienici"
+      ]
+    },
+    {
+      "nom": "SAVINTER VIAGER",
+      "ville": "Annecy",
+      "domaine": "savinter.ch",
+      "categorie": "agence",
+      "plateforme": "Immomig",
+      "exemple": "https://www.savinter.ch/fr/o/a-vendre-attique-annecy-france-6217621",
+      "lecture": "partielle",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "SBM, SBM IMMOBILIER",
+      "ville": "Annecy",
+      "domaine": "sbm-immo.com",
+      "categorie": "agence",
+      "plateforme": "WordPress",
+      "exemple": "https://www.sbm-immo.com/bien/t2-26_96-74000/",
+      "lecture": "complète",
+      "sources": [
+        "sirene",
+        "bienici"
+      ]
+    },
+    {
+      "nom": "Sixième Avenue Annecy",
+      "ville": "Annecy",
+      "domaine": "sixiemeavenue.com",
+      "categorie": "agence",
+      "plateforme": null,
+      "exemple": null,
+      "lecture": "non mesurée",
+      "sources": [
+        "bienici"
+      ]
+    },
+    {
+      "nom": "STELLANGEL ANNECY LAC (STELLANGEL)",
+      "ville": "Annecy",
+      "domaine": "stellangel.fr",
+      "categorie": "agence",
+      "plateforme": "La Boite Immo",
+      "exemple": "https://www.stellangel.fr/vente/14-annecy/appartement/424-annecy-hyper-centre-t3-de-85m2-avec-terrasses-et-parking-privatif-et-vue-sur-le-canal-prestige",
+      "lecture": "complète",
+      "sources": [
+        "sirene",
+        "bienici"
+      ]
+    },
+    {
+      "nom": "STONE & WOOD",
+      "ville": "Annecy",
+      "domaine": "stoneandwood.fr",
+      "categorie": "agence",
+      "plateforme": "hektor",
+      "exemple": "https://www.stoneandwood.fr/proprietes/lac-annecy/entrelacs/appartement-esprit-loft-de-192-m2-avec-vaste-sous-sol-a-albens/",
+      "lecture": "complète",
+      "sources": [
+        "bienici"
+      ]
+    },
+    {
+      "nom": "STONE INVEST",
+      "ville": "Annecy",
+      "domaine": "stone-invest.fr",
+      "categorie": "agence",
+      "plateforme": null,
+      "exemple": "https://www.stone-invest.fr/maison-appartement-a-vendre-rhone-alpes/rare-a-la-vente-vue-lac-panoramique-exceptionnelle-fr-2",
+      "lecture": "complète",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "STUDIO YMO",
+      "ville": "Annecy",
+      "domaine": "studioymo.fr",
+      "categorie": "agence",
+      "plateforme": "La Boîte Immo",
+      "exemple": "https://www.studioymo.fr/vente/1-annecy/appartement/107-prestige-appartement-t3-t4-de-85-m-triangle-d-or-annecy",
+      "lecture": "complète",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "Suchet Immobilier",
+      "ville": null,
+      "domaine": "suchet-immobilier.fr",
+      "categorie": "agence",
+      "plateforme": null,
+      "exemple": "https://www.suchet-immobilier.fr/vente/23-st-martin-bellevue/maison/15-maison-recente-saint-martin-bellevue",
+      "lecture": "complète",
+      "sources": [
+        "decouverte"
+      ]
+    },
+    {
+      "nom": "SUR LES TOITS",
+      "ville": "Annecy",
+      "domaine": "surlestoits-immobilier.fr",
+      "categorie": "agence",
+      "plateforme": "WordPress + Elementor",
+      "exemple": "https://www.surlestoits-immobilier.fr/biens/lherboriste-type-3-rez-de-jardin-proche-lac/",
+      "lecture": "complète",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "Tour des Lacs Immobilier",
+      "ville": "Annecy",
+      "domaine": "tourdeslacs-immobilier.com",
+      "categorie": "agence",
+      "plateforme": "apimo",
+      "exemple": "https://tourdeslacs-immobilier.com/fr/propriete/vente+maison+doussard+doussard-magnifique-propriete-de-caractere-aux-volumes-exceptionnels-et-aux-multiples-possibilites-d-amenagement+87521321",
+      "lecture": "complète",
+      "sources": [
+        "bienici"
+      ]
+    },
+    {
+      "nom": "VALLAT IMMOBILIER",
+      "ville": "Annecy",
+      "domaine": "vallat-immobilier.com",
+      "categorie": "agence",
+      "plateforme": "ImmoFacile",
+      "exemple": "https://www.vallat-immobilier.com/bien/chalet-6-pieces-val-d-isere-124-m2-919",
+      "lecture": "partielle",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "Vallat Immobilier - Annecy",
+      "ville": "Annecy",
+      "domaine": "immo-lacs.com",
+      "categorie": "agence",
+      "plateforme": "immo-facile",
+      "exemple": "https://www.immo-lacs.com/vente/86-drumettaz-clarafond/maison/206-maison-contemporaine-basse-consommation-a-drumettaz-clarafond-prestige",
+      "lecture": "partielle",
+      "sources": [
+        "bienici"
+      ]
+    },
+    {
+      "nom": "36 Heures Immo",
+      "ville": null,
+      "domaine": "36heures.immo",
+      "categorie": "notaires",
+      "plateforme": null,
+      "exemple": "https://www.36heures.immo/fr/annonce/01M59Q05W49TAFYD53TT4FYSCF/appartement-paris-16e-arrondissement-75116-4p-89m2-900000euros.html",
+      "lecture": "complète",
+      "sources": [
+        "decouverte"
+      ]
+    },
+    {
+      "nom": "FNAIM",
+      "ville": null,
+      "domaine": "fnaim.fr",
+      "categorie": "portail",
+      "plateforme": null,
+      "exemple": "https://www.fnaim.fr/annonce-immobiliere/52869049/17-acheter-maison-st-jorioz-74410.htm",
+      "lecture": "complète",
+      "sources": [
+        "decouverte"
+      ]
+    },
+    {
+      "nom": "French-Property",
+      "ville": null,
+      "domaine": "french-property.com",
+      "categorie": "portail",
+      "plateforme": null,
+      "exemple": null,
+      "lecture": "non mesurée",
+      "sources": [
+        "decouverte"
+      ]
+    },
+    {
+      "nom": "LeSiteImmo",
+      "ville": null,
+      "domaine": "lesiteimmo.com",
+      "categorie": "portail",
+      "plateforme": null,
+      "exemple": "https://www.lesiteimmo.com/acheter/maison-6pieces/menthon-saint-bernard-74290/33277187",
+      "lecture": "complète",
+      "sources": [
+        "decouverte"
+      ]
+    },
+    {
+      "nom": "3G IMMO-CONSULTANT",
+      "ville": null,
+      "domaine": "3gimmo.com",
+      "categorie": "réseau",
+      "plateforme": null,
+      "exemple": null,
+      "lecture": "non mesurée",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "ANNECY LUXURY HOMES (BARNES ANNECY - BARNES MONT-BLANC - BARNES GENEVOIS)",
+      "ville": null,
+      "domaine": "barnes-international.com",
+      "categorie": "réseau",
+      "plateforme": null,
+      "exemple": "https://www.barnes-international.com/fr/vente/france/annecy/ref-APM-87423630.html",
+      "lecture": "complète",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "CAFE VIAGER",
+      "ville": null,
+      "domaine": "cafeviager.fr",
+      "categorie": "réseau",
+      "plateforme": null,
+      "exemple": null,
+      "lecture": "non mesurée",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "ERA ALPINA TRANSACTION",
+      "ville": null,
+      "domaine": "eraimmobilier.com",
+      "categorie": "réseau",
+      "plateforme": null,
+      "exemple": "https://www.eraimmobilier.com/annonces/591177",
+      "lecture": "partielle",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "Expertimo",
+      "ville": null,
+      "domaine": "reseau-expertimo.fr",
+      "categorie": "réseau",
+      "plateforme": null,
+      "exemple": "https://www.reseau-expertimo.fr/vente/116-st-etienne/appartement/t4/291874-tres-bel-appartement-traversant-de-90m-dans-residence-de-standing-avec-terrasse-de-20m-et-3-chambres-dpe-c/",
+      "lecture": "complète",
+      "sources": [
+        "decouverte"
+      ]
+    },
+    {
+      "nom": "Keller Williams France (KW)",
+      "ville": null,
+      "domaine": "kwfrance.com",
+      "categorie": "réseau",
+      "plateforme": null,
+      "exemple": null,
+      "lecture": "non mesurée",
+      "sources": [
+        "decouverte"
+      ]
+    },
+    {
+      "nom": "LAMY",
+      "ville": null,
+      "domaine": "lamy-immobilier.fr",
+      "categorie": "réseau",
+      "plateforme": "eZ Publish / Ibexa (indice : chemins /content/download/, images Cloudinary du groupe Evoriel)",
+      "exemple": "https://www.lamy-immobilier.fr/acheter/acheter-un-bien/annonces-de-biens-a-vendre/auvergne-rhone-alpes/haute-savoie-74/annecy-74000/appartement-annecy-74000-gb00191011",
+      "lecture": "complète",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "LF immo (La Fourmi)",
+      "ville": null,
+      "domaine": "lfimmo.fr",
+      "categorie": "réseau",
+      "plateforme": null,
+      "exemple": "https://www.lfimmo.fr/annonces/92979-vente-appartement-3pieces-saint-rambert-d-albon-26140",
+      "lecture": "complète",
+      "sources": [
+        "decouverte"
+      ]
+    },
+    {
+      "nom": "megAgence",
+      "ville": null,
+      "domaine": "megagence.com",
+      "categorie": "réseau",
+      "plateforme": null,
+      "exemple": null,
+      "lecture": "non mesurée",
+      "sources": [
+        "decouverte"
+      ]
+    },
+    {
+      "nom": "Propriétés Privées",
+      "ville": null,
+      "domaine": "proprietes-privees.com",
+      "categorie": "réseau",
+      "plateforme": null,
+      "exemple": "https://www.proprietes-privees.com/annonces/457279MPAT",
+      "lecture": "complète",
+      "sources": [
+        "decouverte"
+      ]
+    },
+    {
+      "nom": "RESEAU SWIXIM",
+      "ville": null,
+      "domaine": "swixim.com",
+      "categorie": "réseau",
+      "plateforme": null,
+      "exemple": "https://www.swixim.com/fr/nos-biens/ref-87288827/vente-appartement-gex-2-pieces-1-chambre-01170/",
+      "lecture": "complète",
+      "sources": [
+        "sirene",
+        "decouverte"
+      ]
+    },
+    {
+      "nom": "SEMMAC IMMO (L'ADRESSE)",
+      "ville": null,
+      "domaine": "ladresse.com",
+      "categorie": "réseau",
+      "plateforme": null,
+      "exemple": "https://www.ladresse.com/annonce/location/appartement/conflans-sainte-honorine-78700/14681229",
+      "lecture": "partielle",
+      "sources": [
+        "sirene"
+      ]
+    },
+    {
+      "nom": "Sextant France",
+      "ville": null,
+      "domaine": "sextantfrance.fr",
+      "categorie": "réseau",
+      "plateforme": null,
+      "exemple": "https://www.sextantfrance.fr/proprietes/propriete-potentielle-beneficiant-d-une-tranquillite-absolue-au-sein-d-un-somptueux-parc-de-5-hectares-un-veritable-havre-de-verdure-75011175513/",
+      "lecture": "complète",
+      "sources": [
+        "decouverte"
+      ]
+    }
+  ],
+  "ecartes": [
+    {
+      "domaine": "cabinet-hermes.fr",
+      "raison": "immobilier d’entreprise (bureaux, Lyon)"
+    },
+    {
+      "domaine": "axite.fr",
+      "raison": "immobilier d’entreprise (bureaux)"
+    },
+    {
+      "domaine": "primagest.fr",
+      "raison": "injoignable (connexion coupée), syndic"
+    },
+    {
+      "domaine": "efficity.com",
+      "raison": "anti-robot (403, déjà écarté à Lille)"
+    },
+    {
+      "domaine": "optimom.fr",
+      "raison": "certificat invalide"
+    },
+    {
+      "domaine": "tourdeslacs.com",
+      "raison": "certificat invalide (site actif : tourdeslacs-immobilier.com)"
+    },
+    {
+      "domaine": "era-immobilier.com",
+      "raison": "injoignable (site actif : eraimmobilier.com)"
+    },
+    {
+      "domaine": "optimhome.com",
+      "raison": "anti-robot (403)"
+    },
+    {
+      "domaine": "capifrance.fr",
+      "raison": "anti-robot (403)"
+    },
+    {
+      "domaine": "leggett-immo.com",
+      "raison": "anti-robot (403)"
+    },
+    {
+      "domaine": "green-acres.fr",
+      "raison": "injoignable"
+    },
+    {
+      "domaine": "zimo.fr",
+      "raison": "anti-robot (403)"
+    },
+    {
+      "domaine": "realadvisor.fr",
+      "raison": "anti-robot (403)"
+    },
+    {
+      "domaine": "maisonsetappartements.fr",
+      "raison": "anti-robot (403)"
+    },
+    {
+      "domaine": "nestoria.fr",
+      "raison": "agrégateur qui renvoie vers les portails"
+    },
+    {
+      "domaine": "luxuryestate.com",
+      "raison": "anti-robot (405)"
+    },
+    {
+      "domaine": "immo.trovit.fr",
+      "raison": "agrégateur qui renvoie vers les portails"
+    },
+    {
+      "domaine": "licitor.com",
+      "raison": "ventes judiciaires sans DPE détaillé"
+    },
+    {
+      "domaine": "avoventes.fr",
+      "raison": "ventes judiciaires sans DPE détaillé"
+    },
+    {
+      "domaine": "interencheres.com",
+      "raison": "anti-robot (403)"
+    },
+    {
+      "domaine": "bellesdemeures.com",
+      "raison": "anti-robot (403)"
+    },
+    {
+      "domaine": "etreproprio.com",
+      "raison": "anti-robot (403)"
+    },
+    {
+      "domaine": "immodvisor.com",
+      "raison": "avis clients, pas d’annonces"
+    },
+    {
+      "domaine": "selogerneuf.com",
+      "raison": "programmes neufs"
+    },
+    {
+      "domaine": "explorimmoneuf.com",
+      "raison": "programmes neufs"
+    },
+    {
+      "domaine": "operapromotion.fr",
+      "raison": "promoteur (neuf seulement)"
+    },
+    {
+      "domaine": "laconciergeriedulac.com",
+      "raison": "conciergerie, location saisonnière"
+    },
+    {
+      "domaine": "era-immobilier-faverges.fr",
+      "raison": "injoignable"
+    }
+  ]
+}
