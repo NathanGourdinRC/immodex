@@ -2,9 +2,36 @@ import { runLookup, runLandLookup } from '../common/match.js';
 import { createHistoryStore } from '../common/history.js';
 import { createPropertyStore } from '../common/properties.js';
 import { salesAt } from '../common/dvf.js';
+import { createSync, SYNCED_STORAGE_KEYS } from '../common/sync.js';
 
 const history = createHistoryStore(chrome.storage.local);
 const properties = createPropertyStore(chrome.storage.local);
+
+// ─── Synchro avec l'appli téléphone ───
+// Déclenchée par les changements locaux (après 3 s de calme), au réveil du service worker
+// si la dernière date de plus de 5 minutes, et toutes les 30 minutes par une alarme.
+const sync = createSync({ storage: chrome.storage.local });
+const SYNC_ALARM = 'immodex-sync';
+let syncTimer = null;
+
+function runSync(options) {
+  return sync.sync(options).catch((e) => ({ ok: false, error: String(e.message || e) }));
+}
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || !SYNCED_STORAGE_KEYS.some((k) => k in changes)) return;
+  clearTimeout(syncTimer);
+  // ifLocalChanges : les écritures de la synchro elle-même ne relancent pas d'appel.
+  syncTimer = setTimeout(() => runSync({ ifLocalChanges: true }), 3000);
+});
+if (chrome.alarms) {
+  // Recréer l'alarme à chaque réveil la repousserait sans fin : seulement si elle manque.
+  chrome.alarms.get(SYNC_ALARM).then((a) => a || chrome.alarms.create(SYNC_ALARM, { periodInMinutes: 30 })).catch(() => {});
+  chrome.alarms.onAlarm.addListener((a) => {
+    if (a.name === SYNC_ALARM) runSync();
+  });
+}
+runSync({ minAgeMs: 5 * 60 * 1000 });
 // Critères envoyés par « Modifier les champs » depuis une annonce, relus par le popup.
 const PREFILL_KEY = 'immodex.prefill.v1';
 const PREFILL_TTL_MS = 10 * 60 * 1000;
@@ -361,6 +388,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         .catch(() => ({ opened: false })),
       sendResponse
     );
+  }
+  if (message.type === 'SYNC_STATUS') {
+    return respond(sync.status().then((status) => ({ status })), sendResponse);
+  }
+  if (message.type === 'SYNC_NOW') {
+    return respond(
+      runSync({ minAgeMs: message.minAgeMs || 0 }).then(async (result) => ({ result, status: await sync.status() })),
+      sendResponse
+    );
+  }
+  if (message.type === 'SYNC_ENABLE') {
+    // Sans clé : l'extension crée l'espace. Avec : le téléphone rejoint celui de l'extension.
+    return respond(
+      sync.enable(message.key || undefined).then(async () => ({ result: await runSync(), status: await sync.status() })),
+      sendResponse
+    );
+  }
+  if (message.type === 'SYNC_DISABLE') {
+    return respond(sync.disable().then((status) => ({ status })), sendResponse);
   }
   if (message.type === 'CACHE_CLEAR') {
     memoryCache.clear();

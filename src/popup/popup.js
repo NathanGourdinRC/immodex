@@ -204,18 +204,156 @@ function setMode(next) {
   for (const [name, tab] of Object.entries(tabs)) tab.classList.toggle('is-active', name === mode);
   dpeForm.classList.toggle('imx-hidden', mode !== 'dpe');
   landForm.classList.toggle('imx-hidden', mode !== 'land');
-  const listMode = mode === 'history' || mode === 'biens' || mode === 'sites';
+  const listMode = mode === 'history' || mode === 'biens' || mode === 'sites' || mode === 'sync';
   analyzeBtn.classList.toggle('imx-hidden', listMode);
   siteBar.classList.toggle('imx-hidden', listMode || !siteBar.childElementCount);
   historyView.classList.toggle('imx-hidden', mode !== 'history');
   biensView.classList.toggle('imx-hidden', mode !== 'biens');
   sitesView.classList.toggle('imx-hidden', mode !== 'sites');
+  syncView.classList.toggle('imx-hidden', mode !== 'sync');
+  phoneBtn.classList.toggle('is-active', mode === 'sync');
   setStatus(null, '');
   setEntryBar(null);
   resultsBox.replaceChildren();
   if (mode === 'history') loadHistory();
   if (mode === 'biens') renderBiens();
   if (mode === 'sites') renderSites();
+  if (mode === 'sync') renderSync();
+}
+
+// ─── Synchro avec le téléphone ───
+// Même panneau dans l'extension (qui crée l'espace et affiche le QR code) et dans l'appli
+// téléphone (qui le rejoint en scannant ce code).
+
+const syncView = document.getElementById('sync-view');
+const phoneBtn = document.getElementById('phone-btn');
+const isWebApp = document.documentElement.classList.contains('imx-web');
+phoneBtn.appendChild(icon('phone', 15));
+phoneBtn.addEventListener('click', () => {
+  currentPage = null;
+  setMode(mode === 'sync' ? 'dpe' : 'sync');
+});
+
+function sinceText(ts) {
+  const min = Math.round((Date.now() - ts) / 60000);
+  if (min < 1) return "à l'instant";
+  if (min < 60) return `il y a ${min} min`;
+  return `le ${UI.formatDateTime(ts)}`;
+}
+
+// QR code en SVG : un carré par module sombre, dans un seul tracé.
+function qrNode(text) {
+  const qr = qrcode(0, 'M');
+  qr.addData(text);
+  qr.make();
+  const n = qr.getModuleCount();
+  let d = '';
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) d += `M${c} ${r}h1v1h-1z`;
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', `-3 -3 ${n + 6} ${n + 6}`);
+  svg.setAttribute('class', 'imx-qr');
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', 'QR code d’appairage du téléphone');
+  const bg = document.createElementNS(ns, 'rect');
+  Object.entries({ x: -3, y: -3, width: n + 6, height: n + 6, fill: '#fff' }).forEach(([k, v]) => bg.setAttribute(k, v));
+  const path = document.createElementNS(ns, 'path');
+  path.setAttribute('d', d);
+  path.setAttribute('fill', '#0f172a');
+  svg.append(bg, path);
+  return svg;
+}
+
+async function syncRequest(message) {
+  try {
+    const res = await chrome.runtime.sendMessage(message);
+    return res && res.ok ? res : { ok: false, error: (res && res.error) || 'Erreur inconnue' };
+  } catch (err) {
+    return { ok: false, error: String(err.message || err) };
+  }
+}
+
+async function renderSync(status) {
+  if (!status) {
+    syncView.replaceChildren(UI.loading('Lecture de la synchro…'));
+    const res = await syncRequest({ type: 'SYNC_STATUS' });
+    if (!res.ok) return syncView.replaceChildren(UI.alert(res.error));
+    status = res.status;
+  }
+  if (mode !== 'sync') return;
+  const what = 'zones, annonces suivies avec leur statut et leurs notes, recherches des 7 derniers jours';
+
+  if (!status.paired) {
+    if (isWebApp) {
+      syncView.replaceChildren(
+        el('div', { class: 'imx-label' }, 'Relier ce téléphone'),
+        el('p', { class: 'imx-meta' }, `Ce téléphone n'est pas encore relié à l'extension. Sur l'ordinateur, ouvre Immodex+ dans Chrome, touche le bouton téléphone, puis scanne le QR code avec l'appareil photo.`),
+        el('p', { class: 'imx-meta' }, `Tu retrouveras ici : ${what}.`)
+      );
+      return;
+    }
+    const start = el('button', { type: 'button', class: 'imx-btn imx-btn-primary imx-btn-block' }, icon('phone', 15), 'Relier mon téléphone');
+    start.addEventListener('click', async () => {
+      start.disabled = true;
+      const res = await syncRequest({ type: 'SYNC_ENABLE' });
+      if (!res.ok) {
+        start.disabled = false;
+        return syncView.append(UI.alert(res.error));
+      }
+      renderSync(res.status);
+    });
+    syncView.replaceChildren(
+      el('div', { class: 'imx-label' }, 'Appli téléphone'),
+      el('p', { class: 'imx-meta' }, `Retrouve sur ton téléphone : ${what}. Les modifications faites d'un côté arrivent de l'autre.`),
+      el('p', { class: 'imx-meta' }, 'Les données passent par immodex.vercel.app, rangées sous une clé que seuls tes appareils connaissent.'),
+      start
+    );
+    return;
+  }
+
+  const line = status.lastError
+    ? UI.alert(`Dernière synchro impossible : ${status.lastError}.`)
+    : UI.notice(status.lastSync ? `Synchro active · dernière ${sinceText(status.lastSync)}` : 'Synchro active · première synchro en cours');
+  const now = el('button', { type: 'button', class: 'imx-btn imx-btn-sm' }, icon('refresh', 14), 'Synchroniser maintenant');
+  now.addEventListener('click', async () => {
+    now.disabled = true;
+    const res = await syncRequest({ type: 'SYNC_NOW' });
+    if (!res.ok) return syncView.prepend(UI.alert(res.error));
+    renderSync(res.status);
+  });
+  const stop = el('button', { type: 'button', class: 'imx-btn imx-btn-sm' }, isWebApp ? 'Délier ce téléphone' : 'Arrêter la synchro');
+  stop.addEventListener('click', async () => {
+    const question = isWebApp
+      ? 'Délier ce téléphone ? Ses données restent ici, mais il ne recevra plus celles de l’ordinateur.'
+      : 'Arrêter la synchro dans ce Chrome ? Les données restent ici. Pour relier à nouveau, il faudra rescanner un nouveau QR code sur le téléphone.';
+    if (!confirm(question)) return;
+    const res = await syncRequest({ type: 'SYNC_DISABLE' });
+    renderSync(res.ok ? res.status : null);
+  });
+  const copy = el('button', { type: 'button', class: 'imx-btn imx-btn-sm' }, icon('copy', 14), 'Copier le lien');
+  copy.addEventListener('click', async () => {
+    await navigator.clipboard.writeText(status.pairUrl).catch(() => {});
+    copy.replaceChildren(icon('check', 14), 'Lien copié');
+  });
+
+  syncView.replaceChildren(
+    el('div', { class: 'imx-label' }, isWebApp ? 'Synchro avec l’extension' : 'Appli téléphone'),
+    line,
+    el(
+      'div',
+      { class: 'imx-qr-box' },
+      qrNode(status.pairUrl),
+      el(
+        'p',
+        { class: 'imx-meta' },
+        isWebApp
+          ? 'Pour relier un autre appareil, scanne ce code avec lui.'
+          : "Scanne ce code avec l'appareil photo du téléphone : il ouvre l'appli, déjà reliée. Puis, dans le menu de Chrome du téléphone, choisis « Ajouter à l'écran d'accueil » pour la garder."
+      )
+    ),
+    el('p', { class: 'imx-meta' }, 'Ce code donne accès à tes données : ne le partage avec personne.'),
+    el('div', { class: 'imx-actions' }, now, copy, stop)
+  );
 }
 
 function renderResult(kind, result, payload) {
@@ -388,7 +526,7 @@ function showEntry(entry, { fromRestore = false } = {}) {
 }
 
 historyClearBtn.addEventListener('click', async () => {
-  if (!confirm('Effacer tout l’historique des recherches ?')) return;
+  if (!confirm('Effacer tout l’historique des recherches ? (aussi sur les appareils reliés par la synchro)')) return;
   await chrome.runtime.sendMessage({ type: 'HISTORY_CLEAR' });
   chrome.storage.session.remove(POPUP_STATE_KEY).catch(() => {});
   loadHistory();
@@ -455,7 +593,7 @@ async function renderBiens() {
   const singles = groups.filter((g) => g.count === 1);
   const clear = el('button', { type: 'button', class: 'imx-btn imx-btn-sm' }, 'Tout effacer');
   clear.addEventListener('click', async () => {
-    if (!confirm('Effacer le suivi de toutes les annonces vues ?')) return;
+    if (!confirm('Effacer le suivi de toutes les annonces vues ? (aussi sur les appareils reliés par la synchro)')) return;
     await chrome.runtime.sendMessage({ type: 'SIGHTINGS_CLEAR' });
     renderBiens();
   });
@@ -468,7 +606,7 @@ async function renderBiens() {
     ...repeated.map(groupCard),
     singles.length ? el('div', { class: 'imx-label' }, `Annonces vues une fois (${singles.length})`) : null,
     ...singles.slice(0, 30).map(groupCard),
-    total ? el('div', { class: 'imx-section-head' }, el('small', { class: 'imx-meta' }, 'Gardé 12 mois, uniquement dans ce Chrome.'), clear) : null,
+    total ? el('div', { class: 'imx-section-head' }, el('small', { class: 'imx-meta' }, 'Gardé 12 mois, sur cet appareil et ceux reliés par la synchro.'), clear) : null,
   ];
   biensView.replaceChildren(...parts.filter(Boolean));
 }
@@ -573,6 +711,10 @@ for (const [name, tab] of Object.entries(tabs)) {
 
 async function init() {
   checkSiteCoverage();
+  // Récupère ce que le téléphone a changé depuis la dernière fois (au plus une fois par minute).
+  syncRequest({ type: 'SYNC_NOW', minAgeMs: 60 * 1000 }).then((res) => {
+    if (res.ok && res.result && res.result.applied && (mode === 'biens' || mode === 'history')) setMode(mode);
+  });
   // 1. Critères envoyés par « Modifier » depuis une annonce.
   try {
     const res = await chrome.runtime.sendMessage({ type: 'PREFILL_GET' });

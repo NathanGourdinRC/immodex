@@ -175,4 +175,4 @@ function createZoneStore(storageArea) {
   };
 }
 
-export { ZONES_KEY, TRACKING_KEY, STATUSES, cleanZone, fpInZone, groupsInZone, trackingKey, createZoneStore };
+export { ZONES_KEY, TRACKING_KEY, MAX_ZONES, STATUSES, cleanZone, fpInZone, groupsInZone, trackingKey, createZoneStore };

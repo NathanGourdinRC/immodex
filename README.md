@@ -34,6 +34,7 @@
 | Vérifier un candidat | lien Google Maps | + **Street View** à l'adresse de chaque candidat (comparer la façade aux photos) et **carte des candidats** numérotés (OpenStreetMap, dans un onglet) |
 | Prix du marché | rien | **Ventes passées** à l'adresse de chaque candidat (DVF, 5 dernières années) : prix, surface, prix au m², vente de surface proche de l'annonce mise en avant, médianes de la rue et du secteur |
 | Suivre une recherche sur des semaines | rien | **Tableau de bord** (bouton du popup) par zone de communes : nouveaux DPE de la zone (souvent une annonce en préparation), annonces vues avec statut et note, carte des prix médians au m² par section cadastrale |
+| Sur le téléphone | rien | **appli téléphone** [immodex.vercel.app](https://immodex.vercel.app) : recherche d'adresse, historique, biens suivis et tableau de bord, **synchronisés avec l'extension** (bouton téléphone du popup, appairage par QR code) |
 | Historique de prix partagé | rien | bouton **Castorus** : copie le lien de l'annonce et ouvre la recherche par URL de Castorus (pas d'API publique, pas de collecte automatique) |
 
 Détails techniques et choix : [docs/plans/2026-10-25-historique-et-sites-nord.md](docs/plans/2026-10-25-historique-et-sites-nord.md).
@@ -192,7 +193,8 @@ Toutes ces APIs sont **publiques, gratuites, sans clé**. Elles sont financées 
 ## Confidentialité
 
 - **Pas de compte, pas de login, pas de tracking**
-- **Aucune donnée n'est envoyée à des serveurs tiers** autres que les APIs publiques listées plus haut
+- **Aucune donnée n'est envoyée à des serveurs tiers** autres que les APIs publiques listées plus haut, et le serveur de synchro si tu l'actives
+- **Synchro avec le téléphone (facultative)** : zones, suivi des biens (statut, note), annonces vues et recherches des 7 derniers jours passent par `immodex.vercel.app/api/sync` (fonction Vercel, base Upstash Redis à Francfort), rangés sous l'empreinte SHA-256 d'une clé aléatoire générée par l'extension. La clé n'existe que sur tes appareils (QR code d'appairage) ; sans elle, les données sont inaccessibles
 - **Tout le code tourne dans le navigateur** (Manifest V3, service worker local)
 - **Caches locaux uniquement** : `chrome.storage.session` pour le cache court (1 h), `chrome.storage.local` pour les parcelles (24 h)
 - **Pas de publicité, pas d'affiliation cachée**
@@ -240,6 +242,7 @@ src/
     apicarto.js         # Client IGN cadastre + centroïde
     geo.js              # INSEE resolution + BAN reverse
     match.js            # Tier escalation + scoring DPE & terrain
+    sync.js             # Synchro avec l'appli téléphone (ombre, fusion, appairage)
   content/
     leboncoin.js        # Extraction depuis __NEXT_DATA__
     bienici.js          # Extraction depuis __INITIAL_STATE__
@@ -249,6 +252,10 @@ src/
     overlay.css         # Look Pokédex (chassis rouge + LCD vert)
   popup/
     popup.html/.css/.js # Recherche manuelle (popup d'extension)
+api/
+  sync.js               # Fonction Vercel de synchro (Upstash Redis)
+web/                    # Appli téléphone : les pages de src/ + adaptateur web (platform/)
+scripts/build-web.mjs   # Construit dist-web/ pour Vercel
 ```
 
 ### Build local du zip
@@ -289,7 +296,7 @@ Dans les zones denses, plusieurs logements peuvent partager le même code postal
 - 🔴 **Rouge** : score < 50
 
 ### Est-ce que mon adresse de recherche est enregistrée quelque part ?
-Non. Les caches restent dans le navigateur. Aucune télémétrie n'est envoyée.
+Non, sauf si tu actives la synchro avec le téléphone : tes recherches des 7 derniers jours, tes zones et ton suivi des biens sont alors gardés sur le serveur de synchro, sous ta clé. Les caches restent dans le navigateur. Aucune télémétrie n'est envoyée.
 
 ### Comment contribuer ?
 PRs et issues bienvenues. Les commits doivent suivre [conventional-commits](https://www.conventionalcommits.org/). Lance les checks localement avec `node --check src/**/*.js` (ou la CI s'en charge).

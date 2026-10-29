@@ -32,7 +32,8 @@ const layers = {
   biens: L.layerGroup().addTo(map),
 };
 L.control
-  .layers(baseLayers, { 'Prix au m² par section': layers.prices, Communes: layers.contours, 'Nouveaux DPE': layers.dpe, 'Annonces vues': layers.biens }, { collapsed: false })
+  // Sur un écran de téléphone, la liste des couches cacherait la moitié de la carte : repliée.
+  .layers(baseLayers, { 'Prix au m² par section': layers.prices, Communes: layers.contours, 'Nouveaux DPE': layers.dpe, 'Annonces vues': layers.biens }, { collapsed: matchMedia('(max-width: 600px)').matches })
   .addTo(map);
 // Marqueurs par identifiant, pour centrer la carte depuis la liste.
 const markers = new Map();

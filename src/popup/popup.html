@@ -13,6 +13,7 @@
         <span class="imx-subtitle">Adresse réelle d'une annonce immobilière</span>
       </div>
       <button type="button" id="dashboard-btn" class="imx-btn imx-btn-sm imx-dashboard-btn" title="Zones de recherche : nouveaux DPE, annonces vues, prix du marché"></button>
+      <button type="button" id="phone-btn" class="imx-btn imx-btn-sm imx-phone-btn" title="Synchro avec l'appli téléphone" aria-label="Synchro avec l'appli téléphone"></button>
       <span class="imx-version" id="version"></span>
     </header>
 
@@ -88,6 +89,8 @@
 
       <section id="sites-view" class="imx-panel imx-hidden"></section>
 
+      <section id="sync-view" class="imx-panel imx-hidden"></section>
+
       <section id="entry-bar" class="imx-section-head imx-hidden"></section>
       <section id="status" class="imx-hidden"></section>
       <section id="results"></section>
@@ -99,6 +102,7 @@
     </footer>
 
     <script src="../ui/components.js"></script>
+    <script src="../vendor/qrcode/qrcode.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

@@ -1,0 +1,43 @@
+/* Appli téléphone : ajustements des pages de l'extension pour un écran de téléphone. */
+
+/* Écran de recherche (le popup de l'extension) en pleine largeur, centré sur grand écran. */
+html.imx-web body.imx-popup:has(> .imx-popup-main) { width: auto; max-width: 560px; min-height: 100vh; margin: 0 auto; }
+
+/* Ce qui suppose un onglet Chrome à côté : lire la page ouverte, activer un site. */
+html.imx-web #analyze-btn,
+html.imx-web #mode-sites,
+html.imx-web #site-bar { display: none !important; }
+html.imx-web .imx-tabs { grid-template-columns: repeat(4, 1fr); }
+
+/* Cibles tactiles un peu plus grandes. */
+html.imx-web .imx-tab { height: 36px; }
+html.imx-web .imx-btn-sm { min-height: 34px; }
+
+html.imx-web .imx-web-back { margin-right: 4px; }
+
+.imx-web-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 32px);
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #fff;
+  font: 13px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.3);
+}
+.imx-web-toast button {
+  flex: none;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  background: #fff;
+  color: #0f172a;
+  font: 600 13px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}

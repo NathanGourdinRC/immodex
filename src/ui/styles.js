@@ -388,6 +388,10 @@ button, input, select { font-family: inherit; }
 body.imx-popup { width: 384px; margin: 0; background: var(--imx-bg-subtle); }
 .imx-popup-header { display: flex; align-items: center; gap: 10px; padding: 14px 16px; background: var(--imx-bg); border-bottom: 1px solid var(--imx-border); }
 .imx-dashboard-btn { margin-left: auto; }
+.imx-phone-btn { padding: 0 8px; }
+.imx-phone-btn.is-active { background: var(--imx-accent); border-color: var(--imx-accent); color: #fff; }
+.imx-qr-box { display: grid; grid-template-columns: 136px 1fr; gap: 12px; align-items: center; }
+.imx-qr { width: 136px; height: 136px; border: 1px solid var(--imx-border); border-radius: 8px; }
 .imx-popup-header .imx-version { font-size: 11px; color: var(--imx-text-3); }
 .imx-popup-main { display: grid; gap: 14px; padding: 14px 16px 16px; }
 .imx-tabs { display: grid; grid-template-columns: repeat(5, auto); gap: 2px; padding: 3px; border-radius: 10px; background: var(--imx-bg-muted); }
@@ -446,9 +450,11 @@ body.imx-popup { width: 384px; margin: 0; background: var(--imx-bg-subtle); }
 .imx-popup-footer a:hover { color: var(--imx-text); text-decoration: underline; }
 `;
 
-  // Dans le popup (page de l'extension), la feuille s'applique d'elle-même ;
-  // sur les annonces, overlay.js l'injecte dans son Shadow DOM.
-  if (location.protocol === 'chrome-extension:' && document.head) {
+  // Dans le popup (page de l'extension) et dans l'appli téléphone (classe posée par
+  // web/platform/chrome-shim.js), la feuille s'applique d'elle-même ; sur les annonces,
+  // overlay.js l'injecte dans son Shadow DOM.
+  const ownPage = location.protocol === 'chrome-extension:' || document.documentElement.classList.contains('imx-web');
+  if (ownPage && document.head) {
     const style = document.createElement('style');
     style.textContent = window.__immodexCSS;
     document.head.appendChild(style);
