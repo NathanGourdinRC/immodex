@@ -9,7 +9,24 @@
   "background_color": "#f8fafc",
   "theme_color": "#1d4ed8",
   "icons": [
-    { "src": "/icons/192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icons/512.png", "sizes": "512x512", "type": "image/png" }
-  ]
+    {
+      "src": "/icons/192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "share_target": {
+    "action": "/src/popup/popup.html",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
 }

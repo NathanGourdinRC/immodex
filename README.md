@@ -34,7 +34,7 @@
 | Vérifier un candidat | lien Google Maps | + **Street View** à l'adresse de chaque candidat (comparer la façade aux photos) et **carte des candidats** numérotés (OpenStreetMap, dans un onglet) |
 | Prix du marché | rien | **Ventes passées** à l'adresse de chaque candidat (DVF, 5 dernières années) : prix, surface, prix au m², vente de surface proche de l'annonce mise en avant, médianes de la rue et du secteur |
 | Suivre une recherche sur des semaines | rien | **Tableau de bord** (bouton du popup) par zone de communes : nouveaux DPE de la zone (souvent une annonce en préparation), annonces vues avec statut et note, carte des prix médians au m² par section cadastrale |
-| Sur le téléphone | rien | **appli téléphone** [immodex.vercel.app](https://immodex.vercel.app) : recherche d'adresse, historique, biens suivis et tableau de bord, **synchronisés avec l'extension** (bouton téléphone du popup, appairage par QR code) |
+| Sur le téléphone | rien | **appli téléphone** [immodex.vercel.app](https://immodex.vercel.app) : recherche d'adresse, historique, biens suivis et tableau de bord, **synchronisés avec l'extension** (bouton téléphone du popup, appairage par QR code) ; annonce **partagée** vers l'appli (Android) ou **collée** (lien ou texte copié) : critères lus, recherche lancée, annonce ajoutée aux biens suivis |
 | Historique de prix partagé | rien | bouton **Castorus** : copie le lien de l'annonce et ouvre la recherche par URL de Castorus (pas d'API publique, pas de collecte automatique) |
 
 Détails techniques et choix : [docs/plans/2026-10-25-historique-et-sites-nord.md](docs/plans/2026-10-25-historique-et-sites-nord.md).

@@ -347,7 +347,7 @@
   const POSTAL_BLOCKERS = /(?:r[ée]f(?:[ée]rence)?|mandat|n[°o]|t[ée]l(?:[ée]phone)?|siret|siren|rcs|carte\s+pro|prix|€)\.?\s*:?\s*$/i;
   // Libellés de fiche qui suivent souvent un code postal et ne sont pas des villes.
   // (« Code », « Adresse »… : libellé suivant quand la valeur de « Ville » est vide.)
-  const NOT_CITIES = /^(?:Type|Chambres?|Pi[eè]ces?|Surface|Prix|D[ée]tails?|Appeler|Contacter|Voir|R[ée]f(?:[ée]rence)?|Mandat|Description|Honoraires|Charges|Copropri[ée]t[ée]|Euros?|Ville|Commune|Agence|Contact|T[ée]l[ée]phone|Email|Mail|Code|Adresse|Quartier|Secteur|Pays|D[ée]partement|R[ée]gion|Localisation|Nombre|Situation|Select|S[ée]lectionner|Choisir|Toutes?)(?:\s|$)/i;
+  const NOT_CITIES = /^(?:Type|Chambres?|Pi[eè]ces?|Surface|Prix|D[ée]tails?|Appeler|Contacter|Voir|R[ée]f(?:[ée]rence)?|Mandat|Description|Honoraires|Charges|Copropri[ée]t[ée]|Euros?|Ville|Commune|Agence|Contact|T[ée]l[ée]phone|Email|Mail|Code|Adresse|Quartier|Secteur|Pays|D[ée]partement|R[ée]gion|Localisation|Nombre|Situation|Select|S[ée]lectionner|Choisir|Toutes?|DPE|GES|Classe|Bilan|Diagnostic|Consommation)(?:\s|$)/i;
   const VALID_POSTAL = /^(?:0[1-9]|[1-8]\d|9[0-5]|97|98)\d{3}$/;
 
   function cleanCity(raw) {
@@ -955,7 +955,9 @@
       set(r, 'city', pcHead.city, 'titre');
     }
     const headCity = headlineCity(head);
-    const urlCity = cityFromUrl(doc.URL || (typeof location !== 'undefined' ? location.href : ''));
+    // Seulement une vraie adresse web (« about:blank » d'un document construit donnerait « Blank »).
+    const docUrl = doc.URL || (typeof location !== 'undefined' ? location.href : '');
+    const urlCity = /^https?:/i.test(docUrl) ? cityFromUrl(docUrl) : null;
     const labeledPostal = text.match(LABELED_POSTAL);
     const labeledCity = text.match(LABELED_CITY);
     if (labeledPostal && VALID_POSTAL.test(labeledPostal[1])) {
@@ -1250,5 +1252,64 @@
     return null;
   }
 
-  window.__immodexGeneric = { extractPage, extractPageAsync, extractFromDocument, extractPrice, detectTransaction, deriveClasses, postalAndCity, dpeDateRange };
+  // Empreinte d'une annonce pour le suivi des biens (voir src/common/properties.js).
+  function fingerprint(payload, transaction) {
+    return {
+      kind: payload.kind === 'land' ? 'land' : 'dpe',
+      transaction,
+      postal: payload.postal || null,
+      city: payload.city || null,
+      surface: payload.surface,
+      energyClass: payload.energyClass || null,
+      gesClass: payload.gesClass || null,
+      energyConsumption: payload.energyConsumption ?? null,
+      gesEmission: payload.gesEmission ?? null,
+      buildingType: payload.buildingType || null,
+    };
+  }
+
+  // Annonce partagée depuis une autre appli du téléphone (Leboncoin, SeLoger, navigateur…) :
+  // on n'a que son titre, un court texte et son lien. On les lit comme une petite page,
+  // sans jamais télécharger l'annonce elle-même (les portails l'interdisent).
+  const LINK_IN_TEXT = /https?:\/\/[^\s<>"']+/i;
+  function extractShared({ title, text, url } = {}) {
+    const head = String(title || '').trim().slice(0, 500);
+    const body = String(text || '').slice(0, 5000);
+    const link = (url && /^https?:\/\//i.test(url) ? url : (body.match(LINK_IN_TEXT) || [])[0]) || null;
+    // Texte posé avec textContent, jamais en HTML : le partage vient d'une autre appli.
+    const doc = document.implementation.createHTMLDocument(head);
+    const h1 = doc.createElement('h1');
+    h1.textContent = head;
+    const main = doc.createElement('main');
+    for (const line of body.replace(new RegExp(LINK_IN_TEXT.source, 'gi'), ' ').split(/\n+/)) {
+      const p = doc.createElement('p');
+      p.textContent = line;
+      main.append(p);
+    }
+    doc.body.append(h1, main);
+
+    let payload = null;
+    try {
+      payload = extractFromDocument(doc);
+    } catch {
+      payload = null;
+    }
+    // Ville absente du texte : celle du lien, s'il en contient une (« …/vente/sevrier/maison/… »).
+    if (payload && !payload.postal && !payload.city && link) payload.city = cityFromUrl(link) || null;
+    const transaction = link && /locations?\b|\/louer|-louer|a-louer|loyer/i.test(link) ? 'location' : detectTransaction(doc);
+    let price = null;
+    try {
+      price = extractPrice(doc, transaction);
+    } catch {
+      price = null;
+    }
+    return {
+      page: link ? { url: link, title: head || link } : null,
+      payload,
+      fp: payload && payload.surface && (payload.postal || payload.city) ? fingerprint(payload, transaction) : null,
+      price,
+    };
+  }
+
+  window.__immodexGeneric = { extractPage, extractPageAsync, extractFromDocument, extractPrice, detectTransaction, deriveClasses, postalAndCity, dpeDateRange, fingerprint, extractShared };
 })();

@@ -445,3 +445,36 @@ test('ville dans l’adresse « /acheter/maison-saint-jorioz-50 » (Compimmo)', 
   const r = extract(page('<main><p>Maison 139 m²</p><p>Classe énergie : B</p></main>'), 'https://www.compimmo.com/acheter/maison-saint-jorioz-50');
   assert.equal(r.city, 'Saint Jorioz');
 });
+
+test('annonce partagée depuis le téléphone : titre, texte et lien lus sans charger la page', () => {
+  const win = loadPage('<!doctype html><html><head></head><body></body></html>', 'https://immodex.vercel.app/src/popup/popup.html');
+  const read = (input) => plain(win.__immodexGeneric.extractShared(input));
+
+  // Chrome qui partage une page SeLoger : le titre de la page porte tout.
+  const seloger = read({ title: 'Vente maison 5 pièces Sévrier (74320) - 120 m² - 890 000 € | SeLoger', url: 'https://www.seloger.com/annonces/achat/maison/sevrier-74/123.htm' });
+  assert.deepEqual(seloger.page, { url: 'https://www.seloger.com/annonces/achat/maison/sevrier-74/123.htm', title: 'Vente maison 5 pièces Sévrier (74320) - 120 m² - 890 000 € | SeLoger' });
+  assert.equal(seloger.payload.postal, '74320');
+  assert.equal(seloger.payload.surface, 120);
+  assert.equal(seloger.payload.buildingType, 'maison');
+  assert.equal(seloger.price, 890000);
+  assert.equal(seloger.fp.transaction, 'vente');
+
+  // Appli Leboncoin : lien dans le texte, pas de ville.
+  const lbc = read({ title: 'Maison 5 pièces 120 m²', text: 'Maison 5 pièces 120 m² https://www.leboncoin.fr/ad/ventes_immobilieres/2834567890' });
+  assert.equal(lbc.page.url, 'https://www.leboncoin.fr/ad/ventes_immobilieres/2834567890');
+  assert.equal(lbc.payload.surface, 120);
+  assert.equal(lbc.fp, null, 'sans lieu, pas d’empreinte de suivi');
+
+  // Texte d'agence copié : classes DPE lues, « DPE » n'est pas pris pour la ville.
+  const agence = read({ text: 'Appartement 3 pièces 68 m² Annecy 74000, DPE C, GES B, 412 000 €\nhttps://www.agence-du-lac.fr/annonce/42' });
+  assert.equal(agence.payload.postal, '74000');
+  assert.notEqual(agence.payload.city, 'Dpe');
+  assert.equal(agence.payload.energyClass, 'C');
+  assert.equal(agence.payload.gesClass, 'B');
+
+  // Location reconnue au lien ; texte sans lien : pas de page à suivre.
+  assert.equal(read({ title: 'Appartement 2 pièces 45 m² Annecy (74000)', url: 'https://www.exemple.fr/location/appartement/annecy/1' }).fp.transaction, 'location');
+  assert.equal(read({ text: 'Maison 120 m² Sévrier 74320' }).page, null);
+  // Texte hostile : posé comme texte, jamais interprété en HTML.
+  assert.equal(read({ title: '<img src=x onerror=alert(1)> Maison 90 m² Duingt (74410)' }).payload.postal, '74410');
+});

@@ -32,18 +32,7 @@
     if (!payload || !payload.surface || !(payload.postal || payload.city)) return;
     recordedFor = url;
     const transaction = gen.detectTransaction(document);
-    const fp = {
-      kind: payload.kind === 'land' ? 'land' : 'dpe',
-      transaction,
-      postal: payload.postal || null,
-      city: payload.city || null,
-      surface: payload.surface,
-      energyClass: payload.energyClass || null,
-      gesClass: payload.gesClass || null,
-      energyConsumption: payload.energyConsumption ?? null,
-      gesEmission: payload.gesEmission ?? null,
-      buildingType: payload.buildingType || null,
-    };
+    const fp = gen.fingerprint(payload, transaction);
     let price = null;
     try {
       price = gen.extractPrice(document, transaction);

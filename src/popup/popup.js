@@ -206,6 +206,8 @@ function setMode(next) {
   landForm.classList.toggle('imx-hidden', mode !== 'land');
   const listMode = mode === 'history' || mode === 'biens' || mode === 'sites' || mode === 'sync';
   analyzeBtn.classList.toggle('imx-hidden', listMode);
+  const pasteBtn = document.querySelector('.imx-paste-btn');
+  if (pasteBtn) pasteBtn.classList.toggle('imx-hidden', listMode);
   siteBar.classList.toggle('imx-hidden', listMode || !siteBar.childElementCount);
   historyView.classList.toggle('imx-hidden', mode !== 'history');
   biensView.classList.toggle('imx-hidden', mode !== 'biens');
@@ -273,6 +275,20 @@ async function syncRequest(message) {
   }
 }
 
+// Lien d'appairage collé (…/#k=<clé>) : relie cet appareil puis recharge avec les données reçues.
+async function pairFromText(text) {
+  const m = String(text || '').match(/#k=([A-Za-z0-9_-]{32,128})/);
+  if (!m) return false;
+  setStatus('loading', 'Appairage, réception des données…');
+  const res = await syncRequest({ type: 'SYNC_ENABLE', key: m[1] });
+  if (!res.ok || (res.result && res.result.ok === false)) {
+    setStatus('error', `Appairage impossible : ${res.error || res.result.error}.`);
+    return true;
+  }
+  location.reload();
+  return true;
+}
+
 async function renderSync(status) {
   if (!status) {
     syncView.replaceChildren(UI.loading('Lecture de la synchro…'));
@@ -285,9 +301,19 @@ async function renderSync(status) {
 
   if (!status.paired) {
     if (isWebApp) {
+      // Sur iPhone, l'appli ajoutée à l'écran d'accueil a son propre stockage, séparé du
+      // navigateur : le QR code ouvre le navigateur, pas elle. On la relie donc avec le lien
+      // copié depuis le navigateur (bouton « Copier le lien »).
+      const pasteKey = el('button', { type: 'button', class: 'imx-btn imx-btn-primary imx-btn-block' }, icon('copy', 15), 'Coller le lien d’appairage');
+      pasteKey.addEventListener('click', async () => {
+        const text = await navigator.clipboard.readText().catch(() => '');
+        if (!(await pairFromText(text))) syncView.append(UI.alert("Aucun lien d'appairage dans le presse-papiers. Copie-le d'abord (bouton « Copier le lien » de la synchro)."));
+      });
       syncView.replaceChildren(
         el('div', { class: 'imx-label' }, 'Relier ce téléphone'),
         el('p', { class: 'imx-meta' }, `Ce téléphone n'est pas encore relié à l'extension. Sur l'ordinateur, ouvre Immodex+ dans Chrome, touche le bouton téléphone, puis scanne le QR code avec l'appareil photo.`),
+        el('p', { class: 'imx-meta' }, "Appli ajoutée à l'écran d'accueil d'un iPhone : ouvre le lien du QR code dans le navigateur, touche « Copier le lien » dans sa synchro, puis reviens ici."),
+        pasteKey,
         el('p', { class: 'imx-meta' }, `Tu retrouveras ici : ${what}.`)
       );
       return;
@@ -434,8 +460,14 @@ async function analyzeActiveTab() {
     setStatus('error', "Aucune donnée d'annonce trouvée sur cette page. Saisis les critères à la main.");
     return;
   }
+  await applyExtracted(payload, { url: tab.url, title: tab.title || '' }, 'la page');
+}
+
+// Critères lus sur une annonce (page ouverte ou partage) : reportés dans le formulaire,
+// puis recherche lancée si le lieu et la surface sont connus.
+async function applyExtracted(payload, page, where) {
   setMode(payload.kind === 'land' ? 'land' : 'dpe');
-  currentPage = { url: tab.url, title: tab.title || '' };
+  currentPage = page;
   fillForm(payload);
   const missing = (payload.missing || []).map((k) => MISSING_LABELS[k] || k);
   if ((!payload.postal && !payload.city) || !payload.surface) {
@@ -444,11 +476,59 @@ async function analyzeActiveTab() {
   }
   await search(payload);
   if (missing.length && !statusBox.querySelector('.imx-alert')) {
-    setStatus('info', `Non trouvé sur la page : ${missing.join(', ')}. Tu peux compléter et relancer.`);
+    setStatus('info', `Non trouvé sur ${where} : ${missing.join(', ')}. Tu peux compléter (lettres DPE, kWh lus sur l'annonce) et relancer.`);
   }
 }
 
 analyzeBtn.addEventListener('click', analyzeActiveTab);
+
+// ─── Annonce partagée vers l'appli téléphone ───
+// Android ouvre l'appli installée avec ?title=…&text=…&url=… (« share_target » du manifeste
+// web) ; sur iPhone ou sans installation, le bouton « Coller une annonce » lit le presse-papiers.
+
+async function openShared(input) {
+  const shared = window.__immodexGeneric.extractShared(input);
+  if (!shared.page && !shared.payload) {
+    setStatus('error', 'Rien à lire dans ce partage. Saisis les critères à la main.');
+    return;
+  }
+  // Annonce ajoutée aux biens suivis, comme quand l'extension l'ouvre sur l'ordinateur.
+  if (shared.page && shared.fp) {
+    chrome.runtime.sendMessage({ type: 'SIGHTING_RECORD', page: shared.page, fp: shared.fp, price: shared.price }).catch(() => {});
+  }
+  if (!shared.payload) {
+    setMode('dpe');
+    currentPage = shared.page;
+    setStatus('info', "Lien de l'annonce reçu. Saisis ses critères (code postal, surface, lettres DPE) puis lance la recherche.");
+    return;
+  }
+  await applyExtracted(shared.payload, shared.page, 'le partage');
+}
+
+function sharedFromUrl() {
+  const q = new URLSearchParams(location.search);
+  if (!['title', 'text', 'url'].some((k) => q.get(k))) return null;
+  // L'adresse redevient celle de l'appli : recharger ne relance pas le partage.
+  history.replaceState(null, '', location.pathname);
+  return { title: q.get('title'), text: q.get('text'), url: q.get('url') };
+}
+
+if (isWebApp) {
+  const paste = el('button', { type: 'button', class: 'imx-btn imx-btn-block imx-paste-btn' }, icon('copy', 15), 'Coller une annonce (lien ou texte copié)');
+  paste.addEventListener('click', async () => {
+    let text = '';
+    try {
+      text = await navigator.clipboard.readText();
+    } catch {
+      return setStatus('error', 'Le navigateur refuse la lecture du presse-papiers. Autorise-la, ou saisis les critères à la main.');
+    }
+    if (!text.trim()) return setStatus('error', 'Le presse-papiers est vide : copie d’abord le lien ou le texte de l’annonce.');
+    if (await pairFromText(text)) return;
+    currentPage = null;
+    openShared({ text });
+  });
+  analyzeBtn.after(paste);
+}
 
 // ─── Historique ───
 
@@ -715,6 +795,9 @@ async function init() {
   syncRequest({ type: 'SYNC_NOW', minAgeMs: 60 * 1000 }).then((res) => {
     if (res.ok && res.result && res.result.applied && (mode === 'biens' || mode === 'history')) setMode(mode);
   });
+  // 0. Annonce partagée vers l'appli téléphone.
+  const shared = isWebApp ? sharedFromUrl() : null;
+  if (shared) return openShared(shared);
   // 1. Critères envoyés par « Modifier » depuis une annonce.
   try {
     const res = await chrome.runtime.sendMessage({ type: 'PREFILL_GET' });

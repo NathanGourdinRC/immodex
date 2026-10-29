@@ -144,3 +144,39 @@ test('appairage par le lien du QR code, puis note du téléphone reçue par l’
   await phone.context().close();
   await popup.close();
 });
+
+test('appli téléphone : appairage par lien collé, puis annonce partagée lue et suivie', async () => {
+  const popup = await context.newPage();
+  await popup.goto(`chrome-extension://${extId}/src/popup/popup.html`);
+  const { status } = await send(popup, { type: 'SYNC_STATUS' });
+  assert.ok(status.paired, 'espace créé par le test précédent');
+
+  // Appli de l'écran d'accueil d'un iPhone : stockage vide, lien copié dans le presse-papiers.
+  const phone = await phonePage();
+  await phone.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base });
+  await phone.goto(`${base}/src/popup/popup.html`);
+  await phone.click('#phone-btn');
+  await phone.evaluate((link) => navigator.clipboard.writeText(link), status.pairUrl);
+  await phone.click('#sync-view button:has-text("Coller le lien")');
+  const zones = await until(() => phone.evaluate(async () => (await chrome.storage.local.get('immodex.zones.v1'))['immodex.zones.v1']));
+  assert.equal(zones[0].name, 'Sévrier test');
+  await phone.waitForLoadState('load');
+
+  // Annonce partagée depuis une autre appli (Android : share_target ; ici par l'adresse).
+  const title = 'Vente maison 5 pièces Sévrier (74320) - 120 m² - 890 000 € | SeLoger';
+  const url = 'https://www.seloger.com/annonces/achat/maison/sevrier-74/999.htm';
+  await phone.goto(`${base}/src/popup/popup.html?title=${encodeURIComponent(title)}&url=${encodeURIComponent(url)}`);
+  await phone.waitForFunction(() => document.querySelector('#dpe-form [name=postal]').value === '74320');
+  assert.equal(await phone.inputValue('#dpe-form [name=surface]'), '120');
+  assert.equal(new URL(phone.url()).search, '', 'le partage est retiré de l’adresse');
+  const sightings = await until(() =>
+    phone.evaluate(async () => (await chrome.storage.local.get('immodex.sightings.v1'))['immodex.sightings.v1'])
+  );
+  const seen = sightings.find((s) => s.url === url);
+  assert.ok(seen, 'annonce ajoutée aux biens suivis');
+  assert.equal(seen.prices[0].price, 890000);
+  // La recherche part d'elle-même (lieu et surface connus) et reste liée à l'annonce.
+  await phone.waitForSelector('#results .imx-panel, #status .imx-alert', { timeout: 30000 });
+  await phone.context().close();
+  await popup.close();
+});
