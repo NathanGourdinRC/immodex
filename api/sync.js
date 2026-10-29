@@ -61,13 +61,16 @@ function upstashConfig(env = process.env) {
 }
 
 // Client Upstash minimal : une commande ou un lot de commandes par requête HTTP.
+// Upstash peut servir une lecture depuis une copie de la base pas encore à jour : son jeton
+// « upstash-sync-token », renvoyé à chaque réponse et repassé à la requête suivante,
+// garantit qu'une lecture voit les écritures déjà faites par ce même appel.
 function upstash({ url, token }, fetchImpl = fetch) {
+  let syncToken = null;
   const call = async (path, body) => {
-    const res = await fetchImpl(`${url}${path}`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+    const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+    if (syncToken) headers['upstash-sync-token'] = syncToken;
+    const res = await fetchImpl(`${url}${path}`, { method: 'POST', headers, body: JSON.stringify(body) });
+    syncToken = res.headers.get('upstash-sync-token') || syncToken;
     const data = await res.json().catch(() => null);
     if (!res.ok || !data) throw new HttpError(502, `upstash-${res.status}`);
     return data;
