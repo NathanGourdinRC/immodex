@@ -4,6 +4,7 @@
   "installCommand": "",
   "buildCommand": "node scripts/build-web.mjs",
   "outputDirectory": "dist-web",
+  "regions": ["fra1"],
   "headers": [
     {
       "source": "/(.*)",
