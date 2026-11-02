@@ -13,6 +13,7 @@ export function fakeRedis() {
       case 'GET':
         return strings.get(a[0]) ?? null;
       case 'SET':
+        if (a.includes('NX') && strings.has(a[0])) return null;
         strings.set(a[0], String(a[1]));
         return 'OK';
       case 'DEL':
@@ -40,6 +41,14 @@ export function fakeRedis() {
         const rows = [...z(a[0])].filter(([, s]) => s >= lo && s <= hi).sort((x, y) => x[1] - y[1]);
         return a.includes('WITHSCORES') ? rows.flatMap(([f, s]) => [f, String(s)]) : rows.map(([f]) => f);
       }
+      case 'ZREMRANGEBYSCORE': {
+        const hi = Number(a[2]);
+        let n = 0;
+        for (const [m, sc] of [...z(a[0])]) if (sc <= hi) n += z(a[0]).delete(m) ? 1 : 0;
+        return n;
+      }
+      case 'ZCARD':
+        return z(a[0]).size;
       case 'RPUSH':
         l(a[0]).push(...a.slice(1));
         return l(a[0]).length;

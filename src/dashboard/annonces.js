@@ -1,8 +1,8 @@
 // Fil : « Annonces en vente », les annonces des sites lues par le robot (api/scan.js) pour les
 // communes de la recherche. Un même bien publié par plusieurs sources forme une seule carte ;
 // étiquettes Nouveau, Prix baissé, Retiré ; Garder et Écarter comme pour les annonces vues.
-import { checkCriteria, STATUSES } from '../common/zones.js';
-import { groupListings, listingFacts, statusOf, SOURCE_LABELS } from '../common/listings.js';
+import { checkCriteria, trackingKey, STATUSES } from '../common/zones.js';
+import { groupListings, listingFacts, statusOf, trackingKeyOf, urlKey, SOURCE_LABELS } from '../common/listings.js';
 import { nearestSales, isComparable } from '../common/sectors.js';
 import { loadSearchSales } from './sector-layer.js';
 
@@ -26,8 +26,7 @@ function factsLine(f) {
     .join(' · ');
 }
 
-function annonceRow(g, f, st, track, unknown, onStatus, now) {
-  const key = g.key;
+function annonceRow(g, key, f, st, track, unknown, onStatus, now) {
   const keep = el('button', { type: 'button', class: 'imx-btn imx-btn-sm' }, icon('check', 14), 'Garder');
   const drop = el('button', { type: 'button', class: 'imx-btn imx-btn-sm imx-btn-ghost' }, icon('trash', 14), 'Écarter');
   const note = el('textarea', { class: 'imx-note', placeholder: 'Note : visite, défauts, contact…', maxlength: '1000' }, track.note || '');
@@ -102,6 +101,14 @@ async function loadAnnonces(ctx, body) {
   }
   const now = Date.now();
   const tracking = await store.tracking();
+  // Annonces vues dans le navigateur : leur clé de suivi, par adresse d'annonce.
+  const seenByUrl = new Map();
+  try {
+    const res = await chrome.runtime.sendMessage({ type: 'SIGHTINGS_GROUPS' });
+    for (const sg of (res && res.ok && res.groups) || []) for (const s of sg.sightings || []) seenByUrl.set(urlKey(s.url), trackingKey(sg));
+  } catch {
+    // Pas d'annonces vues : les clés des annonces du robot suffisent.
+  }
   if (!isCurrent()) return;
   const groups = groupListings(data.listings || [])
     .map((g) => {
@@ -116,11 +123,12 @@ async function loadAnnonces(ctx, body) {
     return;
   }
   let showDropped = false;
+  const keyOf = new Map(groups.map((x) => [x.g, trackingKeyOf(x.g, tracking, seenByUrl)]));
   const trackOf = (key) => tracking[key] || {};
   const toggle = el('button', { type: 'button', class: 'imx-btn imx-btn-sm imx-btn-ghost' });
   const list = el('div', { class: 'imx-bien-list' });
   const refreshDropped = () => {
-    const n = groups.filter((x) => trackOf(x.g.key).status === 'ecarte').length;
+    const n = groups.filter((x) => trackOf(keyOf.get(x.g)).status === 'ecarte').length;
     list.classList.toggle('hide-ecarte', !showDropped);
     toggle.textContent = showDropped ? 'Masquer les écartées' : `Afficher les écartées (${n})`;
     toggle.classList.toggle('imx-hidden', !n && !showDropped);
@@ -135,7 +143,7 @@ async function loadAnnonces(ctx, body) {
     else delete tracking[key];
     refreshDropped();
   };
-  const rows = new Map(groups.map((x) => [x.g, annonceRow(x.g, x.f, x.st, trackOf(x.g.key), x.check.unknown, onStatus, now)]));
+  const rows = new Map(groups.map((x) => [x.g, annonceRow(x.g, keyOf.get(x.g), x.f, x.st, trackOf(keyOf.get(x.g)), x.check.unknown, onStatus, now)]));
   list.replaceChildren(...rows.values());
   refreshDropped();
   body.replaceChildren(robotLine(data), list, toggle);
@@ -143,7 +151,7 @@ async function loadAnnonces(ctx, body) {
   // Sur la carte : les biens dont l'adresse a été retrouvée par leur DPE.
   const placed = groups.filter((x) => x.f.lat != null && x.f.lon != null && x.st.status !== 'retire');
   for (const { g, f, st } of placed) {
-    const status = trackOf(g.key).status || '';
+    const status = trackOf(keyOf.get(g)).status || '';
     const marker = L.marker([f.lat, f.lon], {
       icon: L.divIcon({ className: '', html: `<div class="imx-bien-pin is-${status} is-annonce"></div>`, iconSize: [18, 18], iconAnchor: [9, 9] }),
       title: f.address || f.title || '',

@@ -72,3 +72,35 @@ test('erreur réseau : réponse en échec, sans planter', async () => {
   assert.equal(r.ok, false);
   assert.equal(r.status, 0);
 });
+
+test('premier refus d’un site : plus aucune requête vers lui pendant ce passage', async () => {
+  const clock = fakeClock();
+  const web = fakeWeb({ 'https://a.fr/1': 429, 'https://a.fr/2': 'deux', 'https://b.fr/1': 'ok' }, clock);
+  const f = createPoliteFetcher({ fetchImpl: web.fetchImpl, now: clock.now, sleep: clock.sleep });
+  assert.equal((await f.get('https://a.fr/1')).blocked, true);
+  const second = await f.get('https://a.fr/2');
+  assert.equal(second.blocked, true);
+  assert.ok(!web.calls.some((c) => c.url === 'https://a.fr/2'));
+  assert.equal((await f.get('https://b.fr/1')).ok, true);
+});
+
+test('robots.txt injoignable (erreur serveur) : le site n’est pas lu ; robots.txt absent (404) : tout permis', async () => {
+  const clock = fakeClock();
+  const web = fakeWeb({ 'https://a.fr/robots.txt': 503, 'https://a.fr/x': 'page', 'https://b.fr/x': 'page' }, clock);
+  const f = createPoliteFetcher({ fetchImpl: web.fetchImpl, now: clock.now, sleep: clock.sleep });
+  const a = await f.get('https://a.fr/x');
+  assert.equal(a.ok, false);
+  assert.equal(a.disallowed, true);
+  assert.ok(!web.calls.some((c) => c.url === 'https://a.fr/x'));
+  assert.equal((await f.get('https://b.fr/x')).ok, true);
+});
+
+test('échéance dépassée pendant l’attente de son tour : la page n’est pas demandée', async () => {
+  const clock = fakeClock();
+  const web = fakeWeb({ 'https://a.fr/1': 'un', 'https://a.fr/2': 'deux' }, clock);
+  const f = createPoliteFetcher({ fetchImpl: web.fetchImpl, now: clock.now, sleep: clock.sleep });
+  const [one, two] = await Promise.all([f.get('https://a.fr/1', { deadline: 6000 }), f.get('https://a.fr/2', { deadline: 6000 })]);
+  assert.equal(one.ok, true);
+  assert.equal(two.late, true);
+  assert.ok(!web.calls.some((c) => c.url === 'https://a.fr/2'));
+});

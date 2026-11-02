@@ -41,9 +41,10 @@ function robotsAllows(txt, pathAndQuery) {
   return !best || best.allow;
 }
 
-function createPoliteFetcher({ fetchImpl = fetch, now = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), delayMs = 5000, userAgent = UA, timeoutMs = 20000 } = {}) {
+function createPoliteFetcher({ fetchImpl = fetch, now = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), delayMs = 5000, userAgent = UA, timeoutMs = 15000 } = {}) {
   const hosts = new Map(); // hôte → { queue, lastAt }
-  const robots = new Map(); // origine → promesse du texte de robots.txt
+  const robots = new Map(); // origine → promesse de { status, text } de robots.txt
+  const refused = new Set(); // hôtes qui ont refusé le robot pendant ce passage
 
   // Une requête à la fois par hôte, avec la pause imposée depuis la précédente.
   function onHost(host, task) {
@@ -78,19 +79,38 @@ function createPoliteFetcher({ fetchImpl = fetch, now = Date.now, sleep = (ms) =
   }
 
   function robotsOf(u) {
-    if (!robots.has(u.origin)) robots.set(u.origin, onHost(u.host, () => raw(`${u.origin}/robots.txt`)).then((r) => (r.ok ? r.html : '')));
+    if (!robots.has(u.origin)) robots.set(u.origin, onHost(u.host, () => raw(`${u.origin}/robots.txt`)));
     return robots.get(u.origin);
   }
 
-  async function get(url) {
+  // Règles de robots.txt (RFC 9309) : fichier absent (4xx) = tout permis ; site injoignable
+  // ou en erreur (5xx, délai dépassé) = rien n'est lu sur ce site pendant ce passage.
+  function robotsVerdict(r, u) {
+    if (r.ok) return robotsAllows(r.html, u.pathname + u.search);
+    return r.status >= 400 && r.status < 500;
+  }
+
+  const refusal = { ok: false, status: 0, html: '', blocked: true, disallowed: false };
+
+  // `deadline` : au-delà, la page n'est pas demandée (elle attendait peut-être son tour).
+  async function get(url, { deadline = null } = {}) {
     const u = new URL(url);
-    if (!robotsAllows(await robotsOf(u), u.pathname + u.search)) return { ok: false, status: 0, html: '', blocked: false, disallowed: true };
-    const r = await onHost(u.host, () => raw(url));
+    if (refused.has(u.host)) return refusal;
+    if (!robotsVerdict(await robotsOf(u), u)) return { ok: false, status: 0, html: '', blocked: false, disallowed: true };
+    const r = await onHost(u.host, async () => {
+      if (refused.has(u.host)) return null;
+      if (deadline != null && now() >= deadline) return { late: true };
+      return raw(url);
+    });
+    if (!r) return refusal;
+    if (r.late) return { ok: false, status: 0, html: '', blocked: false, disallowed: false, late: true };
     const blocked = r.status === 403 || r.status === 429 || BLOCK_MARKS.test(r.html.slice(0, 20000));
+    // Un refus arrête le robot sur ce site pour tout le passage.
+    if (blocked) refused.add(u.host);
     return { ...r, ok: r.ok && !blocked, blocked, disallowed: false };
   }
 
-  return { get };
+  return { get, refusedHosts: () => [...refused] };
 }
 
 export { UA, createPoliteFetcher, robotsAllows };

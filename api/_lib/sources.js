@@ -100,6 +100,7 @@ function readResults(html, pageUrl, source, commune) {
   const doc = parseHtml(html, pageUrl);
   const keyOf = (a) => listingUrl(a.getAttribute('href'), pageUrl, source);
   const cards = [];
+  // `seen` : toutes les annonces de la page, avant les filtres (commune, biens vendus).
   const seen = new Set();
   for (const a of doc.querySelectorAll('a[href]')) {
     const url = keyOf(a);
@@ -123,7 +124,7 @@ function readResults(html, pageUrl, source, commune) {
     if (!slugOf(`${url} ${text}`).includes(slugOf(commune.nom))) continue;
     cards.push({ url, price, title: text.slice(0, 160), type: source.typeOf(url, text) });
   }
-  return { cards, full: !!source.pageSize && seen.size >= source.pageSize };
+  return { cards, all: [...seen], full: !!source.pageSize && seen.size >= source.pageSize };
 }
 
 export { SOURCES, sourceById, readResults, slugOf, listingUrl };

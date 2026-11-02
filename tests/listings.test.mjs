@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { groupListings, statusOf, listingFacts } from '../src/common/listings.js';
+import { groupListings, statusOf, listingFacts, trackingKeyOf } from '../src/common/listings.js';
 import { handleListings } from '../api/listings.js';
 import { fakeRedis } from './helpers/fake-redis.mjs';
 
@@ -53,4 +53,17 @@ test('annonces servies par commune avec l’état des sources', async () => {
   assert.equal(r.sources['59636'].deleu.paused, true);
   assert.equal(r.lastRun, NOW - DAY);
   await assert.rejects(handleListings({ codes: '59636,abc', redis }), (e) => e.status === 400);
+});
+
+test('statut d’un bien : retrouvé sous n’importe quelle adresse de ses annonces ou des annonces vues du même bien', () => {
+  const a = base({ id: 'maes:/x', source: 'maes', url: 'https://www.maesimmobilier.fr/bien-immobilier/x/', surface: 109, energyConsumption: 224, gesEmission: 32 });
+  const b = base({ id: 'lesiteimmo:/1', source: 'lesiteimmo', url: 'https://www.lesiteimmo.com/acheter/maison-5pieces/wambrechies-59118/1', surface: 109, energyConsumption: 224, gesEmission: 32 });
+  const [g] = groupListings([a, b]);
+  // Gardé autrefois sous l'adresse de la seconde annonce (avant que les deux soient réunies).
+  assert.equal(trackingKeyOf(g, { [b.url]: { status: 'favori' } }), b.url);
+  // Gardé sous l'adresse d'une annonce vue (Jinka) dont une adresse est celle de l'annonce scannée.
+  const seen = new Map([[b.url, 'https://www.jinka.fr/annonce/42']]);
+  assert.equal(trackingKeyOf(g, { 'https://www.jinka.fr/annonce/42': { note: 'cave humide' } }, seen), 'https://www.jinka.fr/annonce/42');
+  // Rien de connu : la clé du groupe.
+  assert.equal(trackingKeyOf(g, {}), g.key);
 });

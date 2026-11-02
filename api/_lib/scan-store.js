@@ -4,10 +4,14 @@
 //   imx:scan:{insee}:src  hash  source → { lastRun, failures, paused, complete }
 //   imx:scan:queue        liste pages d'annonce à lire { insee, id, url }
 //   imx:scan:last         date du dernier passage
+//   imx:scan:lock         verrou d'un passage (expire après 20 h)
 //   imx:spaces            zset  espace de synchro → date de sa dernière synchro
 
 const ACTIVE_MS = 21 * 24 * 3600 * 1000;
 const MAX_COMMUNES = 30;
+// La synchro est ouverte : on ne suit que les quelques espaces les plus récemment actifs
+// (ceux de Nathan), pour qu'un inconnu ne puisse pas faire lire au robot ses propres communes.
+const MAX_SPACES = 5;
 const CHUNK = 100;
 
 const keys = {
@@ -15,6 +19,7 @@ const keys = {
   meta: (insee) => `imx:scan:${insee}:src`,
   queue: 'imx:scan:queue',
   last: 'imx:scan:last',
+  lock: 'imx:scan:lock',
   spaces: 'imx:spaces',
 };
 
@@ -57,16 +62,20 @@ async function readQueue(redis) {
   return ((await redis.command(['LRANGE', keys.queue, '0', '-1'])) || []).map(parse).filter(Boolean);
 }
 
-// La file est réécrite en entier : le scan est le seul à l'écrire (un passage à la fois).
+// La file est réécrite en entier, en une seule requête (suppression puis ajouts) : le scan
+// est le seul à l'écrire, un passage à la fois.
 async function writeQueue(redis, items) {
-  await redis.command(['DEL', keys.queue]);
-  for (let i = 0; i < items.length; i += CHUNK) await redis.command(['RPUSH', keys.queue, ...items.slice(i, i + CHUNK).map((x) => JSON.stringify(x))]);
+  const cmds = [['DEL', keys.queue]];
+  for (let i = 0; i < items.length; i += CHUNK) cmds.push(['RPUSH', keys.queue, ...items.slice(i, i + CHUNK).map((x) => JSON.stringify(x))]);
+  await redis.pipeline(cmds);
 }
 
 // Recherches (collection « zone » de la synchro) des espaces actifs depuis 21 jours :
 // communes à suivre, avec les types cherchés (null : maisons et appartements).
 async function activeCommunes(redis, now) {
-  const spaces = ((await redis.command(['ZRANGEBYSCORE', keys.spaces, String(now - ACTIVE_MS), '+inf'])) || []).reverse();
+  // Espaces inactifs depuis 21 jours : oubliés.
+  await redis.command(['ZREMRANGEBYSCORE', keys.spaces, '-inf', String(now - ACTIVE_MS)]);
+  const spaces = ((await redis.command(['ZRANGEBYSCORE', keys.spaces, String(now - ACTIVE_MS), '+inf'])) || []).reverse().slice(0, MAX_SPACES);
   const found = new Map();
   for (const space of spaces) {
     let cursor = '0';
@@ -87,4 +96,4 @@ async function activeCommunes(redis, now) {
   return [...found.values()].slice(0, MAX_COMMUNES);
 }
 
-export { keys, listingsOf, saveListings, sourceMetaOf, saveSourceMeta, readQueue, writeQueue, activeCommunes, MAX_COMMUNES };
+export { keys, listingsOf, saveListings, sourceMetaOf, saveSourceMeta, readQueue, writeQueue, activeCommunes, MAX_COMMUNES, MAX_SPACES };

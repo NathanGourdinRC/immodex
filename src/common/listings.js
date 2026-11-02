@@ -97,4 +97,14 @@ function urlKey(url) {
   }
 }
 
-export { LISTINGS_ENDPOINT, SOURCE_LABELS, urlKey, fetchListings, groupListings, listingFacts, statusOf, sameProperty };
+// Clé de suivi (statut, note) d'un bien : celle sous laquelle Nathan a déjà posé quelque chose,
+// cherchée parmi les adresses de ses annonces et celles des annonces vues du même bien (une
+// annonce vue est suivie sous l'adresse de sa première annonce, parfois une autre). Ainsi un
+// favori ne disparaît pas quand deux annonces sont réunies, séparées ou lues par le robot.
+function trackingKeyOf(g, tracking, seenByUrl = new Map()) {
+  const urls = g.listings.map((l) => l.url);
+  const candidates = [g.key, ...urls, ...urls.map((u) => seenByUrl.get(urlKey(u))).filter(Boolean)];
+  return candidates.find((k) => tracking[k]) || g.key;
+}
+
+export { LISTINGS_ENDPOINT, SOURCE_LABELS, urlKey, trackingKeyOf, fetchListings, groupListings, listingFacts, statusOf, sameProperty };
