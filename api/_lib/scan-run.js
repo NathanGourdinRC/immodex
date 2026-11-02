@@ -76,10 +76,16 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
     if (start - held < LOCK_MS) return { skipped: 'recent' };
     await redis.command(['SET', keys.lock, String(start), 'PX', String(LOCK_MS)]);
   }
-  await redis.command(['SET', keys.last, String(start)]);
-
   const communes = await activeCommunes(redis, start);
   const summary = { communes: communes.length, results: 0, added: 0, details: 0, removed: 0, paused: [] };
+  // Rien à suivre (aucun appareil synchronisé récemment) : le verrou est rendu, pour que le
+  // passage suivant ne soit pas sauté.
+  const pending = Number(await redis.command(['LLEN', keys.queue])) || 0;
+  if (!communes.length && !pending) {
+    await redis.command(['DEL', keys.lock]);
+    return summary;
+  }
+  await redis.command(['SET', keys.last, String(start)]);
   // Les pages de résultats prennent au plus 60 % du temps ; le reste va aux pages d'annonce.
   const resultsDeadline = start + budgetMs * 0.6;
   const detailsDeadline = start + budgetMs;

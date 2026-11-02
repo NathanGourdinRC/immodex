@@ -4,7 +4,7 @@
 //   imx:scan:{insee}:src  hash  source → { lastRun, failures, paused, complete }
 //   imx:scan:queue        liste pages d'annonce à lire { insee, id, url }
 //   imx:scan:last         date du dernier passage
-//   imx:scan:lock         verrou d'un passage (expire après 20 h)
+//   imx:scan:run          verrou d'un passage (expire après 20 h)
 //   imx:spaces            zset  espace de synchro → date de sa dernière synchro
 
 const ACTIVE_MS = 21 * 24 * 3600 * 1000;
@@ -21,7 +21,7 @@ const keys = {
   meta: (insee) => `imx:scan:${insee}:src`,
   queue: 'imx:scan:queue',
   last: 'imx:scan:last',
-  lock: 'imx:scan:lock',
+  lock: 'imx:scan:run',
   spaces: 'imx:spaces',
 };
 

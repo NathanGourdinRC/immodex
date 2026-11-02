@@ -323,3 +323,15 @@ test('espaces récents sans commune (tests, appareils neufs) : ils ne repoussent
   const communes = await activeCommunes(redis, now);
   assert.deepEqual(communes.map((c) => c.code), ['59636']);
 });
+
+test('passage sans commune à suivre : il ne garde pas le verrou, le suivant peut tourner', async () => {
+  const redis = fakeRedis();
+  const w = world({ 'https://alpha.test/vente/59636': results('alpha', [['a1', '300 000 €']]), 'https://beta.test/vente/59636': results('beta', []) });
+  const empty = await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl });
+  assert.equal(empty.communes, 0);
+  await withSearch(redis, w.now());
+  w.advance(3600 * 1000);
+  const next = await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl });
+  assert.equal(next.skipped, undefined);
+  assert.equal(next.added, 1);
+});
