@@ -257,9 +257,8 @@ test('tableau de bord : zone Lille, nouveaux DPE, annonce vue suivie, prix par s
   for (const label of ['Fil', 'Carte', 'Ventes passées']) assert.equal(await page.locator(`.imx-views button:has-text("${label}")`).count(), 1);
   await page.click('.imx-views button:has-text("Carte")');
   assert.match(page.url(), /vue=carte/);
-  // Prix médian par section cadastrale (Statistiques DVF) sur la carte, avec légende.
+  // Légende des secteurs (le détail est vérifié sur Wambrechies, plus petite).
   await page.waitForSelector('.imx-legend', { timeout: 30000 });
-  assert.ok((await page.locator('.leaflet-prices-pane path').count()) > 50);
   await page.click('.imx-views button:has-text("Fil")');
   // Après rechargement : la recherche, le statut et la note sont gardés.
   await page.reload();
@@ -283,4 +282,24 @@ test('tableau de bord : zone Lille, nouveaux DPE, annonce vue suivie, prix par s
   await popup.goto(popupUrl());
   assert.match(await popup.textContent('#dashboard-btn'), /Mes recherches/);
   await popup.close();
+});
+
+test('carte en secteurs : Wambrechies', async () => {
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extId}/src/dashboard/dashboard.html`);
+  await page.click('#zone-tabs button:has-text("Nouvelle recherche")');
+  await page.fill('input[type="search"]', 'Wambrechies');
+  await page.click('.imx-suggest button:has-text("Wambrechies ·")', { timeout: 15000 });
+  await page.selectOption('select.imx-select', 'maison');
+  await page.click('button:has-text("Créer la recherche")');
+  await page.click('.imx-views button:has-text("Carte")');
+  // Ventes DVF de la commune (vraie API d'Etalab) regroupées en secteurs de 400 m.
+  await page.waitForSelector('.imx-sector', { timeout: 60000 });
+  assert.ok((await page.locator('.imx-sector').count()) >= 10);
+  assert.ok((await page.locator('.imx-sector.is-moins, .imx-sector.is-plus').count()) >= 1);
+  assert.ok((await page.locator('.imx-sector.is-peu').count()) >= 1);
+  const legend = await page.textContent('#side');
+  for (const t of ['moins cher', 'dans la moyenne', 'plus cher']) assert.match(legend, new RegExp(t));
+  assert.match(legend, /Ventes connues jusqu’au/);
+  await page.close();
 });

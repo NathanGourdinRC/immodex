@@ -60,6 +60,11 @@
       .imx-bien-list.hide-ecarte .imx-bien.is-ecarte { display: none; }
       .imx-unknown { color: var(--imx-mid); }
       .imx-btn.is-active { border-color: var(--imx-accent); color: var(--imx-accent); }
+      /* Secteurs : nombre de ventes au centre ; secteurs à trop peu de ventes en pointillés. */
+      .imx-sector-count { display: flex; align-items: center; justify-content: center; font: 700 11px var(--imx-font); color: #0f172a; text-shadow: 0 0 3px #fff, 0 0 3px #fff; }
+      .imx-sector-count.is-few { color: #64748b; font-weight: 600; }
+      .imx-swatch.is-few { background: repeating-linear-gradient(45deg, #cbd5e1 0 2px, transparent 2px 4px) !important; border: 1px dashed #64748b; }
+      .imx-sector-sales { display: grid; gap: 3px; max-height: 260px; overflow-y: auto; }
       /* Téléphone : la carte n'apparaît que dans la vue Carte. */
       @media (max-width: 900px) { body:not(.view-carte) .imx-dash-map { display: none; } }
       .leaflet-popup-content { margin: 12px 14px; min-width: 240px; font-family: var(--imx-font); }

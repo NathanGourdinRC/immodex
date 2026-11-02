@@ -4,8 +4,9 @@
 // le navigateur en dehors des API publiques et de la synchro.
 // Dans le code, une recherche garde le nom historique de « zone » (clé de stockage, synchro).
 import { createZoneStore } from '../common/zones.js';
-import { searchCommunes, communeContour, communeSections, dvfStats, marketOf, priceBreaks, priceClass } from '../common/zone-data.js';
+import { searchCommunes, communeContour } from '../common/zone-data.js';
 import { renderFeed } from './feed.js';
+import { renderSectors } from './sector-layer.js';
 
 const UI = window.__immodexUI;
 const { el, icon, num } = UI;
@@ -16,9 +17,6 @@ const zoneTabs = document.getElementById('zone-tabs');
 const subtitle = document.getElementById('subtitle');
 document.getElementById('logo').appendChild(icon('layers', 17));
 
-// Du moins cher (clair) au plus cher (foncé).
-const PRICE_COLORS = ['#dbeafe', '#93c5fd', '#3b82f6', '#1d4ed8', '#1e3a8a'];
-const TYPE_PLURAL = { appartement: 'appartements', maison: 'maisons' };
 const VIEWS = [
   ['fil', 'Fil'],
   ['carte', 'Carte'],
@@ -29,17 +27,17 @@ const VIEWS = [
 
 const map = L.map('map', { zoomControl: true }).setView([50.6292, 3.0573], 11);
 const baseLayers = window.__immodexTiles.addBaseLayers(map);
-// Sections colorées sous les points : sinon elles masqueraient les DPE et capteraient les clics.
-map.createPane('prices').style.zIndex = 350;
+// Secteurs colorés sous les points : sinon ils masqueraient les DPE et capteraient les clics.
+map.createPane('sectors').style.zIndex = 350;
 const layers = {
-  prices: L.layerGroup().addTo(map),
+  sectors: L.layerGroup().addTo(map),
   contours: L.layerGroup().addTo(map),
   dpe: L.layerGroup().addTo(map),
   biens: L.layerGroup().addTo(map),
 };
 L.control
   // Sur un écran de téléphone, la liste des couches cacherait la moitié de la carte : repliée.
-  .layers(baseLayers, { 'Prix au m² par section': layers.prices, Communes: layers.contours, 'Bientôt en vente ? (DPE)': layers.dpe, 'Annonces vues': layers.biens }, { collapsed: matchMedia('(max-width: 600px)').matches })
+  .layers(baseLayers, { 'Secteurs (ventes DVF)': layers.sectors, Communes: layers.contours, 'Bientôt en vente ? (DPE)': layers.dpe, 'Annonces vues': layers.biens }, { collapsed: matchMedia('(max-width: 600px)').matches })
   .addTo(map);
 // Marqueurs par identifiant, pour centrer la carte depuis la liste.
 const markers = new Map();
@@ -321,8 +319,7 @@ async function openZone(id) {
     })
   );
   const feedView = el('div', { class: 'imx-view imx-view-fil' });
-  const marketBody = el('div', null, UI.loading('Lecture des prix du marché…'));
-  const mapView = el('div', { class: 'imx-view imx-view-carte' }, panel('Prix du marché', marketBody).node);
+  const mapView = el('div', { class: 'imx-view imx-view-carte' });
   const salesView = el('div', { class: 'imx-view imx-view-ventes' }, UI.empty('Ventes passées : en cours de chargement.'));
 
   side.replaceChildren(head, kpis, switcher, feedView, mapView, salesView);
@@ -348,7 +345,7 @@ async function openZone(id) {
     },
     setKpi,
   });
-  loadMarket(zone, token, marketBody, (m) => setKpi(2, m ? num(m.median) : 'n.c.', `médiane €/m² ${TYPE_PLURAL[zone.type] || 'logements'}`));
+  renderSectors({ search: zone, isCurrent, layer: layers.sectors, body: mapView, panel, setKpi });
 }
 
 async function drawContours(zone, token) {
@@ -358,90 +355,6 @@ async function drawContours(zone, token) {
   layers.contours.addLayer(group);
   const bounds = group.getBounds();
   if (bounds.isValid()) map.fitBounds(bounds.pad(0.05));
-}
-
-// ─── Prix du marché ───
-
-async function loadMarket(zone, token, body, setKpi) {
-  const perCommune = await Promise.all(
-    zone.communes.map(async (c) => {
-      try {
-        const [stats, shapes] = await Promise.all([once(`dvf:${c.code}`, () => dvfStats(c.code)), once(`sections:${c.code}`, () => communeSections(c.code)).catch(() => null)]);
-        return { commune: c, stats, shapes };
-      } catch {
-        return { commune: c, stats: null, shapes: null };
-      }
-    })
-  );
-  if (token !== renderToken) return;
-
-  const sectionMarket = new Map();
-  for (const { stats } of perCommune) {
-    for (const row of (stats && stats.sections) || []) {
-      const m = marketOf(row, zone.type);
-      if (m) sectionMarket.set(row.code_geo, m);
-    }
-  }
-  const breaks = priceBreaks([...sectionMarket.values()].map((m) => m.median));
-
-  for (const { shapes } of perCommune) {
-    if (!shapes) continue;
-    layers.prices.addLayer(
-      L.geoJSON(shapes, {
-        pane: 'prices',
-        style: (f) => {
-          const m = sectionMarket.get(f.properties.id);
-          return m
-            ? { color: '#ffffff', weight: 0.6, fillColor: PRICE_COLORS[priceClass(m.median, breaks)], fillOpacity: 0.5 }
-            : { color: '#94a3b8', weight: 0.4, fillOpacity: 0 };
-        },
-        onEachFeature: (f, layer) => {
-          const m = sectionMarket.get(f.properties.id);
-          layer.bindTooltip(
-            m ? `Section ${f.properties.code} · ${num(m.median)} €/m² (${num(m.count)} vente${m.count > 1 ? 's' : ''})` : `Section ${f.properties.code} · pas assez de ventes`,
-            { sticky: true }
-          );
-        },
-      })
-    );
-  }
-  const rows = perCommune.map(({ commune, stats }) => {
-    const m = stats && marketOf(stats.commune, zone.type);
-    return el(
-      'div',
-      { class: 'imx-site' },
-      el('span', null, commune.nom),
-      el('strong', null, m ? `${num(m.median)} €/m²` : stats ? 'pas assez de ventes' : 'indisponible'),
-      m ? el('span', { class: 'imx-meta' }, `${num(m.count)} ventes`) : null
-    );
-  });
-  const weighted = perCommune
-    .map(({ stats }) => stats && marketOf(stats.commune, zone.type))
-    .filter(Boolean)
-    .reduce((acc, m) => ({ sum: acc.sum + m.median * m.count, count: acc.count + m.count }), { sum: 0, count: 0 });
-  setKpi(weighted.count ? { median: Math.round(weighted.sum / weighted.count), count: weighted.count } : null);
-
-  const labels = breaks.length
-    ? PRICE_COLORS.slice(0, breaks.length + 1).map((color, i) =>
-        el(
-          'span',
-          null,
-          el('span', { class: 'imx-swatch', style: `background:${color}` }),
-          i === 0 ? `moins de ${num(breaks[0])}` : i === breaks.length ? `${num(breaks[i - 1])} et plus` : `${num(breaks[i - 1])} à ${num(breaks[i])}`
-        )
-      )
-    : [];
-  body.replaceChildren(
-    ...[
-      el('div', { class: 'imx-sites' }, rows),
-      labels.length ? el('div', { class: 'imx-legend' }, el('span', null, 'Carte, €/m² :'), labels) : null,
-      el(
-        'small',
-        { class: 'imx-meta' },
-        `Prix médian au m² des ${TYPE_PLURAL[zone.type] || 'maisons et appartements'} vendus ces 5 dernières années, ventes d'un seul bien (Statistiques DVF, data.gouv.fr). Survole une section de la carte pour son prix.`
-      ),
-    ].filter(Boolean)
-  );
 }
 
 // ─── Démarrage ───
