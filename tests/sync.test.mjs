@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { handleSync, PUSH_SCRIPT, HttpError } from '../api/sync.js';
+import { handleSync, PUSH_SCRIPT, HttpError, spaceOf } from '../api/sync.js';
 import { createSync, mergeSighting, hashOf, keyFromHash, pairUrl, newKey, SYNC_STATE_KEY } from '../src/common/sync.js';
 import { ZONES_KEY, TRACKING_KEY } from '../src/common/zones.js';
 import { SIGHTINGS_KEY } from '../src/common/properties.js';
@@ -17,6 +17,10 @@ function fakeRedis() {
     if (cmd === 'HLEN') return h(a[0]).size;
     if (cmd === 'HMGET') return a.slice(1).map((f) => h(a[0]).get(f) ?? null);
     if (cmd === 'GET') return strings.get(a[0]) ?? null;
+    if (cmd === 'ZADD') {
+      z(a[0]).set(a[2], Number(a[1]));
+      return 1;
+    }
     if (cmd === 'ZRANGEBYSCORE') {
       const lo = Number(a[1].replace('(', ''));
       const limit = Number(a[a.indexOf('LIMIT') + 2]);
@@ -49,6 +53,7 @@ function fakeRedis() {
   return {
     command: async (args) => exec(args),
     pipeline: async (cmds) => cmds.map(exec),
+    zscore: (key, member) => z(key).get(member),
     wipe() {
       hashes = new Map();
       zsets = new Map();
@@ -253,4 +258,11 @@ test('serveur : clé, type et taille des lots contrôlés', async () => {
   await assert.rejects(handleSync({ syncKey: key, body: { items: [{ kind: 'zone', key: 'x', updated_at: Date.now() + 3 * 864e5 }] }, redis }), (e) => e.status === 400);
   const many = Array.from({ length: 201 }, (_, i) => ({ kind: 'zone', key: `z${i}`, data: {}, updated_at: 1 }));
   await assert.rejects(handleSync({ syncKey: key, body: { items: many }, redis }), (e) => e.status === 413);
+});
+
+test('chaque synchro marque l’espace comme actif (communes suivies par le scan)', async () => {
+  const redis = fakeRedis();
+  const key = 'k'.repeat(43);
+  await handleSync({ syncKey: key, body: { since: 0, items: [] }, redis, now: 1234 });
+  assert.equal(redis.zscore('imx:spaces', await spaceOf(key)), 1234);
 });

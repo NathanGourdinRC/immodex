@@ -17,5 +17,17 @@
         }
       ]
     }
+  ],
+  "functions": {
+    "api/scan.js": {
+      "maxDuration": 300,
+      "includeFiles": "src/common/{extract,generic-extract}.js"
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/scan",
+      "schedule": "0 2 * * *"
+    }
   ]
 }

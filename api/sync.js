@@ -131,7 +131,8 @@ async function handleSync({ syncKey, body, redis, now = Date.now() }) {
   const incoming = Array.isArray(body && body.items) ? body.items : [];
   if (incoming.length > MAX_PUSH) throw new HttpError(413, 'too-many-items');
   const items = incoming.map((i) => cleanItem(i, now));
-  const k = keysOf(await spaceOf(syncKey));
+  const space = await spaceOf(syncKey);
+  const k = keysOf(space);
 
   const written = new Map();
   const rejected = [];
@@ -146,9 +147,11 @@ async function handleSync({ syncKey, body, redis, now = Date.now() }) {
 
   // `head` (dernière révision de l'espace) permet à l'appareil de voir qu'un espace a été
   // vidé : sa révision de départ serait alors plus grande que celle du serveur.
+  // L'espace est aussi noté actif : le scan suit les communes des recherches des espaces actifs.
   const [log, head] = await redis.pipeline([
     ['ZRANGEBYSCORE', k.log, `(${since}`, '+inf', 'WITHSCORES', 'LIMIT', '0', String(PAGE)],
     ['GET', k.rev],
+    ['ZADD', 'imx:spaces', String(now), space],
   ]);
   const changes = [];
   for (let i = 0; i < log.length; i += 2) changes.push({ field: log[i], rev: Number(log[i + 1]) });

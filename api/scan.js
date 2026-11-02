@@ -1,0 +1,24 @@
+// Tâche planifiée du scan (Vercel, chaque nuit, voir vercel.json) : lit les pages de
+// résultats des sources pour les communes des recherches actives, puis les nouvelles
+// annonces. Un appel extérieur ne déclenche rien de plus : un passage au plus par 20 heures.
+import { upstashConfig, upstash } from './sync.js';
+import { createPoliteFetcher } from './_lib/polite.js';
+import { runScan } from './_lib/scan-run.js';
+
+const json = (status, data) =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+  });
+
+export async function GET() {
+  const config = upstashConfig();
+  if (!config) return json(503, { ok: false, error: 'not-configured' });
+  try {
+    const result = await runScan({ redis: upstash(config), fetcher: createPoliteFetcher() });
+    return json(200, { ok: true, ...result });
+  } catch (err) {
+    console.error('[scan]', err);
+    return json(500, { ok: false, error: 'server-error' });
+  }
+}
