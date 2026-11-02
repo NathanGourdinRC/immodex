@@ -33,7 +33,7 @@
 | Annonce republiée (autre site, autre agence, nouvelle annonce) | invisible | **suivi des biens** : chaque annonce ouverte est mémorisée (12 mois, dans Chrome) ; un même bien retrouvé est signalé sur le bouton (« +2 ») avec ses parutions et l'évolution du prix ; onglet **Biens** du popup |
 | Vérifier un candidat | lien Google Maps | + **Street View** à l'adresse de chaque candidat (comparer la façade aux photos) et **carte des candidats** numérotés (OpenStreetMap, dans un onglet) |
 | Prix du marché | rien | **Ventes passées** à l'adresse de chaque candidat (DVF, 5 dernières années) : prix, surface, prix au m², vente de surface proche de l'annonce mise en avant, médianes de la rue et du secteur |
-| Suivre une recherche sur des semaines | rien | **Mes recherches** (bouton du popup) : communes et critères (type, budget, surface, terrain, pièces, chambres), puis trois vues. **Fil** : annonces vues qui passent les critères, avec Garder, Écarter et note, et « Bientôt en vente ? » (nouveaux DPE, souvent une annonce en préparation). **Carte** : secteurs d'environ 400 m en 3 niveaux (moins cher, dans la moyenne, plus cher que la commune) avec le nombre de ventes DVF. **Ventes passées** : ventes DVF sur 5 ans avec prix au m², terrain et dépendance, et fourchette des 15 ventes les plus proches d'un bien |
+| Suivre une recherche sur des semaines | rien | **Mes recherches** (bouton du popup) : communes et critères (type, budget, surface, terrain, pièces, chambres), puis trois vues. **Fil** : « Annonces en vente » lues chaque nuit par un robot sur Orpi, ParuVendu, Lesiteimmo, Maes Immobilier et Deleu Immobilier (nouveautés, baisses de prix, retraits, un même bien publié deux fois réuni en une carte, adresse probable par le DPE), annonces vues qui passent les critères, avec Garder, Écarter et note, et « Bientôt en vente ? » (nouveaux DPE, souvent une annonce en préparation). **Carte** : secteurs d'environ 400 m en 3 niveaux (moins cher, dans la moyenne, plus cher que la commune) avec le nombre de ventes DVF. **Ventes passées** : ventes DVF sur 5 ans avec prix au m², terrain et dépendance, et fourchette des 15 ventes les plus proches d'un bien |
 | Sur le téléphone | rien | **appli téléphone** [immodex.vercel.app](https://immodex.vercel.app) : recherche d'adresse, historique, biens suivis et tableau de bord, **synchronisés avec l'extension** (bouton téléphone du popup, appairage par QR code) ; annonce **partagée** vers l'appli (Android) ou **collée** (lien ou texte copié) : critères lus, recherche lancée, annonce ajoutée aux biens suivis |
 | Historique de prix partagé | rien | bouton **Castorus** : copie le lien de l'annonce et ouvre la recherche par URL de Castorus (pas d'API publique, pas de collecte automatique) |
 
@@ -194,6 +194,7 @@ Toutes ces APIs sont **publiques, gratuites, sans clé**. Elles sont financées 
 
 - **Pas de compte, pas de login, pas de tracking**
 - **Aucune donnée n'est envoyée à des serveurs tiers** autres que les APIs publiques listées plus haut, et le serveur de synchro si tu l'actives
+- **Robot des annonces** : chaque nuit, une fonction Vercel lit les pages de résultats des 5 sources pour les communes de tes recherches (au plus tous les 2 jours par site, au plus 5 pages), puis une seule fois la page de chaque nouvelle annonce. Il se présente (`ImmodexPlus/1.0 (+https://immodex.vercel.app ; usage personnel)`), respecte robots.txt, attend au moins 5 secondes entre deux pages d'un même site et ne contourne aucune protection : un site qui le refuse est mis en pause et signalé. Les annonces lues sont des données publiques, rangées par commune (`imx:scan:*`), hors de ton espace de synchro.
 - **Synchro avec le téléphone (facultative)** : zones, suivi des biens (statut, note), annonces vues et recherches des 7 derniers jours passent par `immodex.vercel.app/api/sync` (fonction Vercel, base Upstash Redis à Francfort), rangés sous l'empreinte SHA-256 d'une clé aléatoire générée par l'extension. La clé n'existe que sur tes appareils (QR code d'appairage) ; sans elle, les données sont inaccessibles
 - **Tout le code tourne dans le navigateur** (Manifest V3, service worker local)
 - **Caches locaux uniquement** : `chrome.storage.session` pour le cache court (1 h), `chrome.storage.local` pour les parcelles (24 h)
@@ -263,6 +264,11 @@ src/
     popup.html/.css/.js # Recherche manuelle (popup d'extension)
 api/
   sync.js               # Fonction Vercel de synchro (Upstash Redis)
+  dvf.js                # Ventes DVF allégées d'une commune (fichiers geo-dvf, cache d'une semaine)
+  scan.js               # Robot des annonces, tâche planifiée chaque nuit (vercel.json)
+  listings.js           # Annonces lues par le robot, par commune
+  _lib/                 # Code du robot : page.js (jsdom + lecteur de l'extension), sources.js,
+                        #   polite.js (robots.txt, 5 s entre deux pages), scan-run.js, scan-store.js, address.js
 web/                    # Appli téléphone : les pages de src/ + adaptateur web (platform/)
 scripts/build-web.mjs   # Construit dist-web/ pour Vercel
 ```
