@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Interface en français. Aucun tiret cadratin « — » dans le code, les textes ou les commits.
+- Interface en français. Aucun tiret cadratin (tiret long, U+2014) dans le code, les textes ou les commits.
 - L'extension n'a aucune dépendance à l'exécution : rien à installer, Leaflet reste celui de `src/vendor/leaflet`.
 - Aucune donnée ne part ailleurs que vers les API publiques déjà utilisées (geo.api.gouv.fr, cadastre.data.gouv.fr, app.dvf.etalab.gouv.fr, ADEME, api-adresse.data.gouv.fr, IGN) et la synchro existante.
 - Le `noindex` de `vercel.json` ne change pas.
