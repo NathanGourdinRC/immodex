@@ -46,3 +46,35 @@ test('prix d’un élément qui ne contient que le prix', () => {
   assert.equal(priceOf('275 000 € *'), 275000);
   assert.equal(priceOf('299 000 € HAI'), 299000);
 });
+
+test('les biens similaires en bas de page ne prêtent pas leurs chiffres à l’annonce', () => {
+  const html = `<!doctype html><html><body><header><nav><a href="/">Accueil</a> Terrain 999 m²</nav></header>
+  <main><h1>Maison 5 chambres – terrasse et jardin</h1><p>59118 Wambrechies · 110 m² · 6 pièces · 5 chambres · jardin</p><p>Prix : 329 000 €</p>
+  <p>${'Belle maison lumineuse, proche des écoles et du centre. '.repeat(8)}</p></main>
+  <section class="biens-similaires"><div class="swiper-wrapper">
+    <article class="vignette-bien"><a href="/bien-immobilier/terrain-constructible-706/"><h3>Terrain constructible de 706 m2</h3></a><p>275 000 € · 706 m2 · Wambrechies</p></article>
+    <article class="vignette-bien"><a href="/bien-immobilier/maison-3-chambres/"><h3>Maison 3 chambres</h3></a><p>290 000 € · Terrain 410 m² · 4 pièces</p></article>
+  </div></section><footer>Mentions légales · garage solidaire</footer></body></html>`;
+  const r = readListing(html, 'https://www.maesimmobilier.fr/bien-immobilier/maison-5-chambres-terrasse-et-jardin/');
+  assert.equal(r.terrain, null);
+  assert.equal(r.chambres, 5);
+  assert.equal(r.pieces, 6);
+  assert.equal(r.garage, false);
+});
+
+test('pièces et chambres : « Nombre de pièces : 6 », références collées, fil d’Ariane ignoré', () => {
+  const page = (body) => `<!doctype html><html><body>${body}<p>${'Description de la maison, lumineuse et calme. '.repeat(8)}</p></body></html>`;
+  const maes = readListing(page('<h1>Maison familiale</h1><ul><li>Nombre de chambres : 5</li><li>Nombre de pièces : 6</li></ul>'), 'https://www.maesimmobilier.fr/bien-immobilier/x/');
+  assert.deepEqual([maes.pieces, maes.chambres], [6, 5]);
+  const deleu = readListing(page('<h1>Maison individuelle</h1><div><span>Réf. MX517</span><span>4 pièces</span><span>3 chambres</span><span>110 m²</span></div>'), 'https://deleuimmobilier.com/fr/propriete/vente+maison+mouvaux+x+1');
+  assert.deepEqual([deleu.pieces, deleu.chambres], [4, 3]);
+  const lsi = readListing(page('<nav class="breadcrumb"><a href="/a">Maisons 5 pièces à vendre en France</a></nav><div class="fiche"><h1>Maison 5 chambres</h1><p>Maison · 6 pièces · 177 m²</p></div>'), 'https://www.lesiteimmo.com/acheter/maison-6pieces/wambrechies-59118/1');
+  assert.equal(lsi.pieces, 6);
+});
+
+test('terrain écrit « 350 m<sup>2</sup> » dans la fiche détaillée', () => {
+  const html = `<!doctype html><html><body><main><h1>Maison flamande</h1><a href="/type_offre/vente/">Retour aux résultats</a>
+    <ul class="caracteristiques"><li>Surface : <strong>80 m<sup>2</sup></strong></li><li>Surface terrain : <strong>350 m<sup>2</sup></strong></li></ul>
+    <p>Prix : 284 000 €</p><p>${'Charmante maison flamande avec jardin. '.repeat(8)}</p></main></body></html>`;
+  assert.equal(readListing(html, 'https://www.maesimmobilier.fr/bien-immobilier/x/').terrain, 350);
+});

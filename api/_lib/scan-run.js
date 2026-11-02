@@ -8,13 +8,19 @@ import { readListing } from './page.js';
 import { keys, listingsOf, saveListings, sourceMetaOf, saveSourceMeta, readQueue, writeQueue, activeCommunes } from './scan-store.js';
 
 const HOUR = 3600 * 1000;
-const LOCK_MS = 20 * HOUR; // un passage au plus toutes les 20 h, posé atomiquement
+// Verrou d'un passage : empêche deux robots simultanés (un passage dure moins de 5 min).
+// Les pages de résultats restent espacées de 46 h par site quel que soit le nombre de passages.
+const LOCK_MS = 6 * HOUR;
 const RESULTS_EVERY = 46 * HOUR; // pages de résultats d'une source relues tous les 2 jours
 const RETRY_PAUSED = 7 * 24 * HOUR; // source en pause : nouvel essai une semaine plus tard
 const MAX_PAGES = 5; // par source et par commune, toutes adresses de liste confondues
 const LOOKUP_MS = 8000; // recherche d'adresse ADEME : au-delà, abandonnée
 const KEEP_MS = 3 * 365 * 24 * HOUR;
 const DETAIL_FIELDS = ['surface', 'pieces', 'chambres', 'terrain', 'garage', 'photo', 'postal', 'city', 'energyClass', 'gesClass', 'energyConsumption', 'gesEmission'];
+// Version du lecteur de pages d'annonce : une annonce lue par une version plus ancienne (qui
+// prenait par exemple le terrain d'un bien similaire en bas de page) est relue une fois.
+const READER_VERSION = 2;
+const needsReading = (l) => !l.removedAt && (!l.detail || (l.readerVersion || 1) < READER_VERSION);
 
 const idOf = (source, url) => `${source.id}:${new URL(url).pathname}`;
 
@@ -123,7 +129,7 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
       metas.set(commune.code, meta);
       // Annonce restée sans page lue et absente de la file (passage coupé) : remise en file.
       for (const l of listings.values()) {
-        if (!l.detail && !l.removedAt && !queued.has(l.id)) {
+        if (needsReading(l) && !queued.has(l.id)) {
           queue.push({ insee: commune.code, id: l.id, url: l.url });
           queued.add(l.id);
         }
@@ -216,7 +222,7 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
         }
         const listings = await listingsFor(item.insee);
         const l = listings.get(item.id);
-        if (!l || l.detail) continue;
+        if (!l || !needsReading(l)) continue;
         const res = await fetcher.get(item.url, { deadline: detailsDeadline });
         if (res.late) {
           remaining.push(item);
@@ -228,13 +234,19 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
             refusedSources.add(l.source);
             remaining.push(item);
           } else if ((item.tries || 0) < 2 && !res.disallowed) remaining.push({ ...item, tries: (item.tries || 0) + 1 });
-          else l.detail = true;
+          else {
+            // Abandonnée : jamais redemandée, même par une version plus récente du lecteur.
+            l.detail = true;
+            l.readerVersion = READER_VERSION;
+          }
           if (l.detail) await saveListings(redis, item.insee, [l]);
           continue;
         }
         try {
           const d = readListingImpl(res.html, item.url);
-          for (const f of DETAIL_FIELDS) if (d[f] != null && d[f] !== '') l[f] = d[f];
+          // Ce que la page ne dit pas est effacé : une valeur d'une lecture plus ancienne était fausse.
+          for (const f of DETAIL_FIELDS) l[f] = d[f] != null && d[f] !== '' ? d[f] : null;
+          l.readerVersion = READER_VERSION;
           if (d.title) l.title = d.title;
           if (d.buildingType) l.type = d.buildingType;
           if (l.price == null && d.price) {
@@ -248,6 +260,7 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
         }
         // Lue (ou illisible) : jamais redemandée ; enregistrée tout de suite.
         l.detail = true;
+        l.readerVersion = READER_VERSION;
         await saveListings(redis, item.insee, [l]);
       }
     })

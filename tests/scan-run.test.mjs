@@ -129,7 +129,7 @@ test('temps écoulé : la file des pages d’annonce reprend au passage suivant,
   assert.equal(new Set(read).size, 12);
 });
 
-test('un seul passage par 20 heures, quel que soit l’appelant', async () => {
+test('un seul passage par 6 heures, quel que soit l’appelant', async () => {
   const redis = fakeRedis();
   const w = world({ 'https://alpha.test/vente/59636': results('alpha', []), 'https://beta.test/vente/59636': results('beta', []) });
   await withSearch(redis, w.now());
@@ -334,4 +334,32 @@ test('passage sans commune à suivre : il ne garde pas le verrou, le suivant peu
   const next = await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl });
   assert.equal(next.skipped, undefined);
   assert.equal(next.added, 1);
+});
+
+test('annonce lue par un ancien lecteur : relue une seule fois, les valeurs fausses effacées', async () => {
+  const redis = fakeRedis();
+  const w = world({ 'https://alpha.test/vente/59636': results('alpha', [['a1', '300 000 €']]), 'https://beta.test/vente/59636': results('beta', []) });
+  await withSearch(redis, w.now());
+  await saveListings(redis, '59636', [{ id: 'alpha:/annonce/a1', source: 'alpha', url: 'https://alpha.test/annonce/a1', insee: '59636', type: 'maison', price: 300000, prices: [{ at: 1, price: 300000 }], firstSeen: 1, lastSeen: 1, missed: 0, removedAt: null, detail: true, terrain: 706, surface: 90 }]);
+  const reader = (html, url) => ({ ...readListingImpl(html, url), terrain: null });
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl: reader });
+  let [a1] = [...(await listingsOf(redis, '59636')).values()];
+  assert.equal(a1.terrain, null);
+  assert.equal(a1.surface, 100);
+  w.advance(47 * HOUR);
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl: reader });
+  assert.equal(w.asked.filter((u) => u.endsWith('/annonce/a1')).length, 1);
+});
+
+test('page illisible : marquée lue avec la version du lecteur, jamais remise en file', async () => {
+  const redis = fakeRedis();
+  const w = world({ 'https://alpha.test/vente/59636': results('alpha', [['a1', '300 000 €']]), 'https://beta.test/vente/59636': results('beta', []) });
+  await withSearch(redis, w.now());
+  const broken = () => {
+    throw new Error('page étrange');
+  };
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl: broken });
+  w.advance(47 * HOUR);
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl: broken });
+  assert.equal(w.asked.filter((u) => u.endsWith('/annonce/a1')).length, 1);
 });
