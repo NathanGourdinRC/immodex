@@ -165,3 +165,14 @@ test('temps écoulé pendant les pages de résultats : la source est relue au pa
   await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl });
   assert.equal((await listingsOf(redis, '59636')).size, 2);
 });
+
+test('adresse probable posée sur l’annonce après lecture de sa page', async () => {
+  const redis = fakeRedis();
+  const w = world({ 'https://alpha.test/vente/59636': results('alpha', [['a1', '300 000 €']]), 'https://beta.test/vente/59636': results('beta', []) });
+  await withSearch(redis, w.now());
+  const lookup = async (l) => (l.surface === 100 ? { address: '12 Rue de Quesnoy 59118 Wambrechies', lat: 50.686, lon: 3.048, addressConfidence: 'haute' } : null);
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl, lookup });
+  const [a1] = [...(await listingsOf(redis, '59636')).values()];
+  assert.equal(a1.address, '12 Rue de Quesnoy 59118 Wambrechies');
+  assert.deepEqual([a1.lat, a1.lon], [50.686, 3.048]);
+});
