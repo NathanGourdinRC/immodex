@@ -141,7 +141,12 @@ Vérifiées le 2 novembre 2026, une visite par page, sur Wambrechies :
 ### 6.4 Alertes mail des portails verrouillés
 - **Alertes Jinka d'abord** (choix de Claude) : Nathan les reçoit déjà, et Jinka relaie encore Leboncoin et Figaro Immobilier (ses favoris en viennent). Les alertes de Leboncoin et de Figaro Immobilier eux-mêmes sont un complément possible si Nathan les crée.
 - Immodex+ lit ces mails et en tire des annonces pour le fil, avec la mention de la source d'origine (« via Jinka, Leboncoin », etc.). Une annonce d'alerte qui pointe vers un site scanné se fond avec l'annonce scannée (doublon).
-- La façon de faire parvenir ces mails à Immodex+ dépend de la boîte qui les reçoit (voir §11, question ouverte). Dans tous les cas, l'envoi vers Immodex+ s'authentifie avec la clé d'appairage que Nathan a déjà (il la colle lui-même dans son script ou sa règle, jamais dans la conversation) : pas de nouveau secret à créer.
+- **Boîte : Gmail personnel de Nathan** (décidé le 2 novembre 2026).
+- **Constat du 2 novembre 2026** : la boîte contient des alertes Jinka de 2022 (expéditeur `contact@jinka.fr`), aucune depuis un an. Les alertes actuelles de Nathan arrivent donc ailleurs (probablement en notification de l'appli Jinka). Nathan doit activer les alertes par mail dans Jinka pour ses recherches : c'est un geste de sa part, indiqué dans l'appli au moment de configurer les alertes.
+- **Format observé (2022, à revérifier sur une alerte récente)** : un mail par annonce ; objet « Nouvelle annonce : <ville> - <prix> € - <surface> m² » ; corps texte « <ville> - <surface> m² - <n> p. - <n> ch », type de bien, origine (« ajouté par un particulier sur <site> » ou nom de l'agence ou du portail), lien de suivi SendGrid qui mène à Jinka. Le lecteur s'appuie sur ces champs ; il ne suit pas le lien de suivi, sauf si c'est le seul moyen d'obtenir l'adresse de l'annonce d'origine (au constructeur d'en juger, une seule requête par alerte).
+- **Mécanisme** : un script Google Apps Script dans le compte Gmail de Nathan, déclenché régulièrement (par exemple toutes les heures), cherche les nouveaux mails de `contact@jinka.fr` (et plus tard de Leboncoin ou Figaro Immobilier), envoie leur objet, leur date et leur texte à une fonction d'Immodex+ sur Vercel, puis leur pose une étiquette « Immodex » pour ne pas les renvoyer. L'analyse du mail se fait côté serveur : le script reste minimal et ne change pas quand le format évolue.
+- Le script est fourni dans le dépôt avec un mode d'emploi pas à pas. Nathan le colle lui-même dans Apps Script et autorise lui-même l'accès à sa boîte.
+- L'envoi vers Immodex+ s'authentifie avec la clé d'appairage que Nathan a déjà : il la colle lui-même dans les propriétés du script, jamais dans la conversation. Pas de nouveau secret à créer.
 - Aucune visite des pages Leboncoin ou Figaro par le serveur : on garde ce que dit le mail (titre, prix, ville, surface, lien).
 
 ### 6.5 Garder et écarter
@@ -244,9 +249,9 @@ Conclusion partagée avec Nathan : à Wambrechies, l'emplacement change peu le p
 18. Les nouveaux diagnostics énergie entrent dans le Fil (« Bientôt en vente ? »), masquables.
 19. Doublon « probable » sans DPE : même commune, même type, surface à 1 m² près, prix à 5 % près.
 
-## 11. Question ouverte
+## 11. Questions ouvertes
 
-- **Boîte mail des alertes.** Dans quelle boîte arrivent les alertes Jinka ? La réponse décide du mécanisme. Par exemple, avec Gmail, un petit script Google Apps Script dans le compte de Nathan qui transmet les alertes à une fonction d'Immodex+ ; avec Outlook, une règle de transfert. La boîte professionnelle Releaf est à éviter pour un usage personnel. Tant que la réponse manque, seul le lot des alertes mail est bloqué ; les autres lots peuvent avancer.
+Aucune. La boîte des alertes est le Gmail personnel de Nathan (§6.4). Reste un geste de Nathan avant le lot des alertes : activer les alertes Jinka par mail.
 
 ## 12. Laissé au constructeur
 - Le découpage en lots et l'ordre de livraison. Suggestion : (1) recherches, migration et refonte de l'appli, ventes passées et carte, qui ne demandent rien côté serveur ; (2) scan et fil ; (3) alertes mail ; (4) lien annonce-vente et tests DPE.
