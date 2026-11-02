@@ -234,9 +234,11 @@ test('tableau de bord : zone Lille, nouveaux DPE, annonce vue suivie, prix par s
   await page.fill('input[type="search"]', 'Lille');
   await page.click('.imx-suggest button:has-text("Lille ·")', { timeout: 15000 });
   await page.selectOption('select.imx-select', 'appartement');
-  await page.fill('input[placeholder="mini"]', '50');
-  await page.fill('input[placeholder="maxi"]', '90');
-  await page.click('button:has-text("Créer la zone")');
+  await page.fill('input[name="surfaceMin"]', '50');
+  await page.fill('input[name="surfaceMax"]', '90');
+  await page.fill('input[name="budgetMax"]', '450000');
+  await page.fill('input[name="piecesMin"]', '2');
+  await page.click('button:has-text("Créer la recherche")');
   await page.waitForSelector('.imx-zone-tab.is-active');
   // Nouveaux DPE de la zone (vraie API ADEME) en liste et en pastilles sur la carte.
   await page.waitForSelector('.imx-row .imx-row-title', { timeout: 30000 });
@@ -257,5 +259,15 @@ test('tableau de bord : zone Lille, nouveaux DPE, annonce vue suivie, prix par s
   await page.waitForSelector('select.imx-status', { timeout: 30000 });
   assert.equal(await page.locator('select.imx-status').first().inputValue(), 'favori');
   assert.equal(await page.locator('textarea.imx-note').first().inputValue(), 'Belle lumière, cave humide');
+  // Les critères de la recherche sont gardés et repris dans le formulaire.
+  await page.click('button:has-text("Modifier")');
+  assert.equal(await page.inputValue('input[name="budgetMax"]'), '450000');
+  assert.equal(await page.inputValue('input[name="piecesMin"]'), '2');
+  assert.match(await page.textContent('#subtitle'), /Modifier/);
   await page.close();
+  // Le bouton du popup mène à « Mes recherches ».
+  const popup = await context.newPage();
+  await popup.goto(popupUrl());
+  assert.match(await popup.textContent('#dashboard-btn'), /Mes recherches/);
+  await popup.close();
 });

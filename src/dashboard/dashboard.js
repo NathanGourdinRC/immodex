@@ -95,12 +95,12 @@ function renderTabs() {
     b.addEventListener('click', () => openZone(z.id));
     return b;
   });
-  const add = el('button', { type: 'button', class: 'imx-btn imx-btn-sm' }, icon('plus', 14), 'Nouvelle zone');
+  const add = el('button', { type: 'button', class: 'imx-btn imx-btn-sm' }, icon('plus', 14), 'Nouvelle recherche');
   add.addEventListener('click', () => showEditor(null));
   zoneTabs.replaceChildren(...tabs, add);
 }
 
-// ─── Édition d'une zone ───
+// ─── Édition d'une recherche ───
 
 function showEditor(zone) {
   renderToken++;
@@ -108,7 +108,7 @@ function showEditor(zone) {
   clearMap();
   renderTabs();
   setHash(zone ? zone.id : null);
-  subtitle.textContent = zone ? `Modifier « ${zone.name} »` : 'Nouvelle zone de recherche';
+  subtitle.textContent = zone ? `Modifier « ${zone.name} »` : 'Nouvelle recherche';
   const communes = zone ? [...zone.communes] : [];
 
   const name = el('input', { class: 'imx-input', type: 'text', maxlength: '80', placeholder: 'ex. Lille sud et Lambersart', value: zone ? zone.name : null });
@@ -122,8 +122,21 @@ function showEditor(zone) {
     el('option', { value: 'appartement', selected: zone && zone.type === 'appartement' }, 'Appartement'),
     el('option', { value: 'maison', selected: zone && zone.type === 'maison' }, 'Maison')
   );
-  const surfaceMin = el('input', { class: 'imx-input', type: 'number', min: '1', max: '2000', placeholder: 'mini', value: zone && zone.surfaceMin ? zone.surfaceMin : null });
-  const surfaceMax = el('input', { class: 'imx-input', type: 'number', min: '1', max: '2000', placeholder: 'maxi', value: zone && zone.surfaceMax ? zone.surfaceMax : null });
+  // Champs chiffrés de la recherche, repérés par leur nom (celui du champ enregistré).
+  const numberField = (field, placeholder, max, step = '1') =>
+    el('input', { class: 'imx-input', type: 'number', name: field, min: '0', max, step, placeholder, value: zone && zone[field] ? zone[field] : null });
+  const fields = {
+    budgetMin: numberField('budgetMin', 'mini', '100000000', '1000'),
+    budgetMax: numberField('budgetMax', 'maxi', '100000000', '1000'),
+    surfaceMin: numberField('surfaceMin', 'mini', '2000'),
+    surfaceMax: numberField('surfaceMax', 'maxi', '2000'),
+    terrainMin: numberField('terrainMin', 'mini', '1000000'),
+    terrainMax: numberField('terrainMax', 'maxi', '1000000'),
+    piecesMin: numberField('piecesMin', 'mini', '50'),
+    chambresMin: numberField('chambresMin', 'mini', '50'),
+  };
+  const pair = (label, min, max) => el('div', { class: 'imx-grid' }, el('label', { class: 'imx-field' }, el('span', null, `${label} mini`), min), el('label', { class: 'imx-field' }, el('span', null, 'maxi'), max));
+  const single = (label, input) => el('label', { class: 'imx-field' }, el('span', null, label), input);
   const error = el('div', { class: 'imx-error', role: 'alert' });
 
   const renderChips = () => {
@@ -180,7 +193,7 @@ function showEditor(zone) {
     }, 250);
   });
 
-  const save = el('button', { type: 'submit', class: 'imx-btn imx-btn-primary' }, icon('check', 15), zone ? 'Enregistrer' : 'Créer la zone');
+  const save = el('button', { type: 'submit', class: 'imx-btn imx-btn-primary' }, icon('check', 15), zone ? 'Enregistrer' : 'Créer la recherche');
   const cancel = zones.length ? el('button', { type: 'button', class: 'imx-btn' }, 'Annuler') : null;
   if (cancel) cancel.addEventListener('click', () => (zone ? openZone(zone.id) : openZone(zones[0].id)));
   // Suppression en deux clics, sans boîte de dialogue.
@@ -205,8 +218,10 @@ function showEditor(zone) {
     el('label', { class: 'imx-field' }, el('span', null, 'Communes'), search),
     suggestions,
     chips,
-    el('label', { class: 'imx-field' }, el('span', null, 'Nom de la zone'), name, el('small', null, 'Facultatif : par défaut, les noms des communes.')),
-    el('div', { class: 'imx-grid' }, el('label', { class: 'imx-field' }, el('span', null, 'Type de logement'), type), el('div', { class: 'imx-grid' }, el('label', { class: 'imx-field' }, el('span', null, 'Surface mini'), surfaceMin), el('label', { class: 'imx-field' }, el('span', null, 'maxi (m²)'), surfaceMax))),
+    el('label', { class: 'imx-field' }, el('span', null, 'Nom de la recherche'), name, el('small', null, 'Facultatif : par défaut, les noms des communes.')),
+    el('div', { class: 'imx-grid' }, single('Type de bien', type), pair('Budget (€)', fields.budgetMin, fields.budgetMax)),
+    el('div', { class: 'imx-grid' }, pair('Surface (m²)', fields.surfaceMin, fields.surfaceMax), pair('Terrain (m²)', fields.terrainMin, fields.terrainMax)),
+    el('div', { class: 'imx-grid' }, single('Pièces mini', fields.piecesMin), single('Chambres mini', fields.chambresMin)),
     error,
     el('div', { class: 'imx-form-actions' }, save, cancel, remove)
   );
@@ -217,7 +232,8 @@ function showEditor(zone) {
       search.focus();
       return;
     }
-    const saved = await store.save({ id: zone ? zone.id : undefined, name: name.value, communes, type: type.value, surfaceMin: surfaceMin.value, surfaceMax: surfaceMax.value });
+    const values = Object.fromEntries(Object.entries(fields).map(([k, input]) => [k, input.value]));
+    const saved = await store.save({ id: zone ? zone.id : undefined, name: name.value, communes, type: type.value, ...values });
     zones = await store.list();
     openZone(saved.id);
   });
@@ -226,14 +242,14 @@ function showEditor(zone) {
     ? null
     : UI.notice(
         zones.length
-          ? 'Nouvelle zone : choisis ses communes et tes critères.'
-          : 'Choisis les communes où tu cherches. Le tableau de bord suivra les nouveaux DPE de la zone (souvent une annonce en préparation), tes annonces vues et les prix du marché.'
+          ? 'Nouvelle recherche : choisis ses communes et tes critères.'
+          : 'Choisis les communes où tu cherches et tes critères. Chaque recherche a son fil (annonces vues, nouveaux DPE souvent annonciateurs d’une vente), sa carte et ses ventes passées.'
       );
-  side.replaceChildren(...[intro, panel(zone ? 'Modifier la zone' : 'Nouvelle zone', form).node].filter(Boolean));
+  side.replaceChildren(...[intro, panel(zone ? 'Modifier la recherche' : 'Nouvelle recherche', form).node].filter(Boolean));
   setTimeout(() => search.focus(), 30);
 }
 
-// ─── Vue d'une zone ───
+// ─── Vue d'une recherche ───
 
 async function openZone(id) {
   const zone = zones.find((z) => z.id === id);
@@ -246,9 +262,16 @@ async function openZone(id) {
 
   const previousVisit = baseline.has(`visit:${zone.id}`) ? baseline.get(`visit:${zone.id}`) : await store.markVisited(zone.id);
   baseline.set(`visit:${zone.id}`, previousVisit);
+  // « 300 000 à 450 000 € », « jusqu'à 450 000 € », « 200 m² et plus ».
+  const range = (min, max, unit, fmt = num) =>
+    min && max ? `${fmt(min)} à ${fmt(max)} ${unit}` : max ? `jusqu'à ${fmt(max)} ${unit}` : min ? `${fmt(min)} ${unit} et plus` : null;
   const criteria = [
     zone.type ? (zone.type === 'maison' ? 'Maisons' : 'Appartements') : 'Maisons et appartements',
-    zone.surfaceMin || zone.surfaceMax ? `${zone.surfaceMin ? `${zone.surfaceMin}` : '0'} à ${zone.surfaceMax ? `${zone.surfaceMax} m²` : '… m²'}` : null,
+    range(zone.budgetMin, zone.budgetMax, '€'),
+    range(zone.surfaceMin, zone.surfaceMax, 'm²'),
+    zone.terrainMin || zone.terrainMax ? `terrain ${range(zone.terrainMin, zone.terrainMax, 'm²')}` : null,
+    zone.piecesMin ? `${zone.piecesMin} pièces et plus` : null,
+    zone.chambresMin ? `${zone.chambresMin} chambres et plus` : null,
     `${zone.communes.length} commune${zone.communes.length > 1 ? 's' : ''}`,
   ]
     .filter(Boolean)
@@ -262,7 +285,7 @@ async function openZone(id) {
     { class: 'imx-panel' },
     el('div', { class: 'imx-section-head' }, el('div', { class: 'imx-history-address' }, zone.name), edit),
     el('div', { class: 'imx-chips' }, zone.communes.map((c) => el('span', { class: 'imx-chip' }, icon('pin', 13), c.nom))),
-    el('div', { class: 'imx-meta' }, previousVisit ? `Dernière visite : ${UI.formatDateTime(previousVisit)}` : 'Première visite de cette zone.')
+    el('div', { class: 'imx-meta' }, previousVisit ? `Dernière visite : ${UI.formatDateTime(previousVisit)}` : 'Première visite de cette recherche.')
   );
 
   const kpi = (value, label) => el('div', { class: 'imx-kpi' }, el('strong', null, value), el('span', null, label));
@@ -291,7 +314,7 @@ async function openZone(id) {
     head,
     kpis,
     dpePanel.node,
-    panel('Annonces vues dans la zone', biensBody).node,
+    panel('Annonces vues dans la recherche', biensBody).node,
     panel('Prix du marché', marketBody).node
   );
 
@@ -495,7 +518,7 @@ async function loadBiens(zone, token, body, setKpi) {
   setKpi(inZone.length, favorites());
 
   if (!inZone.length) {
-    body.replaceChildren(UI.empty('Aucune annonce vue dans cette zone pour le moment. Chaque annonce ouverte sur un site couvert est ajoutée ici automatiquement.'));
+    body.replaceChildren(UI.empty('Aucune annonce vue dans cette recherche pour le moment. Chaque annonce ouverte sur un site couvert est ajoutée ici automatiquement.'));
     return;
   }
   body.replaceChildren(

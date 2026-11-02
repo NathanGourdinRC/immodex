@@ -36,7 +36,7 @@ document.getElementById('version').textContent = `v${chrome.runtime.getManifest(
 
 // Tableau de bord des zones de recherche, dans un onglet (déjà ouvert : on le réutilise).
 const dashboardBtn = document.getElementById('dashboard-btn');
-dashboardBtn.append(icon('layers', 14), 'Tableau de bord');
+dashboardBtn.append(icon('layers', 14), 'Mes recherches');
 dashboardBtn.addEventListener('click', async () => {
   const url = chrome.runtime.getURL('src/dashboard/dashboard.html');
   const [open] = await chrome.tabs.query({ url: `${url}*` }).catch(() => []);
