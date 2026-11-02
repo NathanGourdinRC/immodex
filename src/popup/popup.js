@@ -208,6 +208,7 @@ function setMode(next) {
   analyzeBtn.classList.toggle('imx-hidden', listMode);
   const pasteBtn = document.querySelector('.imx-paste-btn');
   if (pasteBtn) pasteBtn.classList.toggle('imx-hidden', listMode);
+  if (listMode) document.querySelector('.imx-paste-box')?.classList.add('imx-hidden');
   siteBar.classList.toggle('imx-hidden', listMode || !siteBar.childElementCount);
   historyView.classList.toggle('imx-hidden', mode !== 'history');
   biensView.classList.toggle('imx-hidden', mode !== 'biens');
@@ -303,17 +304,31 @@ async function renderSync(status) {
     if (isWebApp) {
       // Sur iPhone, l'appli ajoutée à l'écran d'accueil a son propre stockage, séparé du
       // navigateur : le QR code ouvre le navigateur, pas elle. On la relie donc avec le lien
-      // copié depuis le navigateur (bouton « Copier le lien »).
-      const pasteKey = el('button', { type: 'button', class: 'imx-btn imx-btn-primary imx-btn-block' }, icon('copy', 15), 'Coller le lien d’appairage');
-      pasteKey.addEventListener('click', async () => {
-        const text = await navigator.clipboard.readText().catch(() => '');
-        if (!(await pairFromText(text))) syncView.append(UI.alert("Aucun lien d'appairage dans le presse-papiers. Copie-le d'abord (bouton « Copier le lien » de la synchro)."));
+      // copié depuis le navigateur, collé dans un champ (appui long, Coller). Pas de lecture
+      // du presse-papiers par l'appli : iOS la soumet à une bulle « Coller » facile à manquer.
+      const field = el('input', { class: 'imx-input', type: 'url', inputmode: 'url', autocomplete: 'off', placeholder: 'https://immodex.vercel.app/#k=…', 'aria-label': "Lien d'appairage" });
+      const link = el('button', { type: 'button', class: 'imx-btn imx-btn-primary imx-btn-block' }, icon('phone', 15), 'Relier ce téléphone');
+      const error = el('div', { class: 'imx-error', role: 'alert' });
+      const tryPair = async () => {
+        error.textContent = '';
+        if (!(await pairFromText(field.value))) error.textContent = "Ce n'est pas un lien d'appairage : il doit contenir « #k= ». Recopie-le depuis la synchro (bouton « Copier le lien »).";
+      };
+      link.addEventListener('click', tryPair);
+      // Un lien collé relie tout de suite, sans toucher le bouton.
+      field.addEventListener('input', () => {
+        if (/#k=[A-Za-z0-9_-]{32,}/.test(field.value)) tryPair();
       });
       syncView.replaceChildren(
         el('div', { class: 'imx-label' }, 'Relier ce téléphone'),
         el('p', { class: 'imx-meta' }, `Ce téléphone n'est pas encore relié à l'extension. Sur l'ordinateur, ouvre Immodex+ dans Chrome, touche le bouton téléphone, puis scanne le QR code avec l'appareil photo.`),
-        el('p', { class: 'imx-meta' }, "Appli ajoutée à l'écran d'accueil d'un iPhone : ouvre le lien du QR code dans le navigateur, touche « Copier le lien » dans sa synchro, puis reviens ici."),
-        pasteKey,
+        el(
+          'p',
+          { class: 'imx-meta' },
+          "Appli ajoutée à l'écran d'accueil d'un iPhone : le QR code s'ouvre dans le navigateur, pas ici. Dans le navigateur, touche le bouton téléphone puis « Copier le lien », reviens ici et colle-le dans ce champ (appui long, puis Coller)."
+        ),
+        field,
+        link,
+        error,
         el('p', { class: 'imx-meta' }, `Tu retrouveras ici : ${what}.`)
       );
       return;
@@ -514,20 +529,29 @@ function sharedFromUrl() {
 }
 
 if (isWebApp) {
-  const paste = el('button', { type: 'button', class: 'imx-btn imx-btn-block imx-paste-btn' }, icon('copy', 15), 'Coller une annonce (lien ou texte copié)');
-  paste.addEventListener('click', async () => {
-    let text = '';
-    try {
-      text = await navigator.clipboard.readText();
-    } catch {
-      return setStatus('error', 'Le navigateur refuse la lecture du presse-papiers. Autorise-la, ou saisis les critères à la main.');
-    }
-    if (!text.trim()) return setStatus('error', 'Le presse-papiers est vide : copie d’abord le lien ou le texte de l’annonce.');
+  // Un champ où coller soi-même (appui long, Coller) plutôt que la lecture du presse-papiers
+  // par l'appli, qu'iOS soumet à une bulle « Coller » facile à manquer.
+  const area = el('textarea', { class: 'imx-note', rows: '3', placeholder: 'Colle ici le lien ou le texte de l’annonce (appui long, puis Coller)', 'aria-label': 'Lien ou texte de l’annonce' });
+  const read = el('button', { type: 'button', class: 'imx-btn imx-btn-primary imx-btn-block' }, icon('search', 15), 'Lire l’annonce');
+  const box = el('div', { class: 'imx-panel imx-paste-box imx-hidden' }, area, read);
+  const go = async () => {
+    const text = area.value.trim();
+    if (!text) return setStatus('error', 'Colle d’abord le lien ou le texte de l’annonce.');
+    // Un lien d'appairage collé ici relie le téléphone au lieu d'être lu comme une annonce.
     if (await pairFromText(text)) return;
+    box.classList.add('imx-hidden');
+    area.value = '';
     currentPage = null;
     openShared({ text });
+  };
+  read.addEventListener('click', go);
+  area.addEventListener('paste', () => setTimeout(go, 0));
+  const paste = el('button', { type: 'button', class: 'imx-btn imx-btn-block imx-paste-btn' }, icon('copy', 15), 'Coller une annonce (lien ou texte copié)');
+  paste.addEventListener('click', () => {
+    box.classList.toggle('imx-hidden');
+    if (!box.classList.contains('imx-hidden')) area.focus();
   });
-  analyzeBtn.after(paste);
+  analyzeBtn.after(paste, box);
 }
 
 // ─── Historique ───

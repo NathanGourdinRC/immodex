@@ -151,16 +151,25 @@ test('appli téléphone : appairage par lien collé, puis annonce partagée lue 
   const { status } = await send(popup, { type: 'SYNC_STATUS' });
   assert.ok(status.paired, 'espace créé par le test précédent');
 
-  // Appli de l'écran d'accueil d'un iPhone : stockage vide, lien copié dans le presse-papiers.
+  // Appli de l'écran d'accueil d'un iPhone : stockage vide, lien collé dans le champ de la synchro.
   const phone = await phonePage();
-  await phone.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base });
   await phone.goto(`${base}/src/popup/popup.html`);
   await phone.click('#phone-btn');
-  await phone.evaluate((link) => navigator.clipboard.writeText(link), status.pairUrl);
-  await phone.click('#sync-view button:has-text("Coller le lien")');
+  await phone.fill('#sync-view input', 'pas un lien');
+  await phone.click('#sync-view button:has-text("Relier ce téléphone")');
+  assert.match(await phone.textContent('#sync-view .imx-error'), /#k=/);
+  await phone.fill('#sync-view input', status.pairUrl);
   const zones = await until(() => phone.evaluate(async () => (await chrome.storage.local.get('immodex.zones.v1'))['immodex.zones.v1']));
   assert.equal(zones[0].name, 'Sévrier test');
   await phone.waitForLoadState('load');
+
+  // Texte d'annonce collé dans le champ « Coller une annonce ».
+  await phone.click('.imx-paste-btn');
+  await phone.fill('.imx-paste-box textarea', 'Appartement 3 pièces 68 m² Annecy 74000, DPE C, GES B, 412 000 € https://www.agence-du-lac.fr/annonce/42');
+  await phone.click('.imx-paste-box button:has-text("Lire")');
+  await phone.waitForFunction(() => document.querySelector('#dpe-form [name=postal]').value === '74000');
+  assert.equal(await phone.inputValue('#dpe-form [name=energyClass]'), 'C');
+  assert.ok(await phone.isHidden('.imx-paste-box'));
 
   // Annonce partagée depuis une autre appli (Android : share_target ; ici par l'adresse).
   const title = 'Vente maison 5 pièces Sévrier (74320) - 120 m² - 890 000 € | SeLoger';
