@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanZone, fpInZone, groupsInZone, trackingKey, createZoneStore } from '../src/common/zones.js';
+import { cleanZone, fpInZone, groupsInZone, trackingKey, createZoneStore, checkCriteria } from '../src/common/zones.js';
 import { zoneDpeFilters, isoDaysAgo, marketOf, priceBreaks, priceClass, priceColumns } from '../src/common/zone-data.js';
 
 const LILLE = { code: '59350', nom: 'Lille', codesPostaux: ['59000', '59160', '59260', '59777', '59800'], centre: { type: 'Point', coordinates: [3.047, 50.632] } };
@@ -94,4 +94,30 @@ test('prix du marché : colonnes selon le type, seuils de couleur arrondis', () 
   assert.equal(priceClass(2100, breaks), 0);
   assert.equal(priceClass(4000, breaks), 2);
   assert.equal(priceClass(9000, breaks), 4);
+});
+
+test('recherche nettoyée : budget, terrain, pièces et chambres', () => {
+  const z = cleanZone({ communes: [LILLE], budgetMin: '500000', budgetMax: 300000, terrainMin: '200', piecesMin: '4', chambresMin: '0' }, 1000);
+  assert.equal(z.budgetMin, 300000);
+  assert.equal(z.budgetMax, 500000);
+  assert.equal(z.terrainMin, 200);
+  assert.equal(z.terrainMax, null);
+  assert.equal(z.piecesMin, 4);
+  assert.equal(z.chambresMin, null);
+});
+
+test('ancienne zone sans les nouveaux champs : toujours valide', () => {
+  const z = cleanZone({ id: 'z1', name: 'Lille', communes: [LILLE], type: 'maison', surfaceMin: 90, createdAt: 5 }, 1000);
+  assert.equal(z.id, 'z1');
+  assert.equal(z.surfaceMin, 90);
+  assert.equal(z.budgetMax, null);
+});
+
+test('annonce et critères : budget strict, surface à 3 m², inconnues signalées', () => {
+  const s = cleanZone({ communes: [LILLE], budgetMax: 450000, surfaceMin: 100, terrainMin: 150, chambresMin: 3 });
+  assert.deepEqual(checkCriteria({ price: 440000, surface: 98, terrain: null, pieces: 5, chambres: null }, s), { ok: true, unknown: ['terrain non précisé', 'chambres non précisées'] });
+  assert.equal(checkCriteria({ price: 450001, surface: 120 }, s).ok, false);
+  assert.equal(checkCriteria({ price: 400000, surface: 96 }, s).ok, false);
+  assert.equal(checkCriteria({ price: 400000, surface: 110, terrain: 100 }, s).ok, false);
+  assert.deepEqual(checkCriteria({ price: null, surface: 110, terrain: 200, chambres: 3 }, s), { ok: true, unknown: ['prix non précisé'] });
 });

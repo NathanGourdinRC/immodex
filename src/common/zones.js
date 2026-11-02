@@ -23,6 +23,16 @@ function numberOrNull(v) {
   return isFinite(n) && n > 0 ? n : null;
 }
 
+const intOrNull = (v) => {
+  const n = numberOrNull(v);
+  return n == null ? null : Math.round(n) || null;
+};
+
+// Minimum et maximum remis dans l'ordre (saisie inversée).
+function ordered(min, max) {
+  return min && max && min > max ? [max, min] : [min, max];
+}
+
 function newId(now) {
   return `z${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
@@ -41,9 +51,9 @@ function cleanZone(input, now = Date.now()) {
       centre: c.centre && Array.isArray(c.centre.coordinates) ? { type: 'Point', coordinates: c.centre.coordinates.slice(0, 2).map(Number) } : null,
     });
   }
-  let surfaceMin = numberOrNull(input.surfaceMin);
-  let surfaceMax = numberOrNull(input.surfaceMax);
-  if (surfaceMin && surfaceMax && surfaceMin > surfaceMax) [surfaceMin, surfaceMax] = [surfaceMax, surfaceMin];
+  const [surfaceMin, surfaceMax] = ordered(numberOrNull(input.surfaceMin), numberOrNull(input.surfaceMax));
+  const [budgetMin, budgetMax] = ordered(numberOrNull(input.budgetMin), numberOrNull(input.budgetMax));
+  const [terrainMin, terrainMax] = ordered(numberOrNull(input.terrainMin), numberOrNull(input.terrainMax));
   const name = String(input.name || '').trim() || communes.map((c) => c.nom).join(', ') || 'Ma zone';
   return {
     id: input.id || newId(now),
@@ -52,6 +62,12 @@ function cleanZone(input, now = Date.now()) {
     type: input.type === 'maison' || input.type === 'appartement' ? input.type : null,
     surfaceMin,
     surfaceMax,
+    budgetMin,
+    budgetMax,
+    terrainMin,
+    terrainMax,
+    piecesMin: intOrNull(input.piecesMin),
+    chambresMin: intOrNull(input.chambresMin),
     createdAt: input.createdAt || now,
     updatedAt: now,
     lastVisit: input.lastVisit || null,
@@ -81,6 +97,34 @@ function fpInZone(fp, zone) {
     if (zone.surfaceMax && fp.surface > zone.surfaceMax + 3) return false;
   }
   return true;
+}
+
+// Une annonce passe-t-elle les critères chiffrés de la recherche ? Le budget est strict, la
+// surface habitable garde la marge de 3 m² de fpInZone. Une information absente de l'annonce
+// n'exclut rien : elle est signalée (« terrain non précisé »), seulement si la recherche la demande.
+const CRITERIA = [
+  { field: 'price', min: 'budgetMin', max: 'budgetMax', margin: 0, unknown: 'prix non précisé' },
+  { field: 'surface', min: 'surfaceMin', max: 'surfaceMax', margin: 3, unknown: 'surface non précisée' },
+  { field: 'terrain', min: 'terrainMin', max: 'terrainMax', margin: 0, unknown: 'terrain non précisé' },
+  { field: 'pieces', min: 'piecesMin', max: null, margin: 0, unknown: 'pièces non précisées' },
+  { field: 'chambres', min: 'chambresMin', max: null, margin: 0, unknown: 'chambres non précisées' },
+];
+
+function checkCriteria(listing, search) {
+  const unknown = [];
+  let ok = true;
+  for (const c of CRITERIA) {
+    const min = search[c.min] || null;
+    const max = c.max ? search[c.max] || null : null;
+    if (!min && !max) continue;
+    const v = listing ? listing[c.field] : null;
+    if (v == null) {
+      unknown.push(c.unknown);
+      continue;
+    }
+    if ((min && v < min - c.margin) || (max && v > max + c.margin)) ok = false;
+  }
+  return { ok, unknown };
 }
 
 // Groupes du suivi des biens (un groupe = un bien, toutes ses annonces) situés dans la zone.
@@ -175,4 +219,4 @@ function createZoneStore(storageArea) {
   };
 }
 
-export { ZONES_KEY, TRACKING_KEY, MAX_ZONES, STATUSES, cleanZone, fpInZone, groupsInZone, trackingKey, createZoneStore };
+export { ZONES_KEY, TRACKING_KEY, MAX_ZONES, STATUSES, cleanZone, checkCriteria, fpInZone, groupsInZone, trackingKey, createZoneStore };
