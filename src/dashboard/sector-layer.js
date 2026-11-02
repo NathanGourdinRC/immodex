@@ -1,7 +1,7 @@
 // Carte d'une recherche : les ventes DVF des communes regroupées en secteurs d'environ 400 m,
 // en 3 niveaux par rapport à la médiane de la commune, avec le nombre de ventes de chaque
 // secteur. Moins de 10 ventes : pas de niveau, secteur en pointillés.
-import { communeSales } from '../common/sales.js';
+import { createSearchSales } from '../common/sales.js';
 import { buildSectors, MIN_SALES, LEVEL_GAP } from '../common/sectors.js';
 
 const UI = window.__immodexUI;
@@ -15,33 +15,22 @@ const LEVELS = {
 const FEW = { label: `moins de ${MIN_SALES} ventes`, color: '#94a3b8' };
 const POPUP_SALES = 20;
 
-// Ventes de la recherche, gardées pendant la vie de la page (la vue Ventes passées les réutilise).
-const cache = new Map();
+// Ventes de la recherche, gardées pendant la vie de la page (la vue Ventes passées et le Fil
+// les réutilisent) ; un chargement en échec n'est pas gardé.
+const loadSearchSales = createSearchSales();
 
-function loadSearchSales(search) {
-  const key = `${search.type || 'tous'}|${search.communes.map((c) => c.code).join(',')}`;
-  if (!cache.has(key)) {
-    const load = Promise.all(
-      search.communes.map((c) =>
-        communeSales(c.code, { type: search.type })
-          .then((r) => ({ commune: c, ...r }))
-          .catch(() => ({ commune: c, failed: true, sales: [], partial: false, lastDate: null }))
-      )
-    ).then((parts) => {
-      const dates = parts.map((p) => p.lastDate).filter(Boolean).sort();
-      return {
-        sales: parts.flatMap((p) => p.sales),
-        partial: parts.some((p) => p.partial),
-        lastDate: dates.length ? dates[dates.length - 1] : null,
-        failed: parts.filter((p) => p.failed).map((p) => p.commune.nom),
-        empty: parts.filter((p) => !p.failed && !p.sales.length).map((p) => p.commune.nom),
-        perCommune: parts.map((p) => ({ commune: p.commune, count: p.sales.length })),
-      };
-    });
-    cache.set(key, load);
-    load.catch(() => cache.delete(key));
-  }
-  return cache.get(key);
+// Ce qu'il faut savoir des données chargées : fraîcheur, carte partielle, communes absentes.
+function salesNotes(data) {
+  return [
+    data.lastDate ? `Ventes connues jusqu’au ${UI.formatDate(data.lastDate)} (DVF, mis à jour deux fois par an avec 6 à 12 mois de retard).` : null,
+    data.failedSections
+      ? `${data.failedSections} section${data.failedSections > 1 ? 's' : ''} cadastrale${data.failedSections > 1 ? 's' : ''} injoignable${data.failedSections > 1 ? 's' : ''} : données partielles, réessaie plus tard.`
+      : data.partial
+        ? 'Commune trop grande : données partielles, une partie des sections cadastrales seulement.'
+        : null,
+    data.empty.length ? `Pas de données DVF pour ${data.empty.join(', ')} (l’Alsace, la Moselle et Mayotte n’y figurent pas).` : null,
+    data.failed.length ? `Ventes injoignables pour ${data.failed.join(', ')} : réessaie plus tard.` : null,
+  ].filter(Boolean);
 }
 
 const levelOf = (s) => (s.level ? LEVELS[s.level] : FEW);
@@ -148,13 +137,8 @@ async function renderSectors({ search, isCurrent, layer, body, panel, setKpi }) 
       el('span', { class: 'imx-meta' }, `${num(count)} ventes`)
     )
   );
-  const notes = [
-    data.lastDate ? `Ventes connues jusqu’au ${UI.formatDate(data.lastDate)} (DVF, mis à jour deux fois par an avec 6 à 12 mois de retard).` : null,
-    data.partial ? 'Commune trop grande : carte partielle, une partie des sections cadastrales seulement.' : null,
-    data.empty.length ? `Pas de données DVF pour ${data.empty.join(', ')} (l’Alsace, la Moselle et Mayotte n’y figurent pas).` : null,
-    data.failed.length ? `Ventes injoignables pour ${data.failed.join(', ')} : réessaie plus tard.` : null,
-  ].filter(Boolean);
+  const notes = salesNotes(data);
   dataBody.replaceChildren(el('div', { class: 'imx-sites' }, rows), ...notes.map((t) => el('p', { class: 'imx-meta', style: 'margin:6px 0 0' }, t)));
 }
 
-export { loadSearchSales, renderSectors };
+export { loadSearchSales, salesNotes, renderSectors };

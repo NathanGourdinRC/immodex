@@ -48,11 +48,33 @@ function clearMap() {
   markers.clear();
 }
 
+// Cadre des communes de la recherche. Sur un téléphone, la carte est cachée hors de la vue
+// Carte : Leaflet ne peut pas cadrer une carte de taille nulle, on cadre à son apparition.
+let lastBounds = null;
+let needsFit = false;
+const mapShown = () => map.getContainer().offsetWidth > 0;
+
+function fitSearch() {
+  if (!lastBounds) return;
+  if (!mapShown()) {
+    needsFit = true;
+    return;
+  }
+  map.fitBounds(lastBounds.pad(0.05));
+  needsFit = false;
+}
+
 function focusMarker(id) {
   const marker = markers.get(id);
   if (!marker) return;
-  map.setView(marker.getLatLng(), Math.max(map.getZoom(), 17));
-  marker.openPopup();
+  const go = () => {
+    map.setView(marker.getLatLng(), Math.max(map.getZoom(), 17));
+    marker.openPopup();
+  };
+  if (mapShown()) return go();
+  // Téléphone : « Voir sur la carte » passe d'abord sur la vue Carte.
+  showView('carte', current && current.id);
+  setTimeout(go, 50);
 }
 
 // Contenu de bulle qui grandit (ventes passées) : Leaflet recadre la bulle.
@@ -94,7 +116,10 @@ function showView(next, id) {
   document.querySelectorAll('.imx-views button').forEach((b) => b.classList.toggle('is-active', b.dataset.view === view));
   if (id) setHash(id);
   // Sur un téléphone, la carte n'est visible que dans la vue Carte : Leaflet doit se recaler.
-  setTimeout(() => map.invalidateSize(), 0);
+  setTimeout(() => {
+    map.invalidateSize();
+    if (needsFit && mapShown()) fitSearch();
+  }, 0);
 }
 
 function hashZone() {
@@ -356,7 +381,9 @@ async function drawContours(zone, token) {
   const group = L.geoJSON(shapes.filter(Boolean), { style: { color: '#0f172a', weight: 2, dashArray: '6 4', fill: false }, interactive: false });
   layers.contours.addLayer(group);
   const bounds = group.getBounds();
-  if (bounds.isValid()) map.fitBounds(bounds.pad(0.05));
+  if (!bounds.isValid()) return;
+  lastBounds = bounds;
+  fitSearch();
 }
 
 // ─── Démarrage ───

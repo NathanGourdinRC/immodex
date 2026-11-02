@@ -303,7 +303,7 @@ async function loadBiens(ctx, body) {
     const line = rows.get(g).querySelector('.imx-nearby');
     if (!near || !line) continue;
     const comparable = near.sales.filter((v) => isComparable(v, search)).length;
-    line.textContent = `Ventes proches : ${num(near.p25)} à ${num(near.p75)} €/m² (${near.sales.length} ventes dans un rayon de ${num(near.radius)} m, dont ${comparable} comparables)`;
+    line.textContent = `Ventes proches : ${num(near.p25)} à ${num(near.p75)} €/m² (${near.sales.length} ventes dans un rayon de ${num(near.radius)} m, dont ${comparable} comparables)${data.partial ? ', données DVF partielles' : ''}`;
     line.classList.remove('imx-hidden');
   }
 }

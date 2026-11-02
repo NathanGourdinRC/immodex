@@ -314,3 +314,42 @@ test('carte en secteurs : Wambrechies', async () => {
   assert.ok((await page.locator('.imx-sales-table tbody tr').count()) > before);
   await page.close();
 });
+
+test('ventes passées : une section DVF injoignable ne fait pas tout perdre', async () => {
+  const page = await context.newPage();
+  await page.route('**/api/mutations3/59636/0000B', (route) => route.fulfill({ status: 503, body: 'indisponible' }));
+  await page.goto(`chrome-extension://${extId}/src/dashboard/dashboard.html`);
+  await page.click('#zone-tabs button:has-text("Wambrechies")');
+  await page.click('.imx-views button:has-text("Ventes passées")');
+  await page.waitForSelector('.imx-sales-table tbody tr', { timeout: 60000 });
+  assert.match(await page.textContent('.imx-view-ventes'), /section cadastrale injoignable/);
+  await page.click('.imx-views button:has-text("Carte")');
+  await page.waitForSelector('.imx-sector', { timeout: 30000 });
+  await page.close();
+});
+
+test('téléphone : carte cadrée sur la commune, « Voir sur la carte », tableau sans défilement de côté', async () => {
+  const page = await context.newPage();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`chrome-extension://${extId}/src/dashboard/dashboard.html`);
+  await page.click('#zone-tabs button:has-text("Wambrechies")');
+  await page.click('.imx-views button:has-text("Fil")');
+  // Carte ouverte après le Fil : cadrée sur la commune, secteurs de taille lisible.
+  await page.waitForTimeout(3000);
+  await page.click('.imx-views button:has-text("Carte")');
+  await page.waitForSelector('.imx-sector', { timeout: 60000 });
+  await page.waitForTimeout(800);
+  const box = await page.locator('.imx-sector').first().boundingBox();
+  assert.ok(box && box.width > 10, `secteur de ${box && box.width} px`);
+  // « Voir sur la carte » depuis le Fil bascule sur la carte.
+  await page.click('.imx-views button:has-text("Fil")');
+  await page.locator('.imx-row-title').first().click();
+  assert.match(page.url(), /vue=carte/);
+  assert.ok(await page.locator('#map').isVisible());
+  // Ventes passées : tout tient dans la largeur de l'écran.
+  await page.click('.imx-views button:has-text("Ventes passées")');
+  await page.waitForSelector('.imx-sales-table tbody tr', { timeout: 60000 });
+  const overflow = await page.$eval('.imx-table-wrap', (w) => w.scrollWidth - w.clientWidth);
+  assert.ok(overflow <= 1, `débordement de ${overflow} px`);
+  await page.close();
+});

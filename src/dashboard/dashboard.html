@@ -72,6 +72,16 @@
       .imx-sales-table td { padding: 5px 6px; border-bottom: 1px solid var(--imx-border); white-space: nowrap; }
       .imx-sales-table .is-num { text-align: right; }
       .imx-check { display: flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--imx-text-2); }
+      /* Téléphone : chaque vente devient une petite carte (date et rue, puis les chiffres). */
+      @media (max-width: 600px) {
+        .imx-sales-table thead { display: none; }
+        .imx-sales-table tr { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; padding: 7px 0; border-bottom: 1px solid var(--imx-border); }
+        .imx-sales-table td { padding: 0; border: none; white-space: normal; }
+        .imx-sales-table td:empty { display: none; }
+        .imx-sales-table td.is-street { flex: 1 1 55%; font-weight: 600; }
+        .imx-sales-table td[data-label]::before { content: attr(data-label) ' '; color: var(--imx-text-3); }
+        .imx-sales-table td[data-unit]::after { content: attr(data-unit); }
+      }
       .imx-nearby { color: var(--imx-text); }
       /* Téléphone : la carte n'apparaît que dans la vue Carte. */
       @media (max-width: 900px) { body:not(.view-carte) .imx-dash-map { display: none; } }

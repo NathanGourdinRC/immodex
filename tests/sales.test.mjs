@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { communeSales } from '../src/common/sales.js';
+import { communeSales, createSearchSales } from '../src/common/sales.js';
 import { slimRow } from '../src/common/dvf.js';
 
 // Lignes au format de l'API DVF d'Etalab (une ligne par local), réduites par slimRow comme en vrai.
@@ -71,4 +71,41 @@ test('commune sans ventes ou trop grande : liste vide, partielle signalée', asy
   assert.equal(big.loaded, 60);
   assert.equal(calls, 60);
   assert.equal(big.partial, true);
+});
+
+test('une section injoignable : les autres sections restent, la commune est signalée partielle', async () => {
+  const flaky = async (key) => {
+    if (key === '59636/0000B') throw new Error('DVF 503');
+    return ROWS[key] || [];
+  };
+  const r = await communeSales('59636', { type: null, fetchSections, fetchRows: flaky });
+  assert.equal(r.sales.length, 2);
+  assert.equal(r.failedSections, 1);
+  assert.equal(r.partial, true);
+});
+
+test('grande commune (Annecy, 211 sections) : toutes les sections chargées par défaut', async () => {
+  const ids = Array.from({ length: 211 }, (_, i) => `74010${['000', '011', '268'][Math.floor(i / 100)]}${String(i % 100).padStart(2, '0')}`);
+  let calls = 0;
+  const r = await communeSales('74010', { type: null, fetchSections: sections(ids), fetchRows: async () => (calls++, []) });
+  assert.equal(calls, 211);
+  assert.equal(r.partial, false);
+});
+
+test('ventes d’une recherche : communes réunies, échec non gardé en cache', async () => {
+  let attempts = 0;
+  const load = async (insee) => {
+    if (insee === '59388' && attempts++ === 0) throw new Error('réseau');
+    return { sales: [{ id: insee, date: insee === '59636' ? '2025-12-30' : '2025-06-01', pricePerM2: 3000 }], partial: false, failedSections: 0, lastDate: insee === '59636' ? '2025-12-30' : '2025-06-01' };
+  };
+  const loader = createSearchSales({ load });
+  const search = { type: 'maison', communes: [{ code: '59636', nom: 'Wambrechies' }, { code: '59388', nom: 'Marquette-lez-Lille' }] };
+  const first = await loader(search);
+  assert.deepEqual(first.failed, ['Marquette-lez-Lille']);
+  assert.equal(first.sales.length, 1);
+  const second = await loader(search);
+  assert.deepEqual(second.failed, []);
+  assert.equal(second.sales.length, 2);
+  assert.equal(second.lastDate, '2025-12-30');
+  assert.equal(await loader(search), second);
 });

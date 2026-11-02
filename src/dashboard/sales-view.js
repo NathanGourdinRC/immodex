@@ -1,7 +1,7 @@
 // Vue « Ventes passées » d'une recherche : les ventes DVF de ses communes (5 ans), avec prix
 // au m², terrain et dépendance, les plus récentes d'abord, et un filtre sur les ventes
 // comparables aux critères de la recherche.
-import { loadSearchSales } from './sector-layer.js';
+import { loadSearchSales, salesNotes } from './sector-layer.js';
 import { isComparable } from '../common/sectors.js';
 
 const UI = window.__immodexUI;
@@ -14,13 +14,14 @@ function saleRow(v) {
     'tr',
     null,
     el('td', null, v.date ? UI.formatDate(v.date) : ''),
-    el('td', null, v.address || ''),
+    el('td', { class: 'is-street' }, v.address || ''),
     el('td', { class: 'is-num' }, v.price ? UI.priceText(v.price) : ''),
-    el('td', { class: 'is-num' }, v.surface ? `${num(v.surface)} m²` : ''),
-    el('td', { class: 'is-num' }, `${num(v.pricePerM2)}`),
-    el('td', { class: 'is-num' }, v.terrain ? `${num(v.terrain)} m²` : ''),
+    // Sur un téléphone, chaque vente devient une carte : les valeurs portent leur libellé.
+    el('td', { class: 'is-num', 'data-label': 'Surface' }, v.surface ? `${num(v.surface)} m²` : ''),
+    el('td', { class: 'is-num', 'data-unit': ' €/m²' }, `${num(v.pricePerM2)}`),
+    el('td', { class: 'is-num', 'data-label': 'Terrain' }, v.terrain ? `${num(v.terrain)} m²` : ''),
     // « oui » quand DVF signale une dépendance ; jamais « non » : DVF ne le sait pas.
-    el('td', null, v.dependances ? 'oui' : '')
+    el('td', { 'data-label': 'Dépendance' }, v.dependances ? 'oui' : '')
   );
 }
 
@@ -35,8 +36,9 @@ async function renderSalesView({ search, isCurrent, body, panel }) {
     return;
   }
   if (!isCurrent()) return;
+  const notes = salesNotes(data).map((t) => el('p', { class: 'imx-meta', style: 'margin:0 0 6px' }, t));
   if (!data.sales.length) {
-    content.replaceChildren(UI.empty('Aucune vente DVF pour ces communes (l’Alsace, la Moselle et Mayotte n’y figurent pas).'));
+    content.replaceChildren(UI.empty('Aucune vente à afficher.'), ...notes);
     return;
   }
 
@@ -83,9 +85,9 @@ async function renderSalesView({ search, isCurrent, body, panel }) {
       { class: 'imx-meta', style: 'margin:0 0 6px' },
       `${num(data.sales.length)} ventes sur 5 ans. Médiane : ${Object.entries(medians)
         .map(([code, list]) => `${names[code] || code} ${num(median(list))} €/m²`)
-        .join(', ')}.`,
-      data.lastDate ? ` Ventes connues jusqu’au ${UI.formatDate(data.lastDate)}.` : ''
+        .join(', ')}.`
     ),
+    ...notes,
     el('label', { class: 'imx-check' }, filter, ` Comparables à ma recherche seulement (${num(comparables.length)} sur ${num(sorted.length)})`),
     el('div', { class: 'imx-table-wrap' }, table),
     more
