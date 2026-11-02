@@ -52,6 +52,16 @@
       .imx-bien-pin { width: 18px; height: 18px; border: 2px solid #fff; border-radius: 5px; background: #7c3aed; box-shadow: 0 1px 4px rgba(15, 23, 42, 0.4); }
       .imx-bien-pin.is-favori { background: #e11d48; }
       .imx-bien-pin.is-ecarte { background: #94a3b8; }
+      /* Trois vues d'une recherche : une seule visible à la fois (classe view-… sur body). */
+      .imx-views { display: flex; width: 100%; }
+      .imx-views button { flex: 1; height: 30px; font-size: 13px; }
+      body:not(.view-fil) .imx-view-fil, body:not(.view-carte) .imx-view-carte, body:not(.view-ventes) .imx-view-ventes { display: none; }
+      .imx-view { display: grid; gap: 14px; }
+      .imx-bien-list.hide-ecarte .imx-bien.is-ecarte { display: none; }
+      .imx-unknown { color: var(--imx-mid); }
+      .imx-btn.is-active { border-color: var(--imx-accent); color: var(--imx-accent); }
+      /* Téléphone : la carte n'apparaît que dans la vue Carte. */
+      @media (max-width: 900px) { body:not(.view-carte) .imx-dash-map { display: none; } }
       .leaflet-popup-content { margin: 12px 14px; min-width: 240px; font-family: var(--imx-font); }
       .leaflet-control-layers { font-family: var(--imx-font); font-size: 12px; }
     </style>

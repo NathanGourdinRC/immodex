@@ -1,8 +1,11 @@
-// Tableau de bord : une zone de recherche (communes et critères) avec les nouveaux DPE
-// de la zone, les annonces déjà vues et le prix du marché, le tout sur une carte.
-// Page de l'extension ouverte dans un onglet ; aucune donnée ne quitte le navigateur.
-import { createZoneStore, groupsInZone, trackingKey, STATUSES } from '../common/zones.js';
-import { searchCommunes, communeContour, communeSections, fetchNewDpe, dvfStats, marketOf, priceBreaks, priceClass } from '../common/zone-data.js';
+// « Mes recherches » : chaque recherche (communes et critères) a trois vues, le Fil
+// (annonces vues, Bientôt en vente ?), la Carte et les Ventes passées, avec une carte.
+// Page de l'extension ouverte dans un onglet, ou appli téléphone ; aucune donnée ne quitte
+// le navigateur en dehors des API publiques et de la synchro.
+// Dans le code, une recherche garde le nom historique de « zone » (clé de stockage, synchro).
+import { createZoneStore } from '../common/zones.js';
+import { searchCommunes, communeContour, communeSections, dvfStats, marketOf, priceBreaks, priceClass } from '../common/zone-data.js';
+import { renderFeed } from './feed.js';
 
 const UI = window.__immodexUI;
 const { el, icon, num } = UI;
@@ -15,9 +18,12 @@ document.getElementById('logo').appendChild(icon('layers', 17));
 
 // Du moins cher (clair) au plus cher (foncé).
 const PRICE_COLORS = ['#dbeafe', '#93c5fd', '#3b82f6', '#1d4ed8', '#1e3a8a'];
-const PAGE = 25;
 const TYPE_PLURAL = { appartement: 'appartements', maison: 'maisons' };
-const STATUS_ORDER = { favori: 0, 'a-voir': 1, '': 2, visite: 3, ecarte: 4 };
+const VIEWS = [
+  ['fil', 'Fil'],
+  ['carte', 'Carte'],
+  ['ventes', 'Ventes passées'],
+];
 
 // ─── Carte ───
 
@@ -33,7 +39,7 @@ const layers = {
 };
 L.control
   // Sur un écran de téléphone, la liste des couches cacherait la moitié de la carte : repliée.
-  .layers(baseLayers, { 'Prix au m² par section': layers.prices, Communes: layers.contours, 'Nouveaux DPE': layers.dpe, 'Annonces vues': layers.biens }, { collapsed: matchMedia('(max-width: 600px)').matches })
+  .layers(baseLayers, { 'Prix au m² par section': layers.prices, Communes: layers.contours, 'Bientôt en vente ? (DPE)': layers.dpe, 'Annonces vues': layers.biens }, { collapsed: matchMedia('(max-width: 600px)').matches })
   .addTo(map);
 // Marqueurs par identifiant, pour centrer la carte depuis la liste.
 const markers = new Map();
@@ -75,8 +81,21 @@ const baseline = new Map();
 // Chaque affichage reçoit un numéro : une réponse arrivée après un changement de zone est ignorée.
 let renderToken = 0;
 
+// Vue affichée : gardée dans l'adresse avec la recherche (#zone=…&vue=carte).
+let view = (location.hash.match(/vue=(fil|carte|ventes)/) || [])[1] || 'fil';
+
 function setHash(id) {
-  history.replaceState(null, '', id ? `#zone=${id}` : location.pathname);
+  history.replaceState(null, '', id ? `#zone=${id}&vue=${view}` : location.pathname);
+}
+
+// Les trois vues sont construites ensemble ; changer de vue ne fait que les montrer ou cacher.
+function showView(next, id) {
+  view = next;
+  for (const [key] of VIEWS) document.body.classList.toggle(`view-${key}`, key === view);
+  document.querySelectorAll('.imx-views button').forEach((b) => b.classList.toggle('is-active', b.dataset.view === view));
+  if (id) setHash(id);
+  // Sur un téléphone, la carte n'est visible que dans la vue Carte : Leaflet doit se recaler.
+  setTimeout(() => map.invalidateSize(), 0);
 }
 
 function hashZone() {
@@ -292,35 +311,43 @@ async function openZone(id) {
   const kpis = el('div', { class: 'imx-kpis' }, kpi('…', 'nouveaux DPE'), kpi('…', 'annonces vues'), kpi('…', 'médiane €/m²'));
   const setKpi = (i, value, label) => kpis.replaceChild(kpi(value, label), kpis.children[i]);
 
-  const dpeBody = el('div', null, UI.loading('Recherche des nouveaux DPE…'));
-  const dpePanel = panel('Nouveaux DPE', dpeBody);
-  const periods = el(
+  const switcher = el(
     'div',
-    { class: 'imx-seg', role: 'group', 'aria-label': 'Période' },
-    [15, 30, 90].map((d) => {
-      const b = el('button', { type: 'button', class: d === days ? 'is-active' : '' }, `${d} j`);
-      b.addEventListener('click', () => {
-        days = d;
-        openZone(zone.id);
-      });
+    { class: 'imx-seg imx-views', role: 'tablist', 'aria-label': 'Vues de la recherche' },
+    VIEWS.map(([key, label]) => {
+      const b = el('button', { type: 'button', role: 'tab', 'data-view': key }, label);
+      b.addEventListener('click', () => showView(key, zone.id));
       return b;
     })
   );
-  dpePanel.head.appendChild(periods);
-  const biensBody = el('div', null, UI.loading('Lecture des annonces vues…'));
+  const feedView = el('div', { class: 'imx-view imx-view-fil' });
   const marketBody = el('div', null, UI.loading('Lecture des prix du marché…'));
+  const mapView = el('div', { class: 'imx-view imx-view-carte' }, panel('Prix du marché', marketBody).node);
+  const salesView = el('div', { class: 'imx-view imx-view-ventes' }, UI.empty('Ventes passées : en cours de chargement.'));
 
-  side.replaceChildren(
-    head,
-    kpis,
-    dpePanel.node,
-    panel('Annonces vues dans la recherche', biensBody).node,
-    panel('Prix du marché', marketBody).node
-  );
+  side.replaceChildren(head, kpis, switcher, feedView, mapView, salesView);
+  showView(view, zone.id);
 
+  const isCurrent = () => token === renderToken;
   drawContours(zone, token);
-  loadDpe(zone, token, dpeBody, (n, fresh) => setKpi(0, num(n), fresh ? `nouveaux DPE · ${fresh} depuis ta visite` : `nouveaux DPE (${days} j)`));
-  loadBiens(zone, token, biensBody, (n, fav) => setKpi(1, num(n), fav ? `annonces vues · ${fav} favori${fav > 1 ? 's' : ''}` : 'annonces vues'));
+  renderFeed({
+    search: zone,
+    isCurrent,
+    body: feedView,
+    panel,
+    layers,
+    markers,
+    focus: focusMarker,
+    bindGrowingPopup,
+    store,
+    baseline,
+    days,
+    onDays: (d) => {
+      days = d;
+      openZone(zone.id);
+    },
+    setKpi,
+  });
   loadMarket(zone, token, marketBody, (m) => setKpi(2, m ? num(m.median) : 'n.c.', `médiane €/m² ${TYPE_PLURAL[zone.type] || 'logements'}`));
 }
 
@@ -331,225 +358,6 @@ async function drawContours(zone, token) {
   layers.contours.addLayer(group);
   const bounds = group.getBounds();
   if (bounds.isValid()) map.fitBounds(bounds.pad(0.05));
-}
-
-// ─── Nouveaux DPE ───
-
-function dpeMeta(r) {
-  return [r.buildingType ? (r.buildingType === 'maison' ? 'Maison' : 'Appartement') : null, r.surface != null ? `${num(r.surface, 1)} m²` : null, r.constructionYear ? `construit en ${r.constructionYear}` : null, r.date ? `DPE du ${UI.formatDate(r.date)}` : null]
-    .filter(Boolean)
-    .join(' · ');
-}
-
-function dpeBadges(r) {
-  const b = [UI.badge(r.energyClass, 'dpe'), UI.badge(r.gesClass, 'ges')].filter(Boolean);
-  return b.length ? el('span', { style: 'display:inline-flex;gap:4px;vertical-align:middle;margin-left:6px' }, b) : null;
-}
-
-const hasCoords = (r) => r.lat != null && r.lon != null && isFinite(r.lat) && isFinite(r.lon);
-
-function dpeActions(r, sales) {
-  return el(
-    'div',
-    { class: 'imx-actions' },
-    r.address ? UI.linkButton(UI.links.gmaps(r.address), 'Maps', { iconName: 'map' }) : null,
-    hasCoords(r) ? UI.linkButton(UI.links.streetView(r.lat, r.lon), 'Street View', { iconName: 'eye' }) : null,
-    r.id ? UI.linkButton(UI.links.ademe(r.id), 'ADEME', { variant: 'imx-btn-ghost', iconName: 'file' }) : null,
-    sales ? sales.button : null
-  );
-}
-
-// La surface du DPE sert de repère : une vente passée de même surface est souvent le même logement.
-const salesFor = (r, onChange) =>
-  hasCoords(r) ? UI.salesBlock({ lat: r.lat, lon: r.lon, address: r.address, type: r.buildingType }, { kind: 'dpe', surface: r.surface }, { ghost: true, onChange }) : null;
-
-function dpeRow(r, isNew) {
-  const sales = salesFor(r);
-  const title = el('button', { type: 'button', class: 'imx-row-title', title: 'Voir sur la carte' }, r.address || '(adresse inconnue)');
-  title.addEventListener('click', () => focusMarker(r.id));
-  return el(
-    'div',
-    { class: 'imx-row' },
-    el('div', { class: 'imx-row-head' }, title, isNew ? el('span', { class: 'imx-tag is-new' }, 'Nouveau') : null),
-    el('div', { class: 'imx-meta' }, dpeMeta(r), dpeBadges(r)),
-    dpeActions(r, sales),
-    sales ? sales.panel : null
-  );
-}
-
-async function loadDpe(zone, token, body, setKpi) {
-  let res;
-  try {
-    res = await fetchNewDpe(zone, days);
-  } catch (e) {
-    if (token === renderToken) body.replaceChildren(UI.alert('Registre ADEME injoignable pour le moment.'));
-    return;
-  }
-  if (token !== renderToken) return;
-  const ids = res.records.map((r) => r.id).filter(Boolean);
-  if (!baseline.has(zone.id)) baseline.set(zone.id, await store.swapSeenDpe(zone.id, ids));
-  else await store.swapSeenDpe(zone.id, ids);
-  const seen = baseline.get(zone.id);
-  const isNew = (r) => !!seen && !!r.id && !seen.includes(r.id);
-  const fresh = res.records.filter(isNew).length;
-  setKpi(res.total, fresh);
-
-  for (const r of res.records) {
-    if (!hasCoords(r)) continue;
-    const marker = L.circleMarker([r.lat, r.lon], { radius: 6, color: '#ffffff', weight: 1.5, fillColor: isNew(r) ? '#f79009' : '#0d9488', fillOpacity: 0.9 });
-    bindGrowingPopup(marker, (onChange) => {
-      const sales = salesFor(r, onChange);
-      return el(
-        'div',
-        { style: 'display:grid;gap:8px' },
-        el('div', { class: 'imx-candidate-address' }, r.address || '(adresse inconnue)'),
-        el('div', { class: 'imx-meta' }, dpeMeta(r), dpeBadges(r)),
-        isNew(r) ? el('span', { class: 'imx-tag is-new' }, 'Nouveau depuis ta dernière visite') : null,
-        dpeActions(r, sales),
-        sales ? sales.panel : null
-      );
-    });
-    layers.dpe.addLayer(marker);
-    if (r.id) markers.set(r.id, marker);
-  }
-
-  // Les nouveaux d'abord, puis du plus récent au plus ancien.
-  const sorted = [...res.records].sort((a, b) => Number(isNew(b)) - Number(isNew(a)) || String(b.date).localeCompare(String(a.date)));
-  const list = el('div', null);
-  const more = el('button', { type: 'button', class: 'imx-btn imx-btn-block' });
-  let shown = 0;
-  const showMore = () => {
-    sorted.slice(shown, shown + PAGE).forEach((r) => list.appendChild(dpeRow(r, isNew(r))));
-    shown = Math.min(sorted.length, shown + PAGE);
-    more.textContent = `Afficher ${Math.min(PAGE, sorted.length - shown)} de plus (${sorted.length - shown} restants)`;
-    more.classList.toggle('imx-hidden', shown >= sorted.length);
-  };
-  more.addEventListener('click', showMore);
-  showMore();
-  const capped = res.total > res.records.length ? ` Les ${res.records.length} plus récents sont affichés.` : '';
-  body.replaceChildren(
-    ...[
-      sorted.length
-        ? el('p', { class: 'imx-meta', style: 'margin:0 0 6px' }, `${num(res.total)} DPE établis ces ${days} derniers jours. Un DPE est obligatoire avant une mise en vente ou en location : c'est souvent une annonce en préparation.${capped}`)
-        : UI.empty(`Aucun DPE établi ces ${days} derniers jours avec ces critères.`),
-      list,
-      more,
-    ].filter(Boolean)
-  );
-}
-
-// ─── Annonces vues ───
-
-const geocodeCache = new Map();
-
-async function geocode(address) {
-  if (geocodeCache.has(address)) return geocodeCache.get(address);
-  let point = null;
-  try {
-    const res = await fetch(`https://api-adresse.data.gouv.fr/search/?limit=1&q=${encodeURIComponent(address)}`);
-    const data = await res.json();
-    const f = data.features && data.features[0];
-    if (f && f.properties.score > 0.5) point = { lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1] };
-  } catch {
-    point = null;
-  }
-  geocodeCache.set(address, point);
-  return point;
-}
-
-function priceLine(g) {
-  if (!g.lastPrice) return 'prix non lu';
-  if (!g.firstPrice || g.firstPrice === g.lastPrice) return UI.priceText(g.lastPrice);
-  const pct = ((g.lastPrice - g.firstPrice) / g.firstPrice) * 100;
-  return `${UI.priceText(g.lastPrice)} (${pct > 0 ? '+' : '−'}${num(Math.abs(pct), 1)} % depuis ${UI.priceText(g.firstPrice)})`;
-}
-
-function bienRow(g, track, onStatus) {
-  const key = trackingKey(g);
-  const last = g.sightings[g.sightings.length - 1];
-  const fp = g.fp || {};
-  const status = el(
-    'select',
-    { class: 'imx-status', 'aria-label': 'Statut' },
-    el('option', { value: '' }, 'Sans statut'),
-    Object.entries(STATUSES).map(([value, label]) => el('option', { value, selected: track.status === value }, label))
-  );
-  const note = el('textarea', { class: 'imx-note', placeholder: 'Note : visite, défauts, contact…', maxlength: '1000' }, track.note || '');
-  const row = el(
-    'div',
-    { class: `imx-row${track.status === 'ecarte' ? ' is-ecarte' : ''}` },
-    el('div', { class: 'imx-row-head' }, el('div', { class: 'imx-candidate-address' }, g.address || last.title || 'Annonce'), status),
-    el(
-      'div',
-      { class: 'imx-meta' },
-      [priceLine(g), fp.surface ? `${num(fp.surface)} m²` : null, fp.postal || fp.city || null, g.count > 1 ? `${g.count} annonces` : last.site, `vue le ${UI.day(g.lastSeen)}`].filter(Boolean).join(' · ')
-    ),
-    note,
-    el(
-      'div',
-      { class: 'imx-actions' },
-      g.sightings.map((s) => UI.linkButton(s.url, g.count > 1 ? s.site || 'Annonce' : 'Ouvrir l’annonce', { iconName: 'external' })),
-      UI.castorusButton(last.url)
-    )
-  );
-  status.addEventListener('change', async () => {
-    await store.setTracking(key, { status: status.value || null });
-    row.classList.toggle('is-ecarte', status.value === 'ecarte');
-    onStatus();
-  });
-  note.addEventListener('change', () => store.setTracking(key, { note: note.value }));
-  return row;
-}
-
-async function loadBiens(zone, token, body, setKpi) {
-  let groups = [];
-  try {
-    const res = await chrome.runtime.sendMessage({ type: 'SIGHTINGS_GROUPS' });
-    groups = res && res.ok ? res.groups : [];
-  } catch {
-    groups = [];
-  }
-  const tracking = await store.tracking();
-  if (token !== renderToken) return;
-  const inZone = groupsInZone(groups, zone);
-  const trackOf = (g) => tracking[trackingKey(g)] || {};
-  inZone.sort((a, b) => STATUS_ORDER[trackOf(a).status || ''] - STATUS_ORDER[trackOf(b).status || ''] || b.lastSeen - a.lastSeen);
-  const favorites = () => inZone.filter((g) => (tracking[trackingKey(g)] || {}).status === 'favori').length;
-  setKpi(inZone.length, favorites());
-
-  if (!inZone.length) {
-    body.replaceChildren(UI.empty('Aucune annonce vue dans cette recherche pour le moment. Chaque annonce ouverte sur un site couvert est ajoutée ici automatiquement.'));
-    return;
-  }
-  body.replaceChildren(
-    ...inZone.map((g) =>
-      bienRow(g, trackOf(g), async () => {
-        Object.assign(tracking, await store.tracking());
-        setKpi(inZone.length, favorites());
-      })
-    )
-  );
-
-  // Sur la carte : les biens dont l'adresse a été retrouvée avec une confiance élevée.
-  for (const g of inZone.filter((x) => x.address)) {
-    const point = await geocode(g.address);
-    if (token !== renderToken || !point) continue;
-    const st = trackOf(g).status || '';
-    const marker = L.marker([point.lat, point.lon], {
-      icon: L.divIcon({ className: '', html: `<div class="imx-bien-pin is-${st}"></div>`, iconSize: [18, 18], iconAnchor: [9, 9] }),
-      title: g.address,
-    });
-    marker.bindPopup(
-      el(
-        'div',
-        { style: 'display:grid;gap:8px' },
-        el('div', { class: 'imx-candidate-address' }, g.address),
-        el('div', { class: 'imx-meta' }, [priceLine(g), STATUSES[st] || null].filter(Boolean).join(' · ')),
-        el('div', { class: 'imx-actions' }, UI.linkButton(g.sightings[g.sightings.length - 1].url, 'Ouvrir l’annonce', { iconName: 'external' }))
-      )
-    );
-    layers.biens.addLayer(marker);
-  }
 }
 
 // ─── Prix du marché ───

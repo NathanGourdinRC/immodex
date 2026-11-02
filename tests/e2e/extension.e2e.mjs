@@ -243,22 +243,35 @@ test('tableau de bord : zone Lille, nouveaux DPE, annonce vue suivie, prix par s
   // Nouveaux DPE de la zone (vraie API ADEME) en liste et en pastilles sur la carte.
   await page.waitForSelector('.imx-row .imx-row-title', { timeout: 30000 });
   assert.ok((await page.locator('.leaflet-overlay-pane .leaflet-interactive').count()) > 5);
-  // L'appartement de 72 m² vu au test précédent (59000) est dans la zone : statut et note.
-  const status = page.locator('select.imx-status').first();
-  await status.waitFor({ timeout: 15000 });
-  await status.selectOption('favori');
+  // L'appartement de 72 m² vu au test précédent (59000, 295 000 €) passe les critères : Garder et note.
+  const bien = page.locator('.imx-bien').first();
+  await bien.waitFor({ timeout: 15000 });
+  await bien.locator('button:has-text("Garder")').click();
   await page.fill('textarea.imx-note', 'Belle lumière, cave humide');
   await page.keyboard.press('Tab');
-  assert.ok(await page.locator('.imx-row button:has-text("Castorus")').count());
+  assert.ok(await page.locator('.imx-bien button:has-text("Castorus")').count());
+  // Le nombre de pièces n'est pas lu sur l'annonce : signalé, sans l'exclure.
+  assert.match(await bien.textContent(), /pièces non précisées/);
+  assert.match(await page.textContent('.imx-kpis'), /1 favori/);
+  // Trois vues ; la vue est gardée dans l'adresse.
+  for (const label of ['Fil', 'Carte', 'Ventes passées']) assert.equal(await page.locator(`.imx-views button:has-text("${label}")`).count(), 1);
+  await page.click('.imx-views button:has-text("Carte")');
+  assert.match(page.url(), /vue=carte/);
   // Prix médian par section cadastrale (Statistiques DVF) sur la carte, avec légende.
   await page.waitForSelector('.imx-legend', { timeout: 30000 });
   assert.ok((await page.locator('.leaflet-prices-pane path').count()) > 50);
-  assert.match(await page.textContent('.imx-kpis'), /1 favori/);
-  // Après rechargement : la zone, le statut et la note sont gardés.
+  await page.click('.imx-views button:has-text("Fil")');
+  // Après rechargement : la recherche, le statut et la note sont gardés.
   await page.reload();
-  await page.waitForSelector('select.imx-status', { timeout: 30000 });
-  assert.equal(await page.locator('select.imx-status').first().inputValue(), 'favori');
+  await page.waitForSelector('.imx-bien select.imx-status', { timeout: 30000 });
+  assert.equal(await page.locator('.imx-bien select.imx-status').first().inputValue(), 'favori');
   assert.equal(await page.locator('textarea.imx-note').first().inputValue(), 'Belle lumière, cave humide');
+  // Écarter : le bien sort du fil, un bouton permet de revoir les écartés.
+  // (D'autres annonces de Lille vues par les tests précédents peuvent aussi être dans le fil.)
+  const visible = await page.locator('.imx-bien:visible').count();
+  await page.locator('.imx-bien button:has-text("Écarter")').first().click();
+  await page.waitForSelector('button:has-text("Afficher les écartées (1)")');
+  assert.equal(await page.locator('.imx-bien:visible').count(), visible - 1);
   // Les critères de la recherche sont gardés et repris dans le formulaire.
   await page.click('button:has-text("Modifier")');
   assert.equal(await page.inputValue('input[name="budgetMax"]'), '450000');

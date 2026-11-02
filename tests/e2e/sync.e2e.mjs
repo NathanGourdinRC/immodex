@@ -70,9 +70,13 @@ async function phonePage() {
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   await phone.route(SYNC, async (route) => {
     const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, content-type' };
-    if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
-    const res = await route.fetch();
-    return route.fulfill({ response: res, headers: { ...res.headers(), ...cors } });
+    try {
+      if (route.request().method() === 'OPTIONS') return await route.fulfill({ status: 204, headers: cors });
+      const res = await route.fetch();
+      return await route.fulfill({ response: res, headers: { ...res.headers(), ...cors } });
+    } catch {
+      // Synchro encore en vol quand le test ferme le téléphone : sans importance.
+    }
   });
   return phone.newPage();
 }
