@@ -43,4 +43,6 @@ test('prix d’un élément qui ne contient que le prix', () => {
   assert.equal(priceOf('Prix sur demande'), null);
   assert.equal(priceOf('13 photos'), null);
   assert.equal(priceOf('Maison 80 m² 299 500 €'), null);
+  assert.equal(priceOf('275 000 € *'), 275000);
+  assert.equal(priceOf('299 000 € HAI'), 299000);
 });
