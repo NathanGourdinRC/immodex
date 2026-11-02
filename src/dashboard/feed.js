@@ -3,6 +3,8 @@
 // mise en vente : c'est souvent une annonce en préparation).
 import { groupsInZone, trackingKey, checkCriteria, STATUSES } from '../common/zones.js';
 import { fetchNewDpe } from '../common/zone-data.js';
+import { nearestSales, isComparable } from '../common/sectors.js';
+import { loadSearchSales } from './sector-layer.js';
 
 const UI = window.__immodexUI;
 const { el, icon, num } = UI;
@@ -185,6 +187,7 @@ function bienRow(g, track, unknown, onStatus) {
       [priceLine(g), fp.surface ? `${num(fp.surface)} m²` : null, fp.postal || fp.city || null, g.count > 1 ? `${g.count} annonces` : last.site, `vue le ${UI.day(g.lastSeen)}`].filter(Boolean).join(' · ')
     ),
     unknown.length ? el('div', { class: 'imx-meta imx-unknown' }, unknown.join(' · ')) : null,
+    el('div', { class: 'imx-meta imx-nearby imx-hidden' }),
     el('div', { class: 'imx-actions' }, keep, drop),
     note,
     el(
@@ -263,7 +266,8 @@ async function loadBiens(ctx, body) {
     refreshKpi();
     refreshDropped();
   };
-  list.replaceChildren(...inSearch.map(({ g, check }) => bienRow(g, trackOf(g), check.unknown, onStatus)));
+  const rows = new Map(inSearch.map(({ g, check }) => [g, bienRow(g, trackOf(g), check.unknown, onStatus)]));
+  list.replaceChildren(...rows.values());
   refreshDropped();
   body.replaceChildren(list, toggle);
 
@@ -287,6 +291,20 @@ async function loadBiens(ctx, body) {
       )
     );
     layers.biens.addLayer(marker);
+  }
+
+  // Repère de prix : les 15 ventes de maisons les plus proches du bien placé sur la carte.
+  const placed = inSearch.filter((x) => x.g.point);
+  if (!placed.length) return;
+  const data = await loadSearchSales(search).catch(() => null);
+  if (!data || !isCurrent()) return;
+  for (const { g } of placed) {
+    const near = nearestSales(data.sales, g.point);
+    const line = rows.get(g).querySelector('.imx-nearby');
+    if (!near || !line) continue;
+    const comparable = near.sales.filter((v) => isComparable(v, search)).length;
+    line.textContent = `Ventes proches : ${num(near.p25)} à ${num(near.p75)} €/m² (${near.sales.length} ventes dans un rayon de ${num(near.radius)} m, dont ${comparable} comparables)`;
+    line.classList.remove('imx-hidden');
   }
 }
 

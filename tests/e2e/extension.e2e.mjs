@@ -301,5 +301,16 @@ test('carte en secteurs : Wambrechies', async () => {
   const legend = await page.textContent('#side');
   for (const t of ['moins cher', 'dans la moyenne', 'plus cher']) assert.match(legend, new RegExp(t));
   assert.match(legend, /Ventes connues jusqu’au/);
+  // Ventes passées : tableau avec prix au m², terrain et dépendance.
+  await page.click('.imx-views button:has-text("Ventes passées")');
+  await page.waitForSelector('.imx-sales-table tbody tr', { timeout: 60000 });
+  assert.ok((await page.locator('.imx-sales-table tbody tr').count()) >= 20);
+  const head = await page.textContent('.imx-sales-table thead');
+  for (const t of ['€/m²', 'Terrain', 'Dépendance']) assert.ok(head.includes(t), t);
+  assert.match(await page.textContent('.imx-view-ventes'), /Ventes connues jusqu’au/);
+  // Plus de lignes à la demande.
+  const before = await page.locator('.imx-sales-table tbody tr').count();
+  await page.click('button:has-text("Afficher 50 de plus")');
+  assert.ok((await page.locator('.imx-sales-table tbody tr').count()) > before);
   await page.close();
 });

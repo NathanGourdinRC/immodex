@@ -7,6 +7,7 @@ import { createZoneStore } from '../common/zones.js';
 import { searchCommunes, communeContour } from '../common/zone-data.js';
 import { renderFeed } from './feed.js';
 import { renderSectors } from './sector-layer.js';
+import { renderSalesView } from './sales-view.js';
 
 const UI = window.__immodexUI;
 const { el, icon, num } = UI;
@@ -320,7 +321,7 @@ async function openZone(id) {
   );
   const feedView = el('div', { class: 'imx-view imx-view-fil' });
   const mapView = el('div', { class: 'imx-view imx-view-carte' });
-  const salesView = el('div', { class: 'imx-view imx-view-ventes' }, UI.empty('Ventes passées : en cours de chargement.'));
+  const salesView = el('div', { class: 'imx-view imx-view-ventes' });
 
   side.replaceChildren(head, kpis, switcher, feedView, mapView, salesView);
   showView(view, zone.id);
@@ -346,6 +347,7 @@ async function openZone(id) {
     setKpi,
   });
   renderSectors({ search: zone, isCurrent, layer: layers.sectors, body: mapView, panel, setKpi });
+  renderSalesView({ search: zone, isCurrent, body: salesView, panel });
 }
 
 async function drawContours(zone, token) {

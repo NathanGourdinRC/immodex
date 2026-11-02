@@ -65,6 +65,14 @@
       .imx-sector-count.is-few { color: #64748b; font-weight: 600; }
       .imx-swatch.is-few { background: repeating-linear-gradient(45deg, #cbd5e1 0 2px, transparent 2px 4px) !important; border: 1px dashed #64748b; }
       .imx-sector-sales { display: grid; gap: 3px; max-height: 260px; overflow-y: auto; }
+      /* Ventes passées : tableau qui défile à l'horizontale sur un téléphone. */
+      .imx-table-wrap { overflow-x: auto; margin: 6px 0; }
+      .imx-sales-table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+      .imx-sales-table th { position: sticky; top: 0; padding: 6px; border-bottom: 1px solid var(--imx-border-strong); background: var(--imx-bg); color: var(--imx-text-2); font-weight: 600; text-align: left; white-space: nowrap; }
+      .imx-sales-table td { padding: 5px 6px; border-bottom: 1px solid var(--imx-border); white-space: nowrap; }
+      .imx-sales-table .is-num { text-align: right; }
+      .imx-check { display: flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--imx-text-2); }
+      .imx-nearby { color: var(--imx-text); }
       /* Téléphone : la carte n'apparaît que dans la vue Carte. */
       @media (max-width: 900px) { body:not(.view-carte) .imx-dash-map { display: none; } }
       .leaflet-popup-content { margin: 12px 14px; min-width: 240px; font-family: var(--imx-font); }
