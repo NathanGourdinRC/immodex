@@ -314,3 +314,12 @@ test('espaces suivis : 5 au plus, les plus récents ; les espaces inactifs sont 
   assert.deepEqual(communes.map((c) => c.code), ['59000', '59001', '59002', '59003', '59004']);
   assert.equal(await redis.command(['ZCARD', 'imx:spaces']), 8);
 });
+
+test('espaces récents sans commune (tests, appareils neufs) : ils ne repoussent pas les recherches de Nathan', async () => {
+  const redis = fakeRedis();
+  const now = Date.parse('2026-11-03');
+  await withSearch(redis, now - 3 * DAY);
+  for (let i = 0; i < 8; i++) await withSearch(redis, now - i * HOUR, [], `vide${i}`);
+  const communes = await activeCommunes(redis, now);
+  assert.deepEqual(communes.map((c) => c.code), ['59636']);
+});

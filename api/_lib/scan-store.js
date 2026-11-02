@@ -12,6 +12,8 @@ const MAX_COMMUNES = 30;
 // La synchro est ouverte : on ne suit que les quelques espaces les plus récemment actifs
 // (ceux de Nathan), pour qu'un inconnu ne puisse pas faire lire au robot ses propres communes.
 const MAX_SPACES = 5;
+// Espaces examinés au plus par passage (les plus récents), avec ou sans recherche.
+const MAX_SCANNED_SPACES = 50;
 const CHUNK = 100;
 
 const keys = {
@@ -75,9 +77,14 @@ async function writeQueue(redis, items) {
 async function activeCommunes(redis, now) {
   // Espaces inactifs depuis 21 jours : oubliés.
   await redis.command(['ZREMRANGEBYSCORE', keys.spaces, '-inf', String(now - ACTIVE_MS)]);
-  const spaces = ((await redis.command(['ZRANGEBYSCORE', keys.spaces, String(now - ACTIVE_MS), '+inf'])) || []).reverse().slice(0, MAX_SPACES);
+  const spaces = ((await redis.command(['ZRANGEBYSCORE', keys.spaces, String(now - ACTIVE_MS), '+inf'])) || []).reverse().slice(0, MAX_SCANNED_SPACES);
   const found = new Map();
+  // Seuls comptent les espaces qui ont une recherche avec des communes : un appareil neuf ou
+  // un test ne repousse pas les recherches de Nathan.
+  let withSearches = 0;
   for (const space of spaces) {
+    if (withSearches >= MAX_SPACES) break;
+    let contributes = false;
     let cursor = '0';
     do {
       const [next, flat] = await redis.command(['HSCAN', `imx:${space}:items`, cursor, 'MATCH', 'zone:*', 'COUNT', '500']);
@@ -87,11 +94,13 @@ async function activeCommunes(redis, now) {
         const zone = item && !item.deleted ? item.data : null;
         for (const c of (zone && zone.communes) || []) {
           if (!c || !/^(\d{5}|2[AB]\d{3})$/.test(String(c.code))) continue;
+          contributes = true;
           if (!found.has(c.code)) found.set(c.code, { code: String(c.code), nom: c.nom, codesPostaux: c.codesPostaux || [], types: new Set() });
           found.get(c.code).types.add(zone.type === 'maison' || zone.type === 'appartement' ? zone.type : null);
         }
       }
     } while (cursor !== '0');
+    if (contributes) withSearches++;
   }
   return [...found.values()].slice(0, MAX_COMMUNES);
 }
