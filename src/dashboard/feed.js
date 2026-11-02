@@ -5,6 +5,8 @@ import { groupsInZone, trackingKey, checkCriteria, STATUSES } from '../common/zo
 import { fetchNewDpe } from '../common/zone-data.js';
 import { nearestSales, isComparable } from '../common/sectors.js';
 import { loadSearchSales } from './sector-layer.js';
+import { loadAnnonces } from './annonces.js';
+import { fetchListings, urlKey } from '../common/listings.js';
 
 const UI = window.__immodexUI;
 const { el, icon, num } = UI;
@@ -226,9 +228,12 @@ async function loadBiens(ctx, body) {
     groups = [];
   }
   const tracking = await store.tracking();
+  // Une annonce déjà lue par le robot est dans « Annonces en vente » : pas en double ici.
+  const scanned = await ctx.listings.then((d) => new Set(((d && d.listings) || []).map((l) => urlKey(l.url))), () => new Set());
   if (!isCurrent()) return;
   const trackOf = (g) => tracking[trackingKey(g)] || {};
   const inSearch = groupsInZone(groups, search)
+    .filter((g) => !g.sightings.some((s) => scanned.has(urlKey(s.url))))
     .map((g) => ({ g, check: checkCriteria(listingOf(g), search) }))
     .filter((x) => x.check.ok);
   inSearch.sort((a, b) => STATUS_ORDER[trackOf(a.g).status || ''] - STATUS_ORDER[trackOf(b.g).status || ''] || b.g.lastSeen - a.g.lastSeen);
@@ -338,7 +343,12 @@ function renderFeed(ctx) {
   });
   applyHidden();
   soon.head.append(periods, hide);
-  body.replaceChildren(panel('Annonces vues', biensBody).node, soon.node);
+  const annoncesBody = el('div', null, UI.loading('Lecture des annonces du robot…'));
+  // Annonces du robot : demandées une fois, partagées par les deux listes.
+  ctx.listings = fetchListings(ctx.search.communes.map((c) => c.code));
+  ctx.listings.catch(() => {});
+  body.replaceChildren(panel('Annonces en vente', annoncesBody).node, panel('Annonces vues', biensBody).node, soon.node);
+  loadAnnonces(ctx, annoncesBody);
   loadBiens(ctx, biensBody);
   loadSoon(ctx, soonBody);
 }

@@ -371,6 +371,7 @@ async function openZone(id) {
     bindGrowingPopup,
     store,
     baseline,
+    previousVisit,
     days,
     onDays: (d) => {
       days = d;

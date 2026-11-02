@@ -59,6 +59,15 @@
       .imx-view { display: grid; gap: 14px; }
       .imx-bien-list.hide-ecarte .imx-bien.is-ecarte { display: none; }
       .imx-unknown { color: var(--imx-mid); }
+      /* Annonces en vente (robot) : photo, étiquettes, annonces retirées atténuées. */
+      .imx-annonce-photo { width: 72px; height: 54px; object-fit: cover; border-radius: 6px; flex: none; background: var(--imx-bg-muted); }
+      .imx-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+      .imx-tags:empty { display: none; }
+      .imx-tag.is-drop { background: #ecfdf3; color: #067647; border: 1px solid #abefc6; }
+      .imx-tag.is-gone { background: var(--imx-bg-muted); color: var(--imx-text-3); border: 1px solid var(--imx-border); }
+      .imx-annonce.is-gone { opacity: 0.6; }
+      .imx-bien-list.hide-ecarte .imx-annonce.is-ecarte { display: none; }
+      .imx-bien-pin.is-annonce { border-radius: 50%; }
       .imx-btn.is-active { border-color: var(--imx-accent); color: var(--imx-accent); }
       /* Secteurs : nombre de ventes au centre ; secteurs à trop peu de ventes en pointillés. */
       .imx-sector-count { display: flex; align-items: center; justify-content: center; font: 700 11px var(--imx-font); color: #0f172a; text-shadow: 0 0 3px #fff, 0 0 3px #fff; }

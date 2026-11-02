@@ -317,6 +317,8 @@ test('carte en secteurs : Wambrechies', async () => {
 
 test('ventes passées : une section DVF injoignable ne fait pas tout perdre', async () => {
   const page = await context.newPage();
+  // Serveur des ventes allégées injoignable : repli section par section, dont une en panne.
+  await page.route('https://immodex.vercel.app/api/dvf**', (route) => route.fulfill({ status: 503, body: 'indisponible' }));
   await page.route('**/api/mutations3/59636/0000B', (route) => route.fulfill({ status: 503, body: 'indisponible' }));
   await page.goto(`chrome-extension://${extId}/src/dashboard/dashboard.html`);
   await page.click('#zone-tabs button:has-text("Wambrechies")');
@@ -364,5 +366,35 @@ test('contour de la commune injoignable : la carte se cadre sur les secteurs', a
   await page.waitForTimeout(1500);
   const box = await page.locator('.imx-sector.is-moyenne').first().boundingBox();
   assert.ok(box && box.width > 15, `secteur de ${box && Math.round(box.width)} px`);
+  await page.close();
+});
+
+test('fil : annonces scannées, nouveautés, baisses et retraits, Garder', async () => {
+  const now = Date.now();
+  const DAY = 24 * 3600 * 1000;
+  const l = (o) => ({ insee: '59636', type: 'maison', missed: 0, removedAt: null, detail: true, lastSeen: now - DAY, ...o });
+  const listings = [
+    l({ id: 'orpi:/annonce-vente-maison-t5-wambrechies-e2e1/', source: 'orpi', url: 'https://www.orpi.com/annonce-vente-maison-t5-wambrechies-e2e1/', title: 'Maison 5 pièces Wambrechies', price: 389000, prices: [{ at: now - DAY, price: 389000 }], surface: 120, pieces: 5, chambres: 4, terrain: 300, firstSeen: now }),
+    l({ id: 'paruvendu:/immobilier/vente/maison/1295516811E2E', source: 'paruvendu', url: 'https://www.paruvendu.fr/immobilier/vente/maison/1295516811E2E', title: 'Maison 4 pièces', price: 280000, prices: [{ at: now - 20 * DAY, price: 300000 }, { at: now - DAY, price: 280000 }], surface: 95, pieces: 4, firstSeen: now - 20 * DAY }),
+    l({ id: 'lesiteimmo:/acheter/maison-4pieces/wambrechies-59118/9999', source: 'lesiteimmo', url: 'https://www.lesiteimmo.com/acheter/maison-4pieces/wambrechies-59118/9999', title: 'Maison retirée', price: 330000, prices: [{ at: now - 30 * DAY, price: 330000 }], surface: 100, firstSeen: now - 30 * DAY, removedAt: now - DAY }),
+  ];
+  const page = await context.newPage();
+  await page.route('https://immodex.vercel.app/api/listings**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, listings, sources: { 59636: { orpi: { lastRun: now - DAY, paused: false }, deleu: { lastRun: now - DAY, paused: true } } }, lastRun: now - DAY }) })
+  );
+  await page.goto(`chrome-extension://${extId}/src/dashboard/dashboard.html`);
+  await page.click('#zone-tabs button:has-text("Wambrechies")');
+  await page.click('.imx-views button:has-text("Fil")');
+  await page.waitForSelector('.imx-annonce', { timeout: 30000 });
+  assert.equal(await page.locator('.imx-annonce').count(), 3);
+  const text = await page.textContent('.imx-view-fil');
+  assert.match(text, /Nouveau/);
+  assert.match(text, /Prix baissé de 20\s000\s€/);
+  assert.match(text, /Retiré/);
+  assert.match(text, /Dernier passage du robot/);
+  assert.match(text, /Deleu Immobilier en pause/);
+  const first = page.locator('.imx-annonce').first();
+  await first.locator('button:has-text("Garder")').click();
+  await first.locator('button:has-text("Gardé")').waitFor();
   await page.close();
 });
