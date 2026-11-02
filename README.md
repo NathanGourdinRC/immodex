@@ -33,7 +33,7 @@
 | Annonce republiée (autre site, autre agence, nouvelle annonce) | invisible | **suivi des biens** : chaque annonce ouverte est mémorisée (12 mois, dans Chrome) ; un même bien retrouvé est signalé sur le bouton (« +2 ») avec ses parutions et l'évolution du prix ; onglet **Biens** du popup |
 | Vérifier un candidat | lien Google Maps | + **Street View** à l'adresse de chaque candidat (comparer la façade aux photos) et **carte des candidats** numérotés (OpenStreetMap, dans un onglet) |
 | Prix du marché | rien | **Ventes passées** à l'adresse de chaque candidat (DVF, 5 dernières années) : prix, surface, prix au m², vente de surface proche de l'annonce mise en avant, médianes de la rue et du secteur |
-| Suivre une recherche sur des semaines | rien | **Tableau de bord** (bouton du popup) par zone de communes : nouveaux DPE de la zone (souvent une annonce en préparation), annonces vues avec statut et note, carte des prix médians au m² par section cadastrale |
+| Suivre une recherche sur des semaines | rien | **Mes recherches** (bouton du popup) : communes et critères (type, budget, surface, terrain, pièces, chambres), puis trois vues. **Fil** : annonces vues qui passent les critères, avec Garder, Écarter et note, et « Bientôt en vente ? » (nouveaux DPE, souvent une annonce en préparation). **Carte** : secteurs d'environ 400 m en 3 niveaux (moins cher, dans la moyenne, plus cher que la commune) avec le nombre de ventes DVF. **Ventes passées** : ventes DVF sur 5 ans avec prix au m², terrain et dépendance, et fourchette des 15 ventes les plus proches d'un bien |
 | Sur le téléphone | rien | **appli téléphone** [immodex.vercel.app](https://immodex.vercel.app) : recherche d'adresse, historique, biens suivis et tableau de bord, **synchronisés avec l'extension** (bouton téléphone du popup, appairage par QR code) ; annonce **partagée** vers l'appli (Android) ou **collée** (lien ou texte copié) : critères lus, recherche lancée, annonce ajoutée aux biens suivis |
 | Historique de prix partagé | rien | bouton **Castorus** : copie le lien de l'annonce et ouvre la recherche par URL de Castorus (pas d'API publique, pas de collecte automatique) |
 
@@ -118,7 +118,7 @@ npm test
 npm run test:e2e
 ```
 
-`npm test` lance les tests unitaires (historique, lecture des annonces, rapprochement ADEME, ventes DVF, zones du tableau de bord). `npm run test:e2e` charge l'extension dans un Chromium piloté et rejoue les parcours réels (API ADEME comprises) ; il faut d'abord `npx playwright install chromium`. L'extension elle-même n'a aucune dépendance : `node_modules` ne sert qu'aux tests.
+`npm test` lance les tests unitaires (historique, lecture des annonces, rapprochement ADEME, ventes DVF, recherches, secteurs de la carte). `npm run test:e2e` charge l'extension dans un Chromium piloté et rejoue les parcours réels (API ADEME comprises) ; il faut d'abord `npx playwright install chromium`. L'extension elle-même n'a aucune dépendance : `node_modules` ne sert qu'aux tests.
 
 ---
 
@@ -243,6 +243,15 @@ src/
     geo.js              # INSEE resolution + BAN reverse
     match.js            # Tier escalation + scoring DPE & terrain
     sync.js             # Synchro avec l'appli téléphone (ombre, fusion, appairage)
+    zones.js            # Recherches enregistrées (nom historique : zones) et suivi des biens
+    dvf.js              # Ventes DVF d'une section cadastrale (Etalab)
+    sales.js            # Ventes DVF d'une commune entière, prêtes pour la carte
+    sectors.js          # Secteurs de 400 m en 3 niveaux, ventes les plus proches
+  dashboard/
+    dashboard.js        # « Mes recherches » : formulaire, vues, carte Leaflet
+    feed.js             # Vue Fil (annonces vues, Bientôt en vente ?)
+    sector-layer.js     # Vue Carte (secteurs) et chargement des ventes de la recherche
+    sales-view.js       # Vue Ventes passées
   content/
     leboncoin.js        # Extraction depuis __NEXT_DATA__
     bienici.js          # Extraction depuis __INITIAL_STATE__
