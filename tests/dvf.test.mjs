@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { salesAt, summarize, groupMutations, parseAddress, streetTokens, sameStreet, splitIdu, slimRow } from '../src/common/dvf.js';
+import { salesAt, summarize, groupMutations, parseAddress, streetTokens, sameStreet, splitIdu, slimRow, sectionKeyFromId } from '../src/common/dvf.js';
 
 // Lignes au format de l'API DVF d'Etalab : une ligne par local, valeurs en texte.
 function row(o) {
@@ -18,6 +18,9 @@ function row(o) {
     nombre_pieces_principales: o.pieces == null ? 'nan' : String(o.pieces),
     lot1_surface_carrez: o.carrez == null ? 'nan' : String(o.carrez),
     surface_terrain: o.terrain == null ? 'nan' : String(o.terrain),
+    nature_culture: o.culture || 'nan',
+    longitude: o.lon == null ? 'nan' : String(o.lon),
+    latitude: o.lat == null ? 'nan' : String(o.lat),
   };
 }
 
@@ -118,4 +121,40 @@ test('recherche complète : point hors parcelle, repli sur les parcelles voisine
   } finally {
     globalThis.fetch = original;
   }
+});
+
+test('terrain d’une vente : somme des parcelles distinctes, sans double compte', () => {
+  const [m] = groupMutations([
+    row({ id: 'm1', date: '2024-03-01', price: 300000, type: 'Maison', surface: 100, parcelle: '596360000B0001', terrain: 120, culture: 'sols', lon: 3.05, lat: 50.68 }),
+    row({ id: 'm1', date: '2024-03-01', price: 300000, type: 'Dépendance', parcelle: '596360000B0001', terrain: 120, culture: 'sols' }),
+    row({ id: 'm1', date: '2024-03-01', price: 300000, parcelle: '596360000B0002', terrain: 80, culture: 'jardins' }),
+  ].map(slimRow));
+  assert.equal(m.terrain, 200);
+  assert.equal(m.dependances, 1);
+  assert.equal(m.commune, '59636');
+  assert.deepEqual([m.lon, m.lat], [3.05, 50.68]);
+});
+
+test('clé DVF d’une section cadastrale, préfixe de commune fusionnée compris', () => {
+  assert.equal(sectionKeyFromId('596360000A'), '59636/0000A');
+  assert.equal(sectionKeyFromId('74010182AB'), '74010/182AB');
+  assert.equal(sectionKeyFromId('5963'), null);
+});
+
+test('terrain d’une vente : somme des parcelles distinctes, sans double compte', () => {
+  const [m] = groupMutations([
+    row({ id: 'm1', date: '2024-03-01', price: 300000, type: 'Maison', surface: 100, parcelle: '596360000B0001', terrain: 120, culture: 'sols', lon: 3.05, lat: 50.68 }),
+    row({ id: 'm1', date: '2024-03-01', price: 300000, type: 'Dépendance', parcelle: '596360000B0001', terrain: 120, culture: 'sols' }),
+    row({ id: 'm1', date: '2024-03-01', price: 300000, parcelle: '596360000B0002', terrain: 80, culture: 'jardins' }),
+  ].map(slimRow));
+  assert.equal(m.terrain, 200);
+  assert.equal(m.dependances, 1);
+  assert.equal(m.commune, '59636');
+  assert.deepEqual([m.lon, m.lat], [3.05, 50.68]);
+});
+
+test('clé DVF d’une section cadastrale, préfixe de commune fusionnée compris', () => {
+  assert.equal(sectionKeyFromId('596360000A'), '59636/0000A');
+  assert.equal(sectionKeyFromId('74010182AB'), '74010/182AB');
+  assert.equal(sectionKeyFromId('5963'), null);
 });

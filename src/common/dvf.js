@@ -37,6 +37,13 @@ const sectionKey = (idu) => {
   return p ? `${p.codeInsee}/${p.prefixe}${p.section}` : null;
 };
 
+// Identifiant d'une section du cadastre (Etalab) : code INSEE (5) + préfixe (3) + section (2).
+// Le préfixe n'est pas toujours 000 : il désigne l'ancienne commune d'une commune fusionnée.
+function sectionKeyFromId(id) {
+  const m = String(id || '').match(/^(\d{5}|2[AB]\d{3})(\d{3}[0-9A-Z]{2})$/);
+  return m ? `${m[1]}/${m[2]}` : null;
+}
+
 async function parcelsIn(geom) {
   const res = await fetch(`${APICARTO_PARCEL}?geom=${encodeURIComponent(JSON.stringify(geom))}`);
   if (!res.ok) throw new Error(`cadastre ${res.status}`);
@@ -81,6 +88,9 @@ function slimRow(r) {
     pieces: num(r.nombre_pieces_principales),
     carrez: num(r.lot1_surface_carrez),
     terrain: num(r.surface_terrain),
+    culture: clean(r.nature_culture),
+    lon: num(r.longitude),
+    lat: num(r.latitude),
   };
 }
 
@@ -150,19 +160,26 @@ function groupMutations(rows) {
   const byId = new Map();
   for (const r of rows) {
     if (!byId.has(r.id)) {
-      byId.set(r.id, { id: r.id, date: r.date, nature: r.nature, price: r.price, parcels: new Set(), locals: [], numero: null, suffixe: null, voie: null, terrain: 0 });
+      byId.set(r.id, { id: r.id, date: r.date, nature: r.nature, price: r.price, parcels: new Set(), locals: [], numero: null, suffixe: null, voie: null, land: new Map(), lon: null, lat: null, homeCoords: false });
     }
     const m = byId.get(r.id);
     m.parcels.add(r.parcelle);
     if (!m.voie && r.voie) Object.assign(m, { numero: r.numero, suffixe: r.suffixe, voie: r.voie });
     if (r.type) m.locals.push({ type: r.type, surface: r.surface, pieces: r.pieces, carrez: r.carrez });
-    if (r.terrain) m.terrain = Math.max(m.terrain, r.terrain);
+    // Le terrain d'une parcelle est répété sur chaque ligne de la vente : compté une fois par
+    // parcelle et par nature de culture (sols, jardins…), puis additionné.
+    if (r.terrain) m.land.set(`${r.parcelle}|${r.culture || ''}`, r.terrain);
+    // Position : celle d'une ligne de logement de préférence, sinon la première connue.
+    const home = r.type === 'Maison' || r.type === 'Appartement';
+    if (r.lon != null && r.lat != null && (m.lon == null || (home && !m.homeCoords))) Object.assign(m, { lon: r.lon, lat: r.lat, homeCoords: home });
   }
   return [...byId.values()].map((m) => {
     const main = m.locals.filter((l) => l.type === 'Appartement' || l.type === 'Maison');
     // Prix au m² seulement pour une vente d'un seul logement (une vente groupée fausserait le calcul).
     const single = main.length === 1 && main[0].surface ? main[0] : null;
     const number = m.numero ? parseInt(m.numero, 10) : null;
+    const terrain = [...m.land.values()].reduce((a, b) => a + b, 0);
+    const firstParcel = [...m.parcels].find(Boolean);
     return {
       id: m.id,
       date: m.date,
@@ -177,8 +194,11 @@ function groupMutations(rows) {
       lots: m.locals.length,
       dependances: m.locals.filter((l) => l.type === 'Dépendance').length,
       locaux: m.locals.filter((l) => l.type && l.type.startsWith('Local')).length,
-      terrain: m.terrain || null,
+      terrain: terrain || null,
       pricePerM2: single && m.price ? Math.round(m.price / single.surface) : null,
+      commune: firstParcel ? String(firstParcel).slice(0, 5) : null,
+      lon: m.lon,
+      lat: m.lat,
     };
   });
 }
@@ -235,4 +255,4 @@ async function salesAt({ lat, lon, idu, address, type }) {
   return { parcel: exactIdu, sections, ...summarize(groupMutations(rows), { exactIdu, address, type }) };
 }
 
-export { salesAt, summarize, groupMutations, market, parseAddress, streetTokens, sameStreet, splitIdu, slimRow, median };
+export { salesAt, summarize, groupMutations, market, parseAddress, streetTokens, sameStreet, splitIdu, slimRow, median, sectionKeyFromId, sectionRows };
