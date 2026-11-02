@@ -78,7 +78,7 @@ function legend() {
   );
 }
 
-async function renderSectors({ search, isCurrent, layer, body, panel, setKpi }) {
+async function renderSectors({ search, isCurrent, layer, body, panel, setKpi, onBounds }) {
   const dataBody = el('div', null, UI.loading('Lecture des ventes DVF…'));
   body.replaceChildren(
     panel(
@@ -127,6 +127,8 @@ async function renderSectors({ search, isCurrent, layer, body, panel, setKpi }) 
       })
     );
   }
+
+  if (onBounds && sectors.length) onBounds(L.latLngBounds(sectors.flatMap((s) => s.polygon)));
 
   const rows = data.perCommune.map(({ commune, count }) =>
     el(

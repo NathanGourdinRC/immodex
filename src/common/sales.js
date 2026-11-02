@@ -5,8 +5,11 @@
 import { communeSections } from './zone-data.js';
 import { groupMutations, sectionKeyFromId, sectionRows } from './dvf.js';
 
-// Annecy, commune fusionnée, compte 211 sections : le plafond ne sert qu'aux très grandes villes.
-const MAX_SECTIONS = 250;
+// Repli section par section (serveur des ventes injoignable) : une section pèse jusqu'à
+// 300 Ko, on s'arrête à 60 (environ 18 Mo) et la commune est signalée partielle.
+const MAX_SECTIONS = 60;
+// Ventes allégées d'une commune entière, préparées et mises en cache par api/dvf.js.
+const DVF_ENDPOINT = 'https://immodex.vercel.app/api/dvf';
 const PARALLEL = 4;
 const TYPES = { maison: ['Maison'], appartement: ['Appartement'] };
 
@@ -73,10 +76,22 @@ async function communeSales(insee, { type = null, fetchSections = communeSection
   };
 }
 
+// Voie rapide : la commune entière en un appel au serveur d'Immodex+ ; repli section par section.
+async function communeSalesFast(insee, { type = null, fetchImpl = fetch, fallback = communeSales } = {}) {
+  try {
+    const res = await fetchImpl(`${DVF_ENDPOINT}?insee=${encodeURIComponent(insee)}&type=${type || 'tous'}`);
+    if (!res.ok) throw new Error(`dvf ${res.status}`);
+    const data = await res.json();
+    return { sales: data.sales || [], sections: null, loaded: null, failedSections: 0, partial: false, lastDate: data.lastDate || null };
+  } catch {
+    return fallback(insee, { type });
+  }
+}
+
 // Ventes de toutes les communes d'une recherche, gardées pendant la vie de la page. Un
 // résultat incomplet à cause d'un échec (commune ou section injoignable) n'est pas gardé :
 // la prochaine ouverture de la recherche réessaie.
-function createSearchSales({ load = communeSales } = {}) {
+function createSearchSales({ load = communeSalesFast } = {}) {
   const cache = new Map();
   return function searchSales(search) {
     const key = `${search.type || 'tous'}|${search.communes.map((c) => c.code).join(',')}`;
@@ -107,4 +122,4 @@ function createSearchSales({ load = communeSales } = {}) {
   };
 }
 
-export { communeSales, createSearchSales, toSales, MAX_SECTIONS };
+export { communeSales, communeSalesFast, createSearchSales, toSales, MAX_SECTIONS, DVF_ENDPOINT };

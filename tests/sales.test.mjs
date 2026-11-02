@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { communeSales, createSearchSales } from '../src/common/sales.js';
+import { communeSales, communeSalesFast, createSearchSales } from '../src/common/sales.js';
 import { slimRow } from '../src/common/dvf.js';
 
 // Lignes au format de l'API DVF d'Etalab (une ligne par local), réduites par slimRow comme en vrai.
@@ -84,12 +84,30 @@ test('une section injoignable : les autres sections restent, la commune est sign
   assert.equal(r.partial, true);
 });
 
-test('grande commune (Annecy, 211 sections) : toutes les sections chargées par défaut', async () => {
+test('repli section par section : au plus 60 sections (environ 18 Mo), commune signalée partielle', async () => {
   const ids = Array.from({ length: 211 }, (_, i) => `74010${['000', '011', '268'][Math.floor(i / 100)]}${String(i % 100).padStart(2, '0')}`);
   let calls = 0;
   const r = await communeSales('74010', { type: null, fetchSections: sections(ids), fetchRows: async () => (calls++, []) });
-  assert.equal(calls, 211);
+  assert.equal(calls, 60);
+  assert.equal(r.partial, true);
+});
+
+test('grande commune (Annecy) : ventes allégées du serveur, toute la commune d’un coup', async () => {
+  const urls = [];
+  const fetchImpl = async (url) => (urls.push(url), { ok: true, json: async () => ({ sales: [{ id: 'x', date: '2025-12-30', pricePerM2: 5000 }], lastDate: '2025-12-30' }) });
+  let fallback = 0;
+  const r = await communeSalesFast('74010', { type: 'maison', fetchImpl, fallback: async () => (fallback++, {}) });
+  assert.equal(r.sales.length, 1);
   assert.equal(r.partial, false);
+  assert.equal(r.lastDate, '2025-12-30');
+  assert.equal(fallback, 0);
+  assert.deepEqual(urls, ['https://immodex.vercel.app/api/dvf?insee=74010&type=maison']);
+});
+
+test('serveur des ventes injoignable : repli section par section', async () => {
+  const r = await communeSalesFast('59636', { type: null, fetchImpl: async () => ({ ok: false, status: 503 }), fallback: async (insee, opts) => ({ sales: [], via: 'sections', insee, opts }) });
+  assert.equal(r.via, 'sections');
+  assert.deepEqual(r.opts, { type: null });
 });
 
 test('ventes d’une recherche : communes réunies, échec non gardé en cache', async () => {

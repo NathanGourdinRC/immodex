@@ -46,6 +46,8 @@ const markers = new Map();
 function clearMap() {
   Object.values(layers).forEach((l) => l.clearLayers());
   markers.clear();
+  lastBounds = null;
+  needsFit = false;
 }
 
 // Cadre des communes de la recherche. Sur un téléphone, la carte est cachée hors de la vue
@@ -63,6 +65,14 @@ function fitSearch() {
   map.fitBounds(lastBounds.pad(0.05));
   needsFit = false;
 }
+
+// La carte se recale dès que son cadre change de taille (apparition sur un téléphone,
+// rotation), sans dépendre d'un délai : un délai fixe arrivait parfois avant l'affichage.
+new ResizeObserver(() => {
+  if (!mapShown()) return;
+  map.invalidateSize();
+  if (needsFit) fitSearch();
+}).observe(map.getContainer());
 
 function focusMarker(id) {
   const marker = markers.get(id);
@@ -115,11 +125,8 @@ function showView(next, id) {
   for (const [key] of VIEWS) document.body.classList.toggle(`view-${key}`, key === view);
   document.querySelectorAll('.imx-views button').forEach((b) => b.classList.toggle('is-active', b.dataset.view === view));
   if (id) setHash(id);
-  // Sur un téléphone, la carte n'est visible que dans la vue Carte : Leaflet doit se recaler.
-  setTimeout(() => {
-    map.invalidateSize();
-    if (needsFit && mapShown()) fitSearch();
-  }, 0);
+  // Sur un téléphone, la carte n'est visible que dans la vue Carte : l'observateur de taille
+  // (plus haut) la recale à son apparition.
 }
 
 function hashZone() {
@@ -371,14 +378,20 @@ async function openZone(id) {
     },
     setKpi,
   });
-  renderSectors({ search: zone, isCurrent, layer: layers.sectors, body: mapView, panel, setKpi });
+  // Contour de la commune injoignable : la carte se cadre sur les secteurs.
+  const onBounds = (bounds) => {
+    if (!isCurrent() || lastBounds || !bounds.isValid()) return;
+    lastBounds = bounds;
+    fitSearch();
+  };
+  renderSectors({ search: zone, isCurrent, layer: layers.sectors, body: mapView, panel, setKpi, onBounds });
   renderSalesView({ search: zone, isCurrent, body: salesView, panel });
 }
 
 async function drawContours(zone, token) {
   const shapes = await Promise.all(zone.communes.map((c) => once(`contour:${c.code}`, () => communeContour(c.code)).catch(() => null)));
   if (token !== renderToken) return;
-  const group = L.geoJSON(shapes.filter(Boolean), { style: { color: '#0f172a', weight: 2, dashArray: '6 4', fill: false }, interactive: false });
+  const group = L.geoJSON(shapes.filter(Boolean), { style: { className: 'imx-contour', color: '#0f172a', weight: 2, dashArray: '6 4', fill: false }, interactive: false });
   layers.contours.addLayer(group);
   const bounds = group.getBounds();
   if (!bounds.isValid()) return;

@@ -353,3 +353,16 @@ test('téléphone : carte cadrée sur la commune, « Voir sur la carte », table
   assert.ok(overflow <= 1, `débordement de ${overflow} px`);
   await page.close();
 });
+
+test('contour de la commune injoignable : la carte se cadre sur les secteurs', async () => {
+  const page = await context.newPage();
+  await page.route(/geo\.api\.gouv\.fr\/communes\/59636\?.*geometry=contour/, (route) => route.fulfill({ status: 503, body: 'indisponible' }));
+  await page.goto(`chrome-extension://${extId}/src/dashboard/dashboard.html`);
+  await page.click('#zone-tabs button:has-text("Wambrechies")');
+  await page.click('.imx-views button:has-text("Carte")');
+  await page.waitForSelector('.imx-sector', { timeout: 60000 });
+  await page.waitForTimeout(1500);
+  const box = await page.locator('.imx-sector.is-moyenne').first().boundingBox();
+  assert.ok(box && box.width > 15, `secteur de ${box && Math.round(box.width)} px`);
+  await page.close();
+});
