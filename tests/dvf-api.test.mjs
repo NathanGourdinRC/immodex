@@ -42,7 +42,8 @@ test('ventes allégées d’une commune : 5 ans de fichiers annuels, maisons seu
   assert.deepEqual([r.sales[0].lon, r.sales[0].lat], [3.05, 50.68]);
   assert.equal(r.lastDate, '2025-12-30');
   assert.deepEqual(r.years, [2025]);
-  assert.ok(calls.every((u) => u.startsWith('https://files.data.gouv.fr/geo-dvf/latest/csv/') && u.endsWith('/communes/59/59636.csv')));
+  // Fichiers DVF de la commune, plus le registre des DPE (ici injoignable : réponse sans classes).
+  assert.ok(calls.filter((u) => !u.startsWith('https://data.ademe.fr/')).every((u) => u.startsWith('https://files.data.gouv.fr/geo-dvf/latest/csv/') && u.endsWith('/communes/59/59636.csv')));
   const all = await handleDvf({ insee: '59636', type: null, fetchImpl: impl, now: Date.parse('2026-11-02') });
   assert.equal(all.sales.length, 2);
 });
@@ -59,4 +60,41 @@ test('Corse et outre-mer : bon dossier départemental', async () => {
   const b = fakeFetch({});
   await handleDvf({ insee: '97411', type: null, fetchImpl: b.impl, now: Date.parse('2026-11-02') });
   assert.ok(b.calls[0].includes('/communes/974/97411.csv'));
+});
+
+// Faux registre ADEME : deux pages reliées par `next`.
+function withAdeme(files, pages) {
+  const geo = fakeFetch(files);
+  const calls = [];
+  const impl = async (url) => {
+    if (!url.startsWith('https://data.ademe.fr/')) return geo.impl(url);
+    calls.push(url);
+    if (pages === 'DOWN') return { ok: false, status: 503, json: async () => ({}) };
+    const i = url.includes('page=2') ? 1 : 0;
+    return { ok: true, status: 200, json: async () => pages[i] };
+  };
+  return { impl, calls };
+}
+const row = (id, date, adresse, surface, etiquette) => ({ numero_dpe: id, date_etablissement_dpe: date, adresse_ban: adresse, surface_habitable_logement: surface, etiquette_dpe: etiquette, type_batiment: 'maison' });
+
+test('ventes avec classe énergie : DPE de la commune sur deux pages, reliés par l’adresse', async () => {
+  const pages = [
+    { results: [row('d0', '2025-02-01', '99 Rue Ailleurs 59118 Wambrechies', 100, 'B')], next: 'https://data.ademe.fr/data-fair/api/v1/datasets/dpe03existant/lines?page=2' },
+    { results: [row('d1', '2025-08-01', '12 Rue de Quesnoy 59118 Wambrechies', 100, 'D')] },
+  ];
+  const { impl, calls } = withAdeme({ 2025: CSV_2025 }, pages);
+  const r = await handleDvf({ insee: '59636', type: 'maison', fetchImpl: impl, now: Date.parse('2026-11-02') });
+  assert.equal(calls.length, 2);
+  assert.ok(calls[0].includes('code_insee_ban_eq=59636') && calls[0].includes('type_batiment_eq=maison'));
+  assert.equal(r.sales[0].energyClass, 'D');
+  assert.equal(r.sales[0].dpeDays, 151);
+  assert.deepEqual(r.energy, { byClass: {}, delay: null });
+});
+
+test('registre ADEME injoignable : ventes servies sans classes ni statistiques', async () => {
+  const { impl } = withAdeme({ 2025: CSV_2025 }, 'DOWN');
+  const r = await handleDvf({ insee: '59636', type: 'maison', fetchImpl: impl, now: Date.parse('2026-11-02') });
+  assert.equal(r.sales.length, 1);
+  assert.equal(r.sales[0].energyClass, undefined);
+  assert.equal(r.energy, null);
 });

@@ -4,6 +4,8 @@
 // Données publiques ; l'en-tête noindex de vercel.json s'applique aussi à cette adresse.
 import { slimRow, groupMutations } from '../src/common/dvf.js';
 import { toSales } from '../src/common/sales.js';
+import { linkSalesToDpe, energyStats } from '../src/common/dpe-link.js';
+import { communeDpe } from './_lib/dpe-commune.js';
 
 const GEO_DVF = 'https://files.data.gouv.fr/geo-dvf/latest/csv';
 const INSEE = /^(\d{5}|2[AB]\d{3})$/;
@@ -65,7 +67,18 @@ async function handleDvf({ insee, type = null, fetchImpl = fetch, now = Date.now
   const found = files.filter(Boolean);
   const sales = toSales(groupMutations(found.flatMap((f) => f.rows).map(slimRow)), wanted);
   const dates = sales.map((s) => s.date).filter(Boolean).sort();
-  return { insee, type: wanted, sales, lastDate: dates.length ? dates[dates.length - 1] : null, years: found.map((f) => f.year).sort() };
+  // Classe énergie de chaque vente et statistiques de la commune (DPE reliés par l'adresse).
+  let energy = null;
+  const dpe = await communeDpe(insee, wanted, { fetchImpl });
+  if (dpe) {
+    const links = linkSalesToDpe(sales, dpe);
+    for (const v of sales) {
+      const l = links.get(v.id);
+      if (l) Object.assign(v, { energyClass: l.energyClass, dpeDate: l.dpeDate, dpeDays: l.days });
+    }
+    energy = energyStats(sales, links);
+  }
+  return { insee, type: wanted, sales, energy, lastDate: dates.length ? dates[dates.length - 1] : null, years: found.map((f) => f.year).sort() };
 }
 
 const CORS = { 'Access-Control-Allow-Origin': '*' };
@@ -77,7 +90,8 @@ export async function GET(request) {
     return new Response(JSON.stringify(data), {
       status: 200,
       // Une semaine en cache chez Vercel : DVF n'est mis à jour que deux fois par an.
-      headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600, s-maxage=604800, stale-while-revalidate=604800' },
+      // Registre des DPE injoignable : réponse incomplète gardée une heure seulement.
+      headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': data.energy ? 'public, max-age=3600, s-maxage=604800, stale-while-revalidate=604800' : 'public, max-age=600, s-maxage=3600' },
     });
   } catch (e) {
     return new Response(JSON.stringify({ ok: false, error: e.message }), {
