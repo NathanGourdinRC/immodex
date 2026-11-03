@@ -112,9 +112,14 @@ function focusMarker(id) {
     marker.openPopup();
   };
   if (mapShown()) return go();
-  // Téléphone : passe d'abord sur la vue Carte, puis attend qu'elle ait sa taille.
+  // Téléphone : passe d'abord sur la vue Carte, puis attend qu'elle ait sa taille. La page,
+  // descendue jusqu'à l'annonce cliquée, remonte sur la carte (placée en haut de la vue).
   showView('carte', current && current.id);
-  const whenShown = (tries) => (mapShown() || tries > 60 ? go() : requestAnimationFrame(() => whenShown(tries + 1)));
+  const shown = () => {
+    map.getContainer().parentElement.scrollIntoView({ block: 'start' });
+    go();
+  };
+  const whenShown = (tries) => (mapShown() || tries > 60 ? shown() : requestAnimationFrame(() => whenShown(tries + 1)));
   requestAnimationFrame(() => whenShown(0));
 }
 

@@ -77,7 +77,10 @@ test('iPhone : un clic sur une annonce du Fil ouvre la Carte centrée sur son po
   const page = await (await browser.newContext({ ...devices['iPhone 13'], serviceWorkers: 'block' })).newPage();
   const now = Date.now();
   const listing = { id: 'orpi:/annonce-vente-maison-iphone/', source: 'orpi', url: 'https://www.orpi.com/annonce-vente-maison-iphone/', insee: '59636', type: 'maison', title: 'Maison 5 pièces', price: 389000, prices: [{ at: now, price: 389000 }], surface: 120, pieces: 5, firstSeen: now, lastSeen: now, missed: 0, removedAt: null, detail: true, address: '12 Rue de Quesnoy 59118 Wambrechies', lat: 50.6862, lon: 3.0489 };
-  await page.route('https://immodex.vercel.app/api/listings**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, listings: [listing], sources: {}, lastRun: now }) }));
+  // Huit annonces plus récentes sans adresse retrouvée : le bien placé est loin dans le Fil.
+  const others = Array.from({ length: 8 }, (_, i) => ({ ...listing, id: `orpi:/autre-${i}/`, url: `https://www.orpi.com/autre-${i}/`, price: 300000 + i * 1000, surface: 90 + i * 7, address: null, lat: null, lon: null }));
+  listing.firstSeen = now - 5 * 24 * 3600 * 1000;
+  await page.route('https://immodex.vercel.app/api/listings**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, listings: [...others, listing], sources: {}, lastRun: now }) }));
   await page.goto(`${base}/src/dashboard/dashboard.html`);
   await page.fill('input[type="search"]', 'Wambrechies');
   await page.click('.imx-suggest button:has-text("Wambrechies ·")', { timeout: 20000 });
@@ -85,12 +88,16 @@ test('iPhone : un clic sur une annonce du Fil ouvre la Carte centrée sur son po
   await page.click('button:has-text("Créer la recherche")');
   await page.click('.imx-views button:has-text("Fil")');
   await page.locator('.imx-annonce').first().waitFor({ timeout: 30000 });
-  await page.locator('.imx-annonce .imx-meta').first().click();
+  await page.locator('.imx-annonce.is-placed .imx-meta').first().click();
   await page.locator('.leaflet-popup-content').filter({ hasText: /389\s000/ }).waitFor({ timeout: 10000 });
   assert.match(await page.evaluate(() => document.body.className), /view-carte/);
-  // Le point est dans le cadre de la carte, pas caché sous un bord.
+  // Le point est dans le cadre de la carte, pas caché sous un bord, et à l'écran : la page
+  // descendue jusqu'à l'annonce cliquée remonte sur la carte.
+  await page.waitForTimeout(500);
   const pin = await page.locator('.imx-price-pin.is-selected').boundingBox();
   const map = await page.locator('#map').boundingBox();
   assert.ok(pin && pin.x >= map.x && pin.x + pin.width <= map.x + map.width && pin.y >= map.y && pin.y + pin.height <= map.y + map.height, `point ${JSON.stringify(pin)} hors de la carte ${JSON.stringify(map)}`);
+  const screen = page.viewportSize();
+  assert.ok(pin.y >= 0 && pin.y + pin.height <= screen.height, `point hors de l'écran : ${JSON.stringify(pin)}`);
   await page.close();
 });
