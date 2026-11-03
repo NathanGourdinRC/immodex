@@ -24,7 +24,8 @@ function setRowSelected(row, on) {
 // ouvre la bulle (dashboard.js). Rend le marqueur.
 function placeListing({ layer, markers, id, lat, lon, price, status, title, popup, row, focus }) {
   const marker = L.marker([lat, lon], { icon: priceIcon(price, status), title: title || '' });
-  marker.bindPopup(popup, { maxWidth: 320 });
+  // Marge en haut : la bulle ne passe pas sous les boutons de zoom et de calques (croix visible).
+  marker.bindPopup(popup, { maxWidth: 320, autoPanPaddingTopLeft: [10, 64], autoPanPaddingBottomRight: [10, 10] });
   marker.on('popupopen', () => {
     const pin = pinOf(marker);
     if (pin) pin.classList.add('is-selected');

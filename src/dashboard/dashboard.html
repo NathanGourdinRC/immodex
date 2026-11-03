@@ -69,6 +69,7 @@
       .imx-row.is-placed, .imx-row.is-selected { margin: 0 -8px; padding-left: 8px; padding-right: 8px; border-radius: 6px; }
       .imx-pin-popup { display: grid; gap: 8px; }
       .imx-pin-photo { width: 100%; height: 130px; object-fit: cover; border-radius: 8px; background: var(--imx-bg-muted); }
+      @media (max-width: 600px) { .imx-pin-photo { height: 90px; } }
       /* Trois vues d'une recherche : une seule visible à la fois (classe view-… sur body). */
       .imx-views { display: flex; width: 100%; }
       .imx-views button { flex: 1; height: 30px; font-size: 13px; }
