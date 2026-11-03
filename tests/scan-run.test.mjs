@@ -363,3 +363,20 @@ test('page illisible : marquée lue avec la version du lecteur, jamais remise en
   await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl: broken });
   assert.equal(w.asked.filter((u) => u.endsWith('/annonce/a1')).length, 1);
 });
+
+test('annonce retirée : sa vente DVF est cherchée une fois par mois et posée sur l’annonce', async () => {
+  const redis = fakeRedis();
+  const w = world({ 'https://alpha.test/vente/59636': results('alpha', []), 'https://beta.test/vente/59636': results('beta', []) });
+  await withSearch(redis, w.now());
+  const removedAt = w.now() - 60 * DAY;
+  await saveListings(redis, '59636', [{ id: 'alpha:/annonce/r1', source: 'alpha', url: 'https://alpha.test/annonce/r1', insee: '59636', type: 'maison', price: 480000, prices: [{ at: removedAt - 90 * DAY, price: 490000 }], surface: 110, terrain: 300, firstSeen: removedAt - 90 * DAY, lastSeen: removedAt, missed: 2, removedAt, detail: true, readerVersion: 2 }]);
+  let calls = 0;
+  const day = (t) => new Date(t).toISOString().slice(0, 10);
+  const loadSales = async (insee, type) => (calls++, [{ id: 'v', date: day(removedAt + 40 * DAY), commune: insee, type: 'Maison', address: '5 RUE X', price: 455000, surface: 111, terrain: 305, pricePerM2: 4099 }]);
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl, loadSales });
+  const [r1] = [...(await listingsOf(redis, '59636')).values()];
+  assert.deepEqual(r1.sale, { date: day(removedAt + 40 * DAY), price: 455000, pricePerM2: 4099, how: 'probable' });
+  w.advance(10 * DAY);
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl, loadSales });
+  assert.equal(calls, 1);
+});

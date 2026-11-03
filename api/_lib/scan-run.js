@@ -6,6 +6,10 @@
 import { SOURCES, readResults } from './sources.js';
 import { readListing } from './page.js';
 import { keys, listingsOf, saveListings, sourceMetaOf, saveSourceMeta, readQueue, writeQueue, activeCommunes } from './scan-store.js';
+import { matchSale } from './sale-link.js';
+
+// Ventes DVF d'une commune (maisons et appartements), chargées seulement quand il le faut.
+const defaultLoadSales = async (insee, type) => (await (await import('../dvf.js')).handleDvf({ insee, type })).sales;
 
 const HOUR = 3600 * 1000;
 // Verrou d'un passage : empêche deux robots simultanés (un passage dure moins de 5 min).
@@ -16,6 +20,8 @@ const RETRY_PAUSED = 7 * 24 * HOUR; // source en pause : nouvel essai une semain
 const MAX_PAGES = 5; // par source et par commune, toutes adresses de liste confondues
 const LOOKUP_MS = 8000; // recherche d'adresse ADEME : au-delà, abandonnée
 const KEEP_MS = 3 * 365 * 24 * HOUR;
+const DAY = 24 * HOUR;
+const SALES_CHECK_MS = 30 * DAY; // ventes des annonces retirées : une vérification par mois
 const DETAIL_FIELDS = ['surface', 'pieces', 'chambres', 'terrain', 'garage', 'photo', 'postal', 'city', 'energyClass', 'gesClass', 'energyConsumption', 'gesEmission'];
 // Version du lecteur de pages d'annonce : une annonce lue par une version plus ancienne (qui
 // prenait par exemple le terrain d'un bien similaire en bas de page) est relue une fois.
@@ -72,7 +78,7 @@ async function readList({ fetchPage, source, listUrl, commune, budget, deadline 
   return { cards: [...cards.values()], complete, blocked, links: allSeen.size };
 }
 
-async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sources = SOURCES, readListingImpl = readListing, lookup = null }) {
+async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sources = SOURCES, readListingImpl = readListing, lookup = null, loadSales = defaultLoadSales }) {
   const start = now();
   // Verrou atomique : deux appels simultanés ne lancent jamais deux robots.
   const locked = await redis.command(['SET', keys.lock, String(start), 'NX', 'PX', String(LOCK_MS)]);
@@ -266,6 +272,33 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
     })
   );
   await writeQueue(redis, remaining);
+
+  // Ventes DVF des annonces retirées depuis 1 à 18 mois : une vérification par mois et par
+  // commune (DVF paraît deux fois par an, avec 6 à 12 mois de retard).
+  for (const commune of communes) {
+    if (now() - start >= budgetMs) break;
+    const meta = metas.get(commune.code) || {};
+    if (start - ((meta._sales && meta._sales.lastCheck) || 0) < SALES_CHECK_MS) continue;
+    const listings = await listingsFor(commune.code);
+    const waiting = [...listings.values()].filter((l) => l.removedAt && !l.sale && start - l.removedAt >= 30 * DAY && start - l.removedAt <= 18 * 30 * DAY);
+    if (!waiting.length) continue;
+    let sales;
+    try {
+      sales = await withTimeout(loadSales(commune.code, null), 20000);
+    } catch (err) {
+      console.error('[scan] ventes DVF injoignables', commune.code, err && err.message);
+    }
+    if (!sales) continue;
+    for (const l of waiting) {
+      const sale = matchSale(l, sales);
+      if (!sale) continue;
+      l.sale = sale;
+      await saveListings(redis, commune.code, [l]);
+      summary.sold = (summary.sold || 0) + 1;
+    }
+    meta._sales = { lastCheck: start };
+    await saveSourceMeta(redis, commune.code, meta);
+  }
 
   // Refus pendant les pages d'annonce : un échec de plus pour la source, si ses pages de
   // résultats n'ont pas déjà été comptées pendant ce passage.
