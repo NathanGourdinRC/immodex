@@ -73,7 +73,29 @@
       .imx-sector-count { display: flex; align-items: center; justify-content: center; font: 700 11px var(--imx-font); color: #0f172a; text-shadow: 0 0 3px #fff, 0 0 3px #fff; }
       .imx-sector-count.is-few { color: #64748b; font-weight: 600; }
       .imx-swatch.is-few { background: repeating-linear-gradient(45deg, #cbd5e1 0 2px, transparent 2px 4px) !important; border: 1px dashed #64748b; }
-      .imx-sector-sales { display: grid; gap: 3px; max-height: 260px; overflow-y: auto; }
+      /* Bulle d'un secteur : titre, trois repères, tableau des ventes qui défile. */
+      .imx-sector-leaflet .leaflet-popup-content { margin: 14px 16px; }
+      .imx-sector-popup { display: grid; gap: 10px; }
+      .imx-sector-title { display: flex; align-items: center; gap: 8px; font: 700 14px var(--imx-font); color: var(--imx-text); }
+      .imx-sector-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+      .imx-sector-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+      .imx-sector-stat { display: grid; gap: 1px; padding: 6px 8px; border: 1px solid var(--imx-border); border-radius: 8px; background: var(--imx-bg-muted); }
+      .imx-sector-stat strong { font-size: 14px; font-variant-numeric: tabular-nums; }
+      .imx-sector-stat span { font-size: 11px; color: var(--imx-text-3); }
+      .imx-sector-scroll { max-height: 300px; overflow: auto; border: 1px solid var(--imx-border); border-radius: 8px; }
+      .imx-sector-table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+      .imx-sector-table th { position: sticky; top: 0; z-index: 1; padding: 6px 8px; background: var(--imx-bg); border-bottom: 1px solid var(--imx-border-strong); color: var(--imx-text-2); font-weight: 600; text-align: left; white-space: nowrap; }
+      .imx-sector-table td { padding: 5px 8px; border-bottom: 1px solid var(--imx-border); white-space: nowrap; }
+      .imx-sector-table tbody tr:nth-child(even) td { background: var(--imx-bg-muted); }
+      .imx-sector-table .is-num { text-align: right; }
+      .imx-sector-table td:nth-child(2) { white-space: normal; min-width: 140px; }
+      .imx-ppm { color: var(--imx-text-2); font-weight: 600; }
+      /* Téléphone : bulle compacte, sans les colonnes secondaires. */
+      .imx-sector-popup.is-compact .col-full { display: none; }
+      .imx-sector-popup.is-compact .imx-sector-stat strong { font-size: 13px; }
+      .imx-sector-popup.is-compact .imx-sector-stat span { font-size: 10.5px; }
+      .imx-sector-popup.is-compact .imx-sector-scroll { max-height: 200px; }
+      .imx-sector-popup.is-compact .imx-sector-table td:nth-child(2) { min-width: 0; }
       /* Ventes passées : tableau qui défile à l'horizontale sur un téléphone. */
       .imx-table-wrap { overflow-x: auto; margin: 6px 0; }
       .imx-sales-table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }

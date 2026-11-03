@@ -252,6 +252,8 @@ test('tableau de bord : zone Lille, nouveaux DPE, annonce vue suivie, prix par s
   assert.ok(await page.locator('.imx-bien button:has-text("Castorus")').count());
   // Le nombre de pièces n'est pas lu sur l'annonce : signalé, sans l'exclure.
   assert.match(await bien.textContent(), /pièces non précisées/);
+  // Prix au m² de l'annonce vue : 295 000 € pour 72 m².
+  assert.match(await bien.textContent(), /4\s097\s€\/m²/);
   assert.match(await page.textContent('.imx-kpis'), /1 favori/);
   // Trois vues ; la vue est gardée dans l'adresse.
   for (const label of ['Fil', 'Carte', 'Ventes passées']) assert.equal(await page.locator(`.imx-views button:has-text("${label}")`).count(), 1);
@@ -301,6 +303,13 @@ test('carte en secteurs : Wambrechies', async () => {
   const legend = await page.textContent('#side');
   for (const t of ['moins cher', 'dans la moyenne', 'plus cher']) assert.match(legend, new RegExp(t));
   assert.match(legend, /Ventes connues jusqu’au/);
+  // Bulle d'un secteur : un tableau lisible de ses ventes.
+  await page.locator('.imx-sector.is-moyenne').first().click({ force: true });
+  await page.waitForSelector('.leaflet-popup .imx-sector-table tbody tr', { timeout: 10000 });
+  const popupHead = await page.textContent('.leaflet-popup .imx-sector-table thead');
+  for (const t of ['Date', 'Adresse', 'Prix', '€/m²', 'Surface', 'Terrain']) assert.ok(popupHead.includes(t), t);
+  assert.ok((await page.locator('.leaflet-popup-content-wrapper').boundingBox()).width >= 420);
+  await page.keyboard.press('Escape');
   // Ventes passées : tableau avec prix au m², terrain et dépendance.
   await page.click('.imx-views button:has-text("Ventes passées")');
   await page.waitForSelector('.imx-sales-table tbody tr', { timeout: 60000 });
@@ -391,6 +400,8 @@ test('fil : annonces scannées, nouveautés, baisses et retraits, Garder', async
   assert.match(text, /Nouveau/);
   assert.match(text, /Prix baissé de 20\s000\s€/);
   assert.match(text, /Retiré/);
+  // Prix au m² de chaque bien : 389 000 € pour 120 m².
+  assert.match(await page.locator('.imx-annonce').first().textContent(), /3\s242\s€\/m²/);
   assert.match(text, /Dernier passage du robot/);
   assert.match(text, /Deleu Immobilier en pause/);
   const first = page.locator('.imx-annonce').first();

@@ -156,6 +156,9 @@ async function geocode(address) {
   return point;
 }
 
+// Prix au m² d'une annonce : le premier repère pour comparer aux ventes du secteur.
+const ppmText = (price, surface) => (price && surface ? `${num(Math.round(price / surface))} €/m²` : null);
+
 function priceLine(g) {
   if (!g.lastPrice) return 'prix non lu';
   if (!g.firstPrice || g.firstPrice === g.lastPrice) return UI.priceText(g.lastPrice);
@@ -186,7 +189,7 @@ function bienRow(g, track, unknown, onStatus) {
     el(
       'div',
       { class: 'imx-meta' },
-      [priceLine(g), fp.surface ? `${num(fp.surface)} m²` : null, fp.postal || fp.city || null, g.count > 1 ? `${g.count} annonces` : last.site, `vue le ${UI.day(g.lastSeen)}`].filter(Boolean).join(' · ')
+      [priceLine(g), fp.surface ? `${num(fp.surface)} m²` : null, ppmText(g.lastPrice, fp.surface), fp.postal || fp.city || null, g.count > 1 ? `${g.count} annonces` : last.site, `vue le ${UI.day(g.lastSeen)}`].filter(Boolean).join(' · ')
     ),
     unknown.length ? el('div', { class: 'imx-meta imx-unknown' }, unknown.join(' · ')) : null,
     el('div', { class: 'imx-meta imx-nearby imx-hidden' }),
@@ -291,7 +294,7 @@ async function loadBiens(ctx, body) {
         'div',
         { style: 'display:grid;gap:8px' },
         el('div', { class: 'imx-candidate-address' }, g.address),
-        el('div', { class: 'imx-meta' }, [priceLine(g), STATUSES[st] || null].filter(Boolean).join(' · ')),
+        el('div', { class: 'imx-meta' }, [priceLine(g), ppmText(g.lastPrice, (g.fp || {}).surface), STATUSES[st] || null].filter(Boolean).join(' · ')),
         el('div', { class: 'imx-actions' }, UI.linkButton(g.sightings[g.sightings.length - 1].url, 'Ouvrir l’annonce', { iconName: 'external' }))
       )
     );

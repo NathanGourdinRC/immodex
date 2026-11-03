@@ -37,7 +37,7 @@ function annonceRow(g, key, f, st, track, unknown, onStatus, now) {
     el(
       'div',
       { class: 'imx-row-head' },
-      el('div', null, el('div', { class: 'imx-candidate-address' }, f.price ? UI.priceText(f.price) : 'Prix non précisé'), el('div', { class: 'imx-meta' }, factsLine(f) || f.title || 'Annonce')),
+      el('div', null, el('div', { class: 'imx-candidate-address' }, f.price ? UI.priceText(f.price) : 'Prix non précisé', f.price && f.surface ? el('span', { class: 'imx-ppm' }, ` · ${num(Math.round(f.price / f.surface))} €/m²`) : null), el('div', { class: 'imx-meta' }, factsLine(f) || f.title || 'Annonce')),
       f.photo ? el('img', { class: 'imx-annonce-photo', src: f.photo, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }) : null
     ),
     el('div', { class: 'imx-tags' }, tagOf(st), g.probable ? el('span', { class: 'imx-tag' }, 'même bien probable') : null),
@@ -160,7 +160,7 @@ async function loadAnnonces(ctx, body) {
       el(
         'div',
         { style: 'display:grid;gap:8px' },
-        el('div', { class: 'imx-candidate-address' }, f.price ? UI.priceText(f.price) : 'Prix non précisé'),
+        el('div', { class: 'imx-candidate-address' }, f.price ? UI.priceText(f.price) : 'Prix non précisé', f.price && f.surface ? el('span', { class: 'imx-ppm' }, ` · ${num(Math.round(f.price / f.surface))} €/m²`) : null),
         el('div', { class: 'imx-meta' }, [factsLine(f), f.address, STATUSES[status] || null].filter(Boolean).join(' · ')),
         tagOf(st),
         el('div', { class: 'imx-actions' }, g.listings.map((l) => UI.linkButton(l.url, SOURCE_LABELS[l.source] || l.source, { iconName: 'external' })))
