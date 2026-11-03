@@ -143,6 +143,18 @@ test('annonce d’une autre commune (code postal lu sur sa page) : hors de la re
   assert.equal(checkCriteria({ price: 300000, postal: null }, s).ok, true);
 });
 
+test('type : un terrain à bâtir n’est jamais un logement, le type de la recherche est respecté', () => {
+  // « Indifférent » : maisons et appartements. Un terrain nu (sa surface est celle de la
+  // parcelle, ses chambres sont inconnues) passerait sinon une recherche « 3 chambres, 100 m² ».
+  const any = cleanZone({ communes: [LILLE], surfaceMin: 100, chambresMin: 3 });
+  assert.equal(checkCriteria({ type: 'terrain', price: 575000, surface: 1080 }, any).ok, false);
+  assert.equal(checkCriteria({ type: 'appartement', price: 575000, surface: 110, chambres: 3 }, any).ok, true);
+  const maison = cleanZone({ communes: [LILLE], type: 'maison' });
+  assert.equal(checkCriteria({ type: 'appartement', price: 300000 }, maison).ok, false);
+  assert.equal(checkCriteria({ type: 'maison', price: 300000 }, maison).ok, true);
+  assert.equal(checkCriteria({ type: null, price: 300000 }, maison).ok, true);
+});
+
 test('annonce et critères : budget strict, surface à 3 m², inconnues signalées', () => {
   const s = cleanZone({ communes: [LILLE], budgetMax: 450000, surfaceMin: 100, terrainMin: 150, chambresMin: 3 });
   assert.deepEqual(checkCriteria({ price: 440000, surface: 98, terrain: null, pieces: 5, chambres: null }, s), { ok: true, unknown: ['terrain non précisé', 'chambres non précisées'] });

@@ -116,6 +116,9 @@ function checkCriteria(listing, search) {
   // Code postal lu sur la page d'une autre commune : certains sites mêlent les communes voisines.
   const postals = new Set(((search && search.communes) || []).flatMap((c) => c.codesPostaux || []));
   if (listing && listing.postal && postals.size && !postals.has(String(listing.postal))) ok = false;
+  // Type : une recherche vise des logements (« indifférent » = maison ou appartement). Un terrain
+  // à bâtir n'y entre jamais : sa surface est celle de la parcelle et ses chambres sont inconnues.
+  if (listing && listing.type && (listing.type === 'terrain' || (search.type && listing.type !== search.type))) ok = false;
   for (const c of CRITERIA) {
     const min = search[c.min] || null;
     const max = c.max ? search[c.max] || null : null;

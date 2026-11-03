@@ -141,7 +141,7 @@ async function loadAnnonces(ctx, body) {
       const f = listingFacts(g);
       return { g, f, st: statusOf(g, previousVisit, now), check: checkCriteria(f, search) };
     })
-    .filter((x) => x.check.ok && !(search.type && x.f.type && x.f.type !== search.type));
+    .filter((x) => x.check.ok);
   groups.sort((a, b) => ORDER[a.st.status] - ORDER[b.st.status] || b.f.firstSeen - a.f.firstSeen);
 
   if (!groups.length) {
