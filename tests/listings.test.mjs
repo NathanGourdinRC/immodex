@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { groupListings, statusOf, listingFacts, trackingKeyOf } from '../src/common/listings.js';
+import { groupListings, statusOf, listingFacts, trackingKeyOf, negotiation, saleOf } from '../src/common/listings.js';
 import { handleListings } from '../api/listings.js';
 import { fakeRedis } from './helpers/fake-redis.mjs';
 
@@ -66,4 +66,13 @@ test('statut d’un bien : retrouvé sous n’importe quelle adresse de ses anno
   assert.equal(trackingKeyOf(g, { 'https://www.jinka.fr/annonce/42': { note: 'cave humide' } }, seen), 'https://www.jinka.fr/annonce/42');
   // Rien de connu : la clé du groupe.
   assert.equal(trackingKeyOf(g, {}), g.key);
+});
+
+test('marge de négociation : écart entre le premier prix affiché et le prix signé, à partir de 3 ventes reliées', () => {
+  const sold = (id, first, signed, how = 'probable') => base({ id, source: 'orpi', url: `https://www.orpi.com/${id}`, price: first, prices: [{ at: 1, price: first }], removedAt: NOW - 90 * DAY, sale: { date: '2027-04-10', price: signed, pricePerM2: 4000, how } });
+  const two = groupListings([sold('a', 500000, 465000), sold('b', 300000, 291000)]);
+  assert.equal(negotiation(two), null);
+  const three = groupListings([sold('a', 500000, 465000, 'sure'), sold('b', 300000, 291000), sold('c', 400000, 380000)]);
+  assert.deepEqual(negotiation(three), { count: 3, median: 5, sure: 1 });
+  assert.deepEqual(saleOf(three[0]), { date: '2027-04-10', price: 465000, pricePerM2: 4000, how: 'sure', margin: 7 });
 });

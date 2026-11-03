@@ -107,4 +107,25 @@ function trackingKeyOf(g, tracking, seenByUrl = new Map()) {
   return candidates.find((k) => tracking[k]) || g.key;
 }
 
-export { LISTINGS_ENDPOINT, SOURCE_LABELS, urlKey, trackingKeyOf, fetchListings, groupListings, listingFacts, statusOf, sameProperty };
+// Vente DVF reliée à un bien retiré (sûre de préférence), avec l'écart en % entre le premier
+// prix affiché (annonce vue la première) et le prix signé.
+function saleOf(g) {
+  const withSale = g.listings.filter((l) => l.sale);
+  if (!withSale.length) return null;
+  const sale = (withSale.find((l) => l.sale.how === 'sure') || withSale[0]).sale;
+  const firstListing = [...g.listings].sort((a, b) => a.firstSeen - b.firstSeen)[0];
+  const first = firstListing.prices && firstListing.prices[0] ? firstListing.prices[0].price : firstListing.price;
+  return { ...sale, margin: first && sale.price ? Math.round((1 - sale.price / first) * 100) : null };
+}
+
+// Marge de négociation constatée sur les biens vendus de la recherche (3 ventes reliées au moins).
+function negotiation(groups) {
+  const sold = groups.map(saleOf).filter((x) => x && x.margin != null);
+  if (sold.length < 3) return null;
+  const margins = sold.map((x) => x.margin).sort((a, b) => a - b);
+  const mid = Math.floor(margins.length / 2);
+  const median = margins.length % 2 ? margins[mid] : Math.round((margins[mid - 1] + margins[mid]) / 2);
+  return { count: sold.length, median, sure: sold.filter((x) => x.how === 'sure').length };
+}
+
+export { LISTINGS_ENDPOINT, SOURCE_LABELS, urlKey, trackingKeyOf, saleOf, negotiation, fetchListings, groupListings, listingFacts, statusOf, sameProperty };

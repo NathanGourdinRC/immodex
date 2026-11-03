@@ -385,7 +385,7 @@ test('fil : annonces scannées, nouveautés, baisses et retraits, Garder', async
   const listings = [
     l({ id: 'orpi:/annonce-vente-maison-t5-wambrechies-e2e1/', source: 'orpi', url: 'https://www.orpi.com/annonce-vente-maison-t5-wambrechies-e2e1/', title: 'Maison 5 pièces Wambrechies', price: 389000, prices: [{ at: now - DAY, price: 389000 }], surface: 120, pieces: 5, chambres: 4, terrain: 300, energyClass: 'D', firstSeen: now }),
     l({ id: 'paruvendu:/immobilier/vente/maison/1295516811E2E', source: 'paruvendu', url: 'https://www.paruvendu.fr/immobilier/vente/maison/1295516811E2E', title: 'Maison 4 pièces', price: 280000, prices: [{ at: now - 20 * DAY, price: 300000 }, { at: now - DAY, price: 280000 }], surface: 95, pieces: 4, firstSeen: now - 20 * DAY }),
-    l({ id: 'lesiteimmo:/acheter/maison-4pieces/wambrechies-59118/9999', source: 'lesiteimmo', url: 'https://www.lesiteimmo.com/acheter/maison-4pieces/wambrechies-59118/9999', title: 'Maison retirée', price: 330000, prices: [{ at: now - 30 * DAY, price: 330000 }], surface: 100, firstSeen: now - 30 * DAY, removedAt: now - DAY }),
+    l({ id: 'lesiteimmo:/acheter/maison-4pieces/wambrechies-59118/9999', source: 'lesiteimmo', url: 'https://www.lesiteimmo.com/acheter/maison-4pieces/wambrechies-59118/9999', title: 'Maison retirée', price: 330000, prices: [{ at: now - 30 * DAY, price: 330000 }], surface: 100, firstSeen: now - 30 * DAY, removedAt: now - DAY, sale: { date: '2026-10-01', price: 315000, pricePerM2: 3150, how: 'probable' } }),
   ];
   const page = await context.newPage();
   await page.route('https://immodex.vercel.app/api/listings**', (route) =>
@@ -407,6 +407,8 @@ test('fil : annonces scannées, nouveautés, baisses et retraits, Garder', async
   assert.match(text, /Nouveau/);
   assert.match(text, /Prix baissé de 20\s000\s€/);
   assert.match(text, /Retiré/);
+  // Annonce retirée reliée à sa vente DVF : prix signé et écart au premier prix affiché.
+  assert.match(text, /Vendue 315\s000\s€ le 01\/10\/2026, 5 % sous le premier prix affiché \(lien probable\)/);
   // Prix au m² de chaque bien : 389 000 € pour 120 m².
   assert.match(await page.locator('.imx-annonce').first().textContent(), /3\s242\s€\/m²/);
   assert.match(text, /Dernier passage du robot/);

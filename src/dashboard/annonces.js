@@ -2,7 +2,7 @@
 // communes de la recherche. Un même bien publié par plusieurs sources forme une seule carte ;
 // étiquettes Nouveau, Prix baissé, Retiré ; Garder et Écarter comme pour les annonces vues.
 import { checkCriteria, trackingKey, STATUSES } from '../common/zones.js';
-import { groupListings, listingFacts, statusOf, trackingKeyOf, urlKey, SOURCE_LABELS } from '../common/listings.js';
+import { groupListings, listingFacts, statusOf, trackingKeyOf, urlKey, saleOf, negotiation, SOURCE_LABELS } from '../common/listings.js';
 import { nearestSales, isComparable } from '../common/sectors.js';
 import { loadSearchSales } from './sector-layer.js';
 import { classLine } from '../common/energy-text.js';
@@ -27,6 +27,14 @@ function factsLine(f) {
     .join(' · ');
 }
 
+// Bien retiré relié à sa vente DVF : prix signé et écart au premier prix affiché.
+function soldLine(g) {
+  const sale = saleOf(g);
+  if (!sale) return null;
+  const gap = sale.margin == null ? '' : sale.margin >= 0 ? `, ${sale.margin} % sous le premier prix affiché` : `, ${-sale.margin} % au-dessus du premier prix affiché`;
+  return el('div', { class: 'imx-meta imx-sold' }, `Vendue ${UI.priceText(sale.price)} le ${UI.formatDate(sale.date)}${gap} (${sale.how === 'sure' ? 'lien sûr, même adresse' : 'lien probable'})`);
+}
+
 function annonceRow(g, key, f, st, track, unknown, onStatus, now) {
   const keep = el('button', { type: 'button', class: 'imx-btn imx-btn-sm' }, icon('check', 14), 'Garder');
   const drop = el('button', { type: 'button', class: 'imx-btn imx-btn-sm imx-btn-ghost' }, icon('trash', 14), 'Écarter');
@@ -48,6 +56,7 @@ function annonceRow(g, key, f, st, track, unknown, onStatus, now) {
       [f.address || f.city || null, days ? `en ligne depuis ${days} jour${days > 1 ? 's' : ''}` : 'vu aujourd’hui', g.listings.length > 1 ? `${g.listings.length} sources` : null].filter(Boolean).join(' · ')
     ),
     unknown.length ? el('div', { class: 'imx-meta imx-unknown' }, unknown.join(' · ')) : null,
+    soldLine(g),
     el('div', { class: 'imx-meta imx-nearby imx-hidden' }),
     el('div', { class: 'imx-meta imx-energy imx-hidden' }),
     el('div', { class: 'imx-actions' }, keep, drop),
@@ -77,14 +86,16 @@ function annonceRow(g, key, f, st, track, unknown, onStatus, now) {
 }
 
 // Ligne d'état : passage du robot et sources en pause.
-function robotLine(data) {
+function robotLine(data, groups = []) {
+  const nego = negotiation(groups);
   const paused = new Set();
   for (const perSource of Object.values(data.sources || {})) for (const [id, m] of Object.entries(perSource)) if (m && m.paused) paused.add(SOURCE_LABELS[id] || id);
   return el(
     'div',
     { class: 'imx-meta', style: 'margin:0 0 6px' },
     data.lastRun ? `Dernier passage du robot : ${UI.formatDateTime(data.lastRun)}.` : 'Le robot n’est pas encore passé pour ces communes : il lit les sites chaque nuit.',
-    paused.size ? ` ${[...paused].join(', ')} en pause : le site refuse le robot, nouvel essai dans une semaine.` : ''
+    paused.size ? ` ${[...paused].join(', ')} en pause : le site refuse le robot, nouvel essai dans une semaine.` : '',
+    nego ? el('div', { class: 'imx-nego' }, `Marge de négociation constatée : ${nego.median} % entre le premier prix affiché et le prix signé (${nego.count} ventes reliées${nego.sure ? `, dont ${nego.sure} sûres` : ''}).`) : null
   );
 }
 
@@ -148,7 +159,7 @@ async function loadAnnonces(ctx, body) {
   const rows = new Map(groups.map((x) => [x.g, annonceRow(x.g, keyOf.get(x.g), x.f, x.st, trackOf(keyOf.get(x.g)), x.check.unknown, onStatus, now)]));
   list.replaceChildren(...rows.values());
   refreshDropped();
-  body.replaceChildren(robotLine(data), list, toggle);
+  body.replaceChildren(robotLine(data, groups.map((x) => x.g)), list, toggle);
 
   // Sur la carte : les biens dont l'adresse a été retrouvée par leur DPE.
   const placed = groups.filter((x) => x.f.lat != null && x.f.lon != null && x.st.status !== 'retire');
