@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { groupListings, statusOf, listingFacts, trackingKeyOf, negotiation, negotiationText, saleOf } from '../src/common/listings.js';
+import { groupListings, statusOf, listingFacts, trackingKeyOf, negotiation, negotiationText, saleOf, shortPrice } from '../src/common/listings.js';
 import { handleListings } from '../api/listings.js';
 import { fakeRedis } from './helpers/fake-redis.mjs';
 
@@ -75,6 +75,15 @@ test('marge de négociation : écart entre le premier prix affiché et le prix s
   const three = groupListings([sold('a', 500000, 465000, 'sure'), sold('b', 300000, 291000), sold('c', 400000, 380000)]);
   assert.deepEqual(negotiation(three), { count: 3, median: 5, sure: 1 });
   assert.deepEqual(saleOf(three[0]), { date: '2027-04-10', price: 465000, pricePerM2: 4000, how: 'sure', margin: 7 });
+});
+
+test('prix court des points de la carte, comme sur Airbnb', () => {
+  assert.equal(shortPrice(389000), '389 k€');
+  assert.equal(shortPrice(389600), '390 k€');
+  assert.equal(shortPrice(95000), '95 k€');
+  assert.equal(shortPrice(1250000), '1,25 M€');
+  assert.equal(shortPrice(2000000), '2 M€');
+  assert.equal(shortPrice(null), null);
 });
 
 test('texte de la marge : liens probables comptés à part, honoraires d’agence signalés', () => {

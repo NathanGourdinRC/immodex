@@ -8,6 +8,7 @@ import { loadSearchSales } from './sector-layer.js';
 import { loadAnnonces } from './annonces.js';
 import { fetchListings, urlKey } from '../common/listings.js';
 import { classLine } from '../common/energy-text.js';
+import { placeListing } from './pins.js';
 
 const UI = window.__immodexUI;
 const { el, icon, num } = UI;
@@ -224,7 +225,7 @@ function bienRow(g, track, unknown, onStatus) {
 }
 
 async function loadBiens(ctx, body) {
-  const { search, isCurrent, store, layers, setKpi } = ctx;
+  const { search, isCurrent, store, layers, markers, focus, setKpi } = ctx;
   let groups = [];
   try {
     const res = await chrome.runtime.sendMessage({ type: 'SIGHTINGS_GROUPS' });
@@ -287,20 +288,25 @@ async function loadBiens(ctx, body) {
     if (!isCurrent() || !point) continue;
     g.point = point;
     const st = trackOf(g).status || '';
-    const marker = L.marker([point.lat, point.lon], {
-      icon: L.divIcon({ className: '', html: `<div class="imx-bien-pin is-${st}"></div>`, iconSize: [18, 18], iconAnchor: [9, 9] }),
+    placeListing({
+      layer: layers.biens,
+      markers,
+      id: `vue:${trackingKey(g)}`,
+      lat: point.lat,
+      lon: point.lon,
+      price: g.lastPrice,
+      status: st,
       title: g.address,
-    });
-    marker.bindPopup(
-      el(
+      row: rows.get(g),
+      focus,
+      popup: el(
         'div',
-        { style: 'display:grid;gap:8px' },
+        { class: 'imx-pin-popup' },
         el('div', { class: 'imx-candidate-address' }, g.address),
         el('div', { class: 'imx-meta' }, [priceLine(g), ppmText(g.lastPrice, (g.fp || {}).surface), STATUSES[st] || null].filter(Boolean).join(' · ')),
         el('div', { class: 'imx-actions' }, UI.linkButton(g.sightings[g.sightings.length - 1].url, 'Ouvrir l’annonce', { iconName: 'external' }))
-      )
-    );
-    layers.biens.addLayer(marker);
+      ),
+    });
   }
 
   // Repère de prix : les 15 ventes de maisons les plus proches du bien placé sur la carte.

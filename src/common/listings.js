@@ -130,6 +130,14 @@ function negotiation(groups) {
   return { count: sold.length, median, sure: sold.filter((x) => x.how === 'sure').length };
 }
 
+// Prix court des points de la carte, comme sur Airbnb : « 389 k€ », « 1,25 M€ ».
+function shortPrice(price) {
+  if (!price) return null;
+  const k = Math.round(price / 1000);
+  if (k < 1000) return `${k} k€`;
+  return `${String(Math.round(price / 1e4) / 100).replace('.', ',')} M€`;
+}
+
 // Texte de la marge : les liens probables sont dits, et l'écart contient souvent les honoraires
 // d'agence (prix affiché honoraires inclus, prix de l'acte hors honoraires à la charge de l'acheteur).
 function negotiationText(n) {
@@ -140,4 +148,4 @@ function negotiationText(n) {
   return `Écart médian entre le premier prix relevé et le prix signé : ${n.median} % (${n.count} ventes reliées${how}). Le prix affiché comprend souvent les honoraires d’agence, que le prix de l’acte n’inclut pas.`;
 }
 
-export { LISTINGS_ENDPOINT, SOURCE_LABELS, urlKey, trackingKeyOf, saleOf, negotiation, negotiationText, fetchListings, groupListings, listingFacts, statusOf, sameProperty };
+export { LISTINGS_ENDPOINT, SOURCE_LABELS, urlKey, trackingKeyOf, saleOf, negotiation, negotiationText, shortPrice, fetchListings, groupListings, listingFacts, statusOf, sameProperty };

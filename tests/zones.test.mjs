@@ -113,6 +113,14 @@ test('ancienne zone sans les nouveaux champs : toujours valide', () => {
   assert.equal(z.budgetMax, null);
 });
 
+test('annonce d’une autre commune (code postal lu sur sa page) : hors de la recherche', () => {
+  const s = cleanZone({ communes: [LILLE] });
+  // Site qui range à Lille une maison de Marcq-en-Barœul (59700).
+  assert.equal(checkCriteria({ price: 300000, postal: '59700' }, s).ok, false);
+  assert.equal(checkCriteria({ price: 300000, postal: '59800' }, s).ok, true);
+  assert.equal(checkCriteria({ price: 300000, postal: null }, s).ok, true);
+});
+
 test('annonce et critères : budget strict, surface à 3 m², inconnues signalées', () => {
   const s = cleanZone({ communes: [LILLE], budgetMax: 450000, surfaceMin: 100, terrainMin: 150, chambresMin: 3 });
   assert.deepEqual(checkCriteria({ price: 440000, surface: 98, terrain: null, pieces: 5, chambres: null }, s), { ok: true, unknown: ['terrain non précisé', 'chambres non précisées'] });

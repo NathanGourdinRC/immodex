@@ -49,9 +49,26 @@
       .imx-status { height: 28px; padding: 0 8px; border: 1px solid var(--imx-border-strong); border-radius: var(--imx-radius-sm); background: var(--imx-bg); font: 12px var(--imx-font); color: var(--imx-text); outline: none; }
       .imx-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 11.5px; color: var(--imx-text-2); }
       .imx-swatch { display: inline-block; width: 14px; height: 10px; margin-right: 4px; border-radius: 2px; vertical-align: -1px; }
-      .imx-bien-pin { width: 18px; height: 18px; border: 2px solid #fff; border-radius: 5px; background: #7c3aed; box-shadow: 0 1px 4px rgba(15, 23, 42, 0.4); }
-      .imx-bien-pin.is-favori { background: #e11d48; }
-      .imx-bien-pin.is-ecarte { background: #94a3b8; }
+      /* Points des biens, comme sur Airbnb : le prix dans une pastille centrée sur l'adresse ;
+         survolée depuis le Fil ou bulle ouverte, elle passe en sombre et grossit. */
+      .imx-price-pin-wrap { width: 0; height: 0; }
+      .imx-price-pin { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); padding: 3px 8px; border: 1.5px solid #7c3aed; border-radius: 999px; background: #fff; color: #0f172a; font: 700 12px/1.2 var(--imx-font); white-space: nowrap; box-shadow: 0 1px 4px rgba(15, 23, 42, 0.35); cursor: pointer; transition: transform 0.12s, background 0.12s; }
+      .imx-price-pin.is-favori { border-color: #e11d48; color: #be123c; }
+      .imx-price-pin.is-ecarte { border-color: #94a3b8; color: #64748b; }
+      .imx-price-pin.is-hover, .imx-price-pin.is-selected { background: #0f172a; border-color: #0f172a; color: #fff; transform: translate(-50%, -50%) scale(1.12); }
+      .imx-price-pin.is-legend { position: static; display: inline-block; transform: none; margin-right: 6px; padding: 1px 6px; font-size: 11px; cursor: default; }
+      .imx-map-legend { max-width: 250px; padding: 6px 9px; border-radius: 8px; background: rgba(255, 255, 255, 0.95); box-shadow: 0 1px 5px rgba(15, 23, 42, 0.3); font: 11.5px/1.5 var(--imx-font); color: var(--imx-text-2); }
+      .imx-map-legend summary { cursor: pointer; font-weight: 600; color: var(--imx-text); }
+      .imx-map-legend div { display: flex; align-items: center; flex-wrap: wrap; gap: 0 4px; margin-top: 3px; }
+      .imx-map-legend small { display: block; margin-top: 4px; color: var(--imx-text-3); }
+      .imx-legend-dot { display: inline-block; width: 10px; height: 10px; margin-right: 4px; border: 1.5px solid #fff; border-radius: 50%; box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.25); }
+      /* Carte du Fil reliée à un point : cliquable, mise en avant quand sa bulle est ouverte. */
+      .imx-row.is-placed { cursor: pointer; }
+      .imx-row.is-placed:hover { background: var(--imx-bg-muted); }
+      .imx-row.is-selected { background: var(--imx-bg-muted); box-shadow: inset 3px 0 0 #0f172a; }
+      .imx-row.is-placed, .imx-row.is-selected { margin: 0 -8px; padding-left: 8px; padding-right: 8px; border-radius: 6px; }
+      .imx-pin-popup { display: grid; gap: 8px; }
+      .imx-pin-photo { width: 100%; height: 130px; object-fit: cover; border-radius: 8px; background: var(--imx-bg-muted); }
       /* Trois vues d'une recherche : une seule visible à la fois (classe view-… sur body). */
       .imx-views { display: flex; width: 100%; }
       .imx-views button { flex: 1; height: 30px; font-size: 13px; }
@@ -67,7 +84,6 @@
       .imx-tag.is-gone { background: var(--imx-bg-muted); color: var(--imx-text-3); border: 1px solid var(--imx-border); }
       .imx-annonce.is-gone { opacity: 0.6; }
       .imx-bien-list.hide-ecarte .imx-annonce.is-ecarte { display: none; }
-      .imx-bien-pin.is-annonce { border-radius: 50%; }
       .imx-btn.is-active { border-color: var(--imx-accent); color: var(--imx-accent); }
       /* Secteurs : nombre de ventes au centre ; secteurs à trop peu de ventes en pointillés. */
       .imx-sector-count { display: flex; align-items: center; justify-content: center; font: 700 11px var(--imx-font); color: #0f172a; text-shadow: 0 0 3px #fff, 0 0 3px #fff; }

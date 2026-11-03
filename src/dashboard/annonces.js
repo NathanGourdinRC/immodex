@@ -6,6 +6,7 @@ import { groupListings, listingFacts, statusOf, trackingKeyOf, urlKey, saleOf, n
 import { nearestSales, isComparable } from '../common/sectors.js';
 import { loadSearchSales } from './sector-layer.js';
 import { classLine } from '../common/energy-text.js';
+import { placeListing } from './pins.js';
 
 const UI = window.__immodexUI;
 const { el, icon, num } = UI;
@@ -53,7 +54,7 @@ function annonceRow(g, key, f, st, track, unknown, onStatus, now) {
     el(
       'div',
       { class: 'imx-meta' },
-      [f.address || f.city || null, days ? `en ligne depuis ${days} jour${days > 1 ? 's' : ''}` : 'vu aujourd’hui', g.listings.length > 1 ? `${g.listings.length} sources` : null].filter(Boolean).join(' · ')
+      [f.address || f.city || null, !f.address && f.lat == null && st.status !== 'retire' ? 'adresse non retrouvée, pas de point sur la carte' : null, days ? `en ligne depuis ${days} jour${days > 1 ? 's' : ''}` : 'vu aujourd’hui', g.listings.length > 1 ? `${g.listings.length} sources` : null].filter(Boolean).join(' · ')
     ),
     unknown.length ? el('div', { class: 'imx-meta imx-unknown' }, unknown.join(' · ')) : null,
     soldLine(g),
@@ -100,7 +101,7 @@ function robotLine(data, groups = []) {
 }
 
 async function loadAnnonces(ctx, body) {
-  const { search, isCurrent, store, layers, previousVisit } = ctx;
+  const { search, isCurrent, store, layers, markers, focus, previousVisit } = ctx;
   let data;
   try {
     data = await ctx.listings;
@@ -161,25 +162,32 @@ async function loadAnnonces(ctx, body) {
   refreshDropped();
   body.replaceChildren(robotLine(data, groups.map((x) => x.g)), list, toggle);
 
-  // Sur la carte : les biens dont l'adresse a été retrouvée par leur DPE.
+  // Sur la carte : les biens dont l'adresse a été retrouvée par leur DPE, prix sur le point.
   const placed = groups.filter((x) => x.f.lat != null && x.f.lon != null && x.st.status !== 'retire');
   for (const { g, f, st } of placed) {
-    const status = trackOf(keyOf.get(g)).status || '';
-    const marker = L.marker([f.lat, f.lon], {
-      icon: L.divIcon({ className: '', html: `<div class="imx-bien-pin is-${status} is-annonce"></div>`, iconSize: [18, 18], iconAnchor: [9, 9] }),
+    const key = keyOf.get(g);
+    const status = trackOf(key).status || '';
+    placeListing({
+      layer: layers.biens,
+      markers,
+      id: `annonce:${key}`,
+      lat: f.lat,
+      lon: f.lon,
+      price: f.price,
+      status,
       title: f.address || f.title || '',
-    });
-    marker.bindPopup(
-      el(
+      row: rows.get(g),
+      focus,
+      popup: el(
         'div',
-        { style: 'display:grid;gap:8px' },
+        { class: 'imx-pin-popup' },
+        f.photo ? el('img', { class: 'imx-pin-photo', src: f.photo, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }) : null,
         el('div', { class: 'imx-candidate-address' }, f.price ? UI.priceText(f.price) : 'Prix non précisé', f.price && f.surface ? el('span', { class: 'imx-ppm' }, ` · ${num(Math.round(f.price / f.surface))} €/m²`) : null),
         el('div', { class: 'imx-meta' }, [factsLine(f), f.address, STATUSES[status] || null].filter(Boolean).join(' · ')),
         tagOf(st),
         el('div', { class: 'imx-actions' }, g.listings.map((l) => UI.linkButton(l.url, SOURCE_LABELS[l.source] || l.source, { iconName: 'external' })))
-      )
-    );
-    layers.biens.addLayer(marker);
+      ),
+    });
   }
 
   // Repères de prix : classe énergie du bien dans sa commune, 15 ventes les plus proches.

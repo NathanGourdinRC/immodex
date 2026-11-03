@@ -48,16 +48,42 @@ function clearMap() {
   markers.clear();
   lastBounds = null;
   needsFit = false;
+  focused = false;
 }
+
+// Légende des points : ce que disent les prix, les couleurs et les hexagones. Repliée sur un
+// téléphone, où elle cacherait la carte.
+const legend = L.control({ position: 'bottomleft' });
+legend.onAdd = () => {
+  const pill = (cls, text) => el('span', { class: `imx-price-pin is-legend ${cls}` }, text);
+  const dot = (color) => el('span', { class: 'imx-legend-dot', style: `background:${color}` });
+  const box = el(
+    'details',
+    { class: 'imx-map-legend', open: !matchMedia('(max-width: 600px)').matches },
+    el('summary', null, 'Légende'),
+    el('div', null, pill('is-aucun', '389 k€'), 'Annonce en vente, prix affiché'),
+    el('div', null, pill('is-favori', 'k€'), 'gardée', pill('is-ecarte', 'k€'), 'écartée'),
+    el('div', null, dot('#0d9488'), 'DPE récent : bientôt en vente ?'),
+    el('div', null, dot('#f79009'), 'DPE nouveau depuis ta visite'),
+    el('div', null, 'Hexagones : prix des ventes DVF du secteur'),
+    el('small', null, 'Seuls les biens dont l’adresse a été retrouvée ont un point.')
+  );
+  L.DomEvent.disableClickPropagation(box);
+  return box;
+};
+legend.addTo(map);
 
 // Cadre des communes de la recherche. Sur un téléphone, la carte est cachée hors de la vue
 // Carte : Leaflet ne peut pas cadrer une carte de taille nulle, on cadre à son apparition.
 let lastBounds = null;
 let needsFit = false;
+// Un bien a été centré depuis le Fil : le cadrage de la commune (contours arrivés après) ne
+// doit plus déplacer la carte.
+let focused = false;
 const mapShown = () => map.getContainer().offsetWidth > 0;
 
 function fitSearch() {
-  if (!lastBounds) return;
+  if (!lastBounds || focused) return;
   if (!mapShown()) {
     needsFit = true;
     return;
@@ -74,17 +100,22 @@ new ResizeObserver(() => {
   if (needsFit) fitSearch();
 }).observe(map.getContainer());
 
+// Centre la carte sur un bien (ou un DPE) et ouvre sa bulle, comme sur Airbnb.
 function focusMarker(id) {
   const marker = markers.get(id);
   if (!marker) return;
+  focused = true;
+  needsFit = false;
   const go = () => {
-    map.setView(marker.getLatLng(), Math.max(map.getZoom(), 17));
+    map.invalidateSize();
+    map.setView(marker.getLatLng(), Math.max(map.getZoom(), 16), { animate: false });
     marker.openPopup();
   };
   if (mapShown()) return go();
-  // Téléphone : « Voir sur la carte » passe d'abord sur la vue Carte.
+  // Téléphone : passe d'abord sur la vue Carte, puis attend qu'elle ait sa taille.
   showView('carte', current && current.id);
-  setTimeout(go, 50);
+  const whenShown = (tries) => (mapShown() || tries > 60 ? go() : requestAnimationFrame(() => whenShown(tries + 1)));
+  requestAnimationFrame(() => whenShown(0));
 }
 
 // Contenu de bulle qui grandit (ventes passées) : Leaflet recadre la bulle.

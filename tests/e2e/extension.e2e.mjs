@@ -383,7 +383,7 @@ test('fil : annonces scannées, nouveautés, baisses et retraits, Garder', async
   const DAY = 24 * 3600 * 1000;
   const l = (o) => ({ insee: '59636', type: 'maison', missed: 0, removedAt: null, detail: true, lastSeen: now - DAY, ...o });
   const listings = [
-    l({ id: 'orpi:/annonce-vente-maison-t5-wambrechies-e2e1/', source: 'orpi', url: 'https://www.orpi.com/annonce-vente-maison-t5-wambrechies-e2e1/', title: 'Maison 5 pièces Wambrechies', price: 389000, prices: [{ at: now - DAY, price: 389000 }], surface: 120, pieces: 5, chambres: 4, terrain: 300, energyClass: 'D', firstSeen: now }),
+    l({ id: 'orpi:/annonce-vente-maison-t5-wambrechies-e2e1/', source: 'orpi', url: 'https://www.orpi.com/annonce-vente-maison-t5-wambrechies-e2e1/', title: 'Maison 5 pièces Wambrechies', price: 389000, prices: [{ at: now - DAY, price: 389000 }], surface: 120, pieces: 5, chambres: 4, terrain: 300, energyClass: 'D', firstSeen: now, address: '12 Rue de Quesnoy 59118 Wambrechies', lat: 50.6862, lon: 3.0489 }),
     l({ id: 'paruvendu:/immobilier/vente/maison/1295516811E2E', source: 'paruvendu', url: 'https://www.paruvendu.fr/immobilier/vente/maison/1295516811E2E', title: 'Maison 4 pièces', price: 280000, prices: [{ at: now - 20 * DAY, price: 300000 }, { at: now - DAY, price: 280000 }], surface: 95, pieces: 4, firstSeen: now - 20 * DAY }),
     l({ id: 'lesiteimmo:/acheter/maison-4pieces/wambrechies-59118/9999', source: 'lesiteimmo', url: 'https://www.lesiteimmo.com/acheter/maison-4pieces/wambrechies-59118/9999', title: 'Maison retirée', price: 330000, prices: [{ at: now - 30 * DAY, price: 330000 }], surface: 100, firstSeen: now - 30 * DAY, removedAt: now - DAY, sale: { date: '2026-10-01', price: 315000, pricePerM2: 3150, how: 'probable' } }),
   ];
@@ -411,6 +411,19 @@ test('fil : annonces scannées, nouveautés, baisses et retraits, Garder', async
   assert.match(text, /Vendue 315\s000\s€ le 01\/10\/2026, 5 % sous le premier prix relevé \(lien probable\)/);
   // Prix au m² de chaque bien : 389 000 € pour 120 m².
   assert.match(await page.locator('.imx-annonce').first().textContent(), /3\s242\s€\/m²/);
+  // Comme sur Airbnb : le prix sur le point du bien ; un clic sur sa carte dans le Fil centre la
+  // carte sur lui, met son point en avant et ouvre sa bulle.
+  await page.waitForSelector('.imx-price-pin', { timeout: 30000 });
+  assert.equal((await page.textContent('.imx-price-pin')).trim(), '389 k€');
+  await page.locator('.imx-annonce').first().locator('.imx-meta').first().click();
+  await page.locator('.leaflet-popup-content').filter({ hasText: /389\s000/ }).waitFor({ timeout: 10000 });
+  assert.equal(await page.locator('.imx-price-pin.is-selected').count(), 1);
+  assert.match(await page.locator('.imx-annonce').first().getAttribute('class'), /is-selected/);
+  // Bien sans adresse retrouvée : pas de point, et sa carte le dit.
+  assert.match(await page.locator('.imx-annonce').filter({ hasText: /280\s000/ }).textContent(), /adresse non retrouvée/);
+  // Légende des points de la carte.
+  assert.match(await page.textContent('.imx-map-legend'), /Annonce en vente/);
+  assert.match(await page.textContent('.imx-map-legend'), /DPE récent/);
   assert.match(text, /Dernier passage du robot/);
   assert.match(text, /Deleu Immobilier en pause/);
   const first = page.locator('.imx-annonce').first();
