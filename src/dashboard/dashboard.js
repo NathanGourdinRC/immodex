@@ -42,6 +42,12 @@ L.control
   .addTo(map);
 // Marqueurs par identifiant, pour centrer la carte depuis la liste.
 const markers = new Map();
+// Vue d'ensemble (commune entière) : les pastilles de prix se chevaucheraient ; ce sont de
+// petits points jusqu'au zoom 15. Le prix reste écrit sur le point survolé ou ouvert.
+const PRICE_ZOOM = 15;
+const syncZoomClass = () => map.getContainer().classList.toggle('imx-zoom-low', map.getZoom() < PRICE_ZOOM);
+map.on('zoomend', syncZoomClass);
+syncZoomClass();
 
 function clearMap() {
   Object.values(layers).forEach((l) => l.clearLayers());
@@ -61,7 +67,7 @@ legend.onAdd = () => {
     'details',
     { class: 'imx-map-legend', open: !matchMedia('(max-width: 600px)').matches },
     el('summary', null, 'Légende'),
-    el('div', null, pill('is-aucun', '389 k€'), 'Annonce en vente, prix affiché'),
+    el('div', null, pill('is-aucun', '389 k€'), 'Annonce en vente, prix affiché (point violet en vue d’ensemble)'),
     el('div', null, pill('is-favori', 'k€'), 'gardée', pill('is-ecarte', 'k€'), 'écartée'),
     el('div', null, dot('#0d9488'), 'DPE récent : bientôt en vente ?'),
     el('div', null, dot('#f79009'), 'DPE nouveau depuis ta visite'),
@@ -107,6 +113,9 @@ function focusMarker(id) {
   focused = true;
   needsFit = false;
   const go = () => {
+    // Zoom animé en cours (cadrage de la commune à l'ouverture, molette) : Leaflet ignorerait
+    // le centrage puis finirait son animation ailleurs. On attend sa fin.
+    if (map._animatingZoom) return map.once('zoomend', go);
     map.invalidateSize();
     map.setView(marker.getLatLng(), Math.max(map.getZoom(), 16), { animate: false });
     marker.openPopup();

@@ -415,9 +415,15 @@ test('fil : annonces scannées, nouveautés, baisses et retraits, Garder', async
   // carte sur lui, met son point en avant et ouvre sa bulle.
   await page.waitForSelector('.imx-price-pin', { timeout: 30000 });
   assert.equal((await page.textContent('.imx-price-pin')).trim(), '389 k€');
+  // Vue d'ensemble de la commune : un petit point par bien (les prix se chevaucheraient).
+  assert.match(await page.getAttribute('#map', 'class'), /imx-zoom-low/);
+  assert.ok((await page.locator('.imx-price-pin:not(.is-legend)').first().boundingBox()).width < 20);
   await page.locator('.imx-annonce').first().locator('.imx-meta').first().click();
   await page.locator('.leaflet-popup-content').filter({ hasText: /389\s000/ }).waitFor({ timeout: 10000 });
   assert.equal(await page.locator('.imx-price-pin.is-selected').count(), 1);
+  // Centrée sur le bien : zoom de rue, le prix est écrit sur les points.
+  assert.doesNotMatch(await page.getAttribute('#map', 'class'), /imx-zoom-low/);
+  assert.ok((await page.locator('.imx-price-pin.is-selected').boundingBox()).width > 40);
   assert.match(await page.locator('.imx-annonce').first().getAttribute('class'), /is-selected/);
   // Bien sans adresse retrouvée : pas de point, et sa carte le dit.
   assert.match(await page.locator('.imx-annonce').filter({ hasText: /280\s000/ }).textContent(), /adresse non retrouvée/);
