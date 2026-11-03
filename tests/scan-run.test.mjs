@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fakeRedis } from './helpers/fake-redis.mjs';
-import { runScan } from '../api/_lib/scan-run.js';
+import { runScan, defaultLoadSales } from '../api/_lib/scan-run.js';
 import { activeCommunes, listingsOf, sourceMetaOf, saveListings } from '../api/_lib/scan-store.js';
 
 const HOUR = 3600 * 1000;
@@ -369,14 +369,67 @@ test('annonce retirée : sa vente DVF est cherchée une fois par mois et posée 
   const w = world({ 'https://alpha.test/vente/59636': results('alpha', []), 'https://beta.test/vente/59636': results('beta', []) });
   await withSearch(redis, w.now());
   const removedAt = w.now() - 60 * DAY;
-  await saveListings(redis, '59636', [{ id: 'alpha:/annonce/r1', source: 'alpha', url: 'https://alpha.test/annonce/r1', insee: '59636', type: 'maison', price: 480000, prices: [{ at: removedAt - 90 * DAY, price: 490000 }], surface: 110, terrain: 300, firstSeen: removedAt - 90 * DAY, lastSeen: removedAt, missed: 2, removedAt, detail: true, readerVersion: 2 }]);
+  await saveListings(redis, '59636', [{ id: 'alpha:/annonce/r1', source: 'alpha', url: 'https://alpha.test/annonce/r1', insee: '59636', type: 'maison', address: '9 Rue X 59118 Wambrechies', price: 480000, prices: [{ at: removedAt - 90 * DAY, price: 490000 }], surface: 110, terrain: 300, firstSeen: removedAt - 90 * DAY, lastSeen: removedAt, missed: 2, removedAt, detail: true, readerVersion: 2 }]);
   let calls = 0;
   const day = (t) => new Date(t).toISOString().slice(0, 10);
   const loadSales = async (insee, type) => (calls++, [{ id: 'v', date: day(removedAt + 40 * DAY), commune: insee, type: 'Maison', address: '5 RUE X', price: 455000, surface: 111, terrain: 305, pricePerM2: 4099 }]);
   await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl, loadSales });
   const [r1] = [...(await listingsOf(redis, '59636')).values()];
-  assert.deepEqual(r1.sale, { date: day(removedAt + 40 * DAY), price: 455000, pricePerM2: 4099, how: 'probable' });
+  assert.deepEqual(r1.sale, { id: 'v', date: day(removedAt + 40 * DAY), price: 455000, pricePerM2: 4099, how: 'probable' });
   w.advance(10 * DAY);
   await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl, loadSales });
   assert.equal(calls, 1);
+});
+
+// Annonce retirée de la rue X, prête pour la vérification mensuelle des ventes.
+const retired = (id, address, removedAt) => ({ id: `alpha:/annonce/${id}`, source: 'alpha', url: `https://alpha.test/annonce/${id}`, insee: '59636', type: 'maison', address, price: 480000, prices: [{ at: removedAt - 90 * DAY, price: 490000 }], surface: 110, terrain: 300, firstSeen: removedAt - 90 * DAY, lastSeen: removedAt, missed: 2, removedAt, detail: true, readerVersion: 2 });
+const isoDay = (t) => new Date(t).toISOString().slice(0, 10);
+const saleX = (id, date, address = '5 RUE X', surface = 111) => ({ id, date, commune: '59636', type: 'Maison', address, price: 455000, surface, terrain: 305, pricePerM2: 4099 });
+
+test('lien probable revu chaque mois : effacé quand une seconde vente possible paraît', async () => {
+  const redis = fakeRedis();
+  const w = world({ 'https://alpha.test/vente/59636': results('alpha', []), 'https://beta.test/vente/59636': results('beta', []) });
+  await withSearch(redis, w.now());
+  const removedAt = w.now() - 60 * DAY;
+  await saveListings(redis, '59636', [retired('r1', '9 Rue X 59118 Wambrechies', removedAt)]);
+  let sales = [saleX('v', isoDay(removedAt + 40 * DAY))];
+  const loadSales = async () => sales;
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl, loadSales });
+  assert.equal([...(await listingsOf(redis, '59636')).values()][0].sale.how, 'probable');
+  // Publication DVF suivante : une autre maison de la rue, de même surface, vendue peu après.
+  sales = [...sales, saleX('w', isoDay(removedAt + 70 * DAY), '17 RUE X', 109)];
+  w.advance(31 * DAY);
+  await withSearch(redis, w.now());
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl, loadSales });
+  assert.equal([...(await listingsOf(redis, '59636')).values()][0].sale, undefined);
+});
+
+test('une vente réclamée par deux biens d’adresses différentes : aucun lien probable', async () => {
+  const redis = fakeRedis();
+  const w = world({ 'https://alpha.test/vente/59636': results('alpha', []), 'https://beta.test/vente/59636': results('beta', []) });
+  await withSearch(redis, w.now());
+  const removedAt = w.now() - 60 * DAY;
+  await saveListings(redis, '59636', [retired('r1', '9 Rue X 59118 Wambrechies', removedAt), retired('r2', '30 Rue X 59118 Wambrechies', removedAt)]);
+  const loadSales = async () => [saleX('v', isoDay(removedAt + 40 * DAY))];
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl, loadSales });
+  assert.deepEqual([...(await listingsOf(redis, '59636')).values()].map((l) => l.sale), [undefined, undefined]);
+});
+
+test('annonce revenue en ligne : la vente qui lui était reliée est effacée', async () => {
+  const redis = fakeRedis();
+  const w = world({ 'https://alpha.test/vente/59636': results('alpha', [['a1', '300 000 €']]), 'https://beta.test/vente/59636': results('beta', []) });
+  await withSearch(redis, w.now());
+  await saveListings(redis, '59636', [{ ...retired('a1', '9 Rue X 59118 Wambrechies', w.now() - 60 * DAY), price: 300000, sale: { id: 'v', date: '2026-10-01', price: 290000, pricePerM2: 2900, how: 'probable' } }]);
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl, loadSales: async () => [] });
+  const [a1] = [...(await listingsOf(redis, '59636')).values()];
+  assert.equal(a1.removedAt, null);
+  assert.equal(a1.sale, undefined);
+});
+
+test('ventes du robot chargées sans le registre des DPE (inutile pour relier une annonce)', async () => {
+  const calls = [];
+  const fetchImpl = async (url) => (calls.push(url), { ok: false, status: 404, text: async () => '', json: async () => ({}) });
+  const sales = await defaultLoadSales('59636', null, { fetchImpl, now: Date.parse('2026-11-02') });
+  assert.deepEqual(sales, []);
+  assert.ok(calls.length > 0 && calls.every((u) => !u.startsWith('https://data.ademe.fr/')));
 });

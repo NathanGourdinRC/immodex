@@ -393,22 +393,22 @@ test('fil : annonces scannées, nouveautés, baisses et retraits, Garder', async
   );
   // Ventes de la commune avec leur classe énergie et les statistiques DPE de la commune.
   const sale = (i, cls, ppm) => ({ id: `s${i}`, date: '2025-06-01', commune: '59636', address: `${i} RUE DE QUESNOY`, price: ppm * 100, type: 'Maison', surface: 100, pieces: 5, terrain: 200, dependances: 0, pricePerM2: ppm, lon: 3.05 + i / 1000, lat: 50.68, energyClass: cls, dpeDays: 150 });
-  const dvf = { insee: '59636', type: 'maison', sales: Array.from({ length: 30 }, (_, i) => sale(i + 1, i % 2 ? 'D' : 'C', 3300 + i * 10)), energy: { byClass: { C: { count: 53, median: 3757 }, D: { count: 82, median: 3379 } }, delay: { count: 177, median: 156, p25: 126, p75: 224 } }, lastDate: '2025-12-30', years: [2025] };
+  const dvf = { insee: '59636', type: 'maison', sales: Array.from({ length: 30 }, (_, i) => sale(i + 1, i % 2 ? 'D' : 'C', 3300 + i * 10)), energy: { byClass: { C: { count: 53, median: 3757, p25: 3400, p75: 4100 }, D: { count: 82, median: 3379, p25: 3050, p75: 3700 } }, delay: { count: 177, median: 156, p25: 126, p75: 224 } }, lastDate: '2025-12-30', years: [2025] };
   await page.route('https://immodex.vercel.app/api/dvf**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(dvf) }));
   await page.goto(`chrome-extension://${extId}/src/dashboard/dashboard.html`);
   await page.click('#zone-tabs button:has-text("Wambrechies")');
   await page.click('.imx-views button:has-text("Fil")');
   await page.waitForSelector('.imx-annonce', { timeout: 30000 });
-  // Repère de la classe énergie : prix médian des maisons de classe D vendues dans la commune.
+  // Repère de la classe énergie : prix médian et moitié centrale des maisons de classe D vendues dans la commune.
   await page.waitForSelector('.imx-annonce .imx-energy', { timeout: 30000 });
-  assert.match(await page.locator('.imx-annonce').first().textContent(), /Classe D à Wambrechies : 3\s379\s€\/m² médian \(82 ventes\)/);
+  assert.match(await page.locator('.imx-annonce').first().textContent(), /Classe D à Wambrechies : 3\s379\s€\/m² médian, la moitié des ventes entre 3\s050 et 3\s700\s€\/m² \(82 ventes\)/);
   assert.equal(await page.locator('.imx-annonce').count(), 3);
   const text = await page.textContent('.imx-view-fil');
   assert.match(text, /Nouveau/);
   assert.match(text, /Prix baissé de 20\s000\s€/);
   assert.match(text, /Retiré/);
-  // Annonce retirée reliée à sa vente DVF : prix signé et écart au premier prix affiché.
-  assert.match(text, /Vendue 315\s000\s€ le 01\/10\/2026, 5 % sous le premier prix affiché \(lien probable\)/);
+  // Annonce retirée reliée à sa vente DVF : prix signé et écart au premier prix relevé.
+  assert.match(text, /Vendue 315\s000\s€ le 01\/10\/2026, 5 % sous le premier prix relevé \(lien probable\)/);
   // Prix au m² de chaque bien : 389 000 € pour 120 m².
   assert.match(await page.locator('.imx-annonce').first().textContent(), /3\s242\s€\/m²/);
   assert.match(text, /Dernier passage du robot/);

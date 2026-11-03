@@ -8,8 +8,10 @@ import { readListing } from './page.js';
 import { keys, listingsOf, saveListings, sourceMetaOf, saveSourceMeta, readQueue, writeQueue, activeCommunes } from './scan-store.js';
 import { matchSale } from './sale-link.js';
 
-// Ventes DVF d'une commune (maisons et appartements), chargées seulement quand il le faut.
-const defaultLoadSales = async (insee, type) => (await (await import('../dvf.js')).handleDvf({ insee, type })).sales;
+// Ventes DVF d'une commune (maisons et appartements), chargées seulement quand il le faut, sans
+// le registre des DPE : relier une annonce à sa vente n'en a pas besoin, et un registre lent
+// ferait perdre les ventes au délai de 20 s.
+const defaultLoadSales = async (insee, type, options = {}) => (await (await import('../dvf.js')).handleDvf({ insee, type, withEnergy: false, ...options })).sales;
 
 const HOUR = 3600 * 1000;
 // Verrou d'un passage : empêche deux robots simultanés (un passage dure moins de 5 min).
@@ -171,6 +173,8 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
               l.lastSeen = t;
               l.missed = 0;
               l.removedAt = null;
+              // De nouveau en vente : la vente qui lui avait été reliée n'était pas la sienne.
+              delete l.sale;
               if (card.price && card.price !== l.price) {
                 l.prices.push({ at: t, price: card.price });
                 l.price = card.price;
@@ -274,13 +278,15 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
   await writeQueue(redis, remaining);
 
   // Ventes DVF des annonces retirées depuis 1 à 18 mois : une vérification par mois et par
-  // commune (DVF paraît deux fois par an, avec 6 à 12 mois de retard).
+  // commune (DVF paraît deux fois par an, avec 6 à 12 mois de retard). Un lien probable est
+  // revu à chaque vérification : une vente publiée plus tard peut le rendre douteux.
   for (const commune of communes) {
     if (now() - start >= budgetMs) break;
     const meta = metas.get(commune.code) || {};
     if (start - ((meta._sales && meta._sales.lastCheck) || 0) < SALES_CHECK_MS) continue;
     const listings = await listingsFor(commune.code);
-    const waiting = [...listings.values()].filter((l) => l.removedAt && !l.sale && start - l.removedAt >= 30 * DAY && start - l.removedAt <= 18 * 30 * DAY);
+    const isSure = (l) => l.sale && l.sale.how === 'sure';
+    const waiting = [...listings.values()].filter((l) => l.removedAt && !isSure(l) && start - l.removedAt >= 30 * DAY && start - l.removedAt <= 18 * 30 * DAY);
     if (!waiting.length) continue;
     let sales;
     try {
@@ -289,12 +295,23 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
       console.error('[scan] ventes DVF injoignables', commune.code, err && err.message);
     }
     if (!sales) continue;
-    for (const l of waiting) {
-      const sale = matchSale(l, sales);
-      if (!sale) continue;
-      l.sale = sale;
+    const found = new Map(waiting.map((l) => [l, matchSale(l, sales)]));
+    // Adresses des biens qui réclament chaque vente (liens sûrs déjà posés compris). Deux
+    // annonces du même bien (deux sites) ont la même adresse ; deux adresses : doute.
+    const claims = new Map();
+    const claim = (sale, l) => {
+      if (!claims.has(sale.id)) claims.set(sale.id, new Set());
+      claims.get(sale.id).add(String(l.address).toLowerCase());
+    };
+    for (const l of listings.values()) if (isSure(l) && l.sale.id) claim(l.sale, l);
+    for (const [l, sale] of found) if (sale) claim(sale, l);
+    for (const [l, sale] of found) {
+      const keep = sale && (sale.how === 'sure' || claims.get(sale.id).size === 1) ? sale : null;
+      if (JSON.stringify(keep) === JSON.stringify(l.sale || null)) continue;
+      if (keep) l.sale = keep;
+      else delete l.sale;
       await saveListings(redis, commune.code, [l]);
-      summary.sold = (summary.sold || 0) + 1;
+      if (keep) summary.sold = (summary.sold || 0) + 1;
     }
     meta._sales = { lastCheck: start };
     await saveSourceMeta(redis, commune.code, meta);
@@ -317,4 +334,4 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
   return summary;
 }
 
-export { runScan, readList, idOf };
+export { defaultLoadSales, runScan, readList, idOf };

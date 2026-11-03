@@ -108,8 +108,10 @@ function trackingKeyOf(g, tracking, seenByUrl = new Map()) {
 }
 
 // Vente DVF reliée à un bien retiré (sûre de préférence), avec l'écart en % entre le premier
-// prix affiché (annonce vue la première) et le prix signé.
+// prix relevé (annonce vue la première) et le prix signé. Un bien encore en ligne sur un site
+// (annonce revenue, autre agence) n'est pas vendu.
 function saleOf(g) {
+  if (g.listings.some((l) => !l.removedAt)) return null;
   const withSale = g.listings.filter((l) => l.sale);
   if (!withSale.length) return null;
   const sale = (withSale.find((l) => l.sale.how === 'sure') || withSale[0]).sale;
@@ -128,4 +130,14 @@ function negotiation(groups) {
   return { count: sold.length, median, sure: sold.filter((x) => x.how === 'sure').length };
 }
 
-export { LISTINGS_ENDPOINT, SOURCE_LABELS, urlKey, trackingKeyOf, saleOf, negotiation, fetchListings, groupListings, listingFacts, statusOf, sameProperty };
+// Texte de la marge : les liens probables sont dits, et l'écart contient souvent les honoraires
+// d'agence (prix affiché honoraires inclus, prix de l'acte hors honoraires à la charge de l'acheteur).
+function negotiationText(n) {
+  if (!n) return null;
+  const probable = n.count - n.sure;
+  const plural = (k, word) => `${k} ${word}${k > 1 ? 's' : ''}`;
+  const how = !probable ? ', toutes sûres' : !n.sure ? ', toutes probables' : ` : ${plural(n.sure, 'sûre')}, ${plural(probable, 'probable')}`;
+  return `Écart médian entre le premier prix relevé et le prix signé : ${n.median} % (${n.count} ventes reliées${how}). Le prix affiché comprend souvent les honoraires d’agence, que le prix de l’acte n’inclut pas.`;
+}
+
+export { LISTINGS_ENDPOINT, SOURCE_LABELS, urlKey, trackingKeyOf, saleOf, negotiation, negotiationText, fetchListings, groupListings, listingFacts, statusOf, sameProperty };

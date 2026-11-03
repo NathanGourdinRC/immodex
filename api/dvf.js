@@ -51,9 +51,12 @@ function parseCsv(text) {
 // Dossier départemental du fichier : 2 caractères (59, 2A), 3 outre-mer (974).
 const depOf = (insee) => (insee.startsWith('97') ? insee.slice(0, 3) : insee.slice(0, 2));
 
-async function handleDvf({ insee, type = null, fetchImpl = fetch, now = Date.now() }) {
+// `withEnergy: false` : ventes seules, sans le registre des DPE (robot du scan).
+async function handleDvf({ insee, type = null, fetchImpl = fetch, now = Date.now(), withEnergy = true }) {
   if (!INSEE.test(String(insee || ''))) throw new HttpError(400, 'bad-insee');
   const wanted = type === 'maison' || type === 'appartement' ? type : null;
+  // Registre des DPE lu pendant le téléchargement des fichiers DVF ; il ne rejette jamais.
+  const dpeReading = withEnergy ? communeDpe(insee, wanted, { fetchImpl }) : Promise.resolve(null);
   const last = new Date(now).getUTCFullYear();
   const years = Array.from({ length: YEARS_BACK + 1 }, (_, i) => last - i);
   const files = await Promise.all(
@@ -69,17 +72,25 @@ async function handleDvf({ insee, type = null, fetchImpl = fetch, now = Date.now
   const dates = sales.map((s) => s.date).filter(Boolean).sort();
   // Classe énergie de chaque vente et statistiques de la commune (DPE reliés par l'adresse).
   let energy = null;
-  const dpe = await communeDpe(insee, wanted, { fetchImpl });
+  const dpe = await dpeReading;
   if (dpe) {
-    const links = linkSalesToDpe(sales, dpe);
+    // Registre lu en partie (très grande commune, registre lent) : une vente postérieure au
+    // dernier DPE lu serait reliée à un DPE plus ancien, peut-être celui d'un autre logement.
+    const covered = dpe.until ? sales.filter((v) => v.date && v.date < dpe.until) : sales;
+    const links = linkSalesToDpe(covered, dpe.records);
     for (const v of sales) {
       const l = links.get(v.id);
       if (l) Object.assign(v, { energyClass: l.energyClass, dpeDate: l.dpeDate, dpeDays: l.days });
     }
     energy = energyStats(sales, links);
+    if (dpe.until) energy.partial = true;
   }
   return { insee, type: wanted, sales, energy, lastDate: dates.length ? dates[dates.length - 1] : null, years: found.map((f) => f.year).sort() };
 }
+
+// Une semaine en cache chez Vercel : DVF n'est mis à jour que deux fois par an. Registre des
+// DPE injoignable ou lu en partie : réponse incomplète gardée une heure seulement.
+const cacheControl = (data) => (data.energy && !data.energy.partial ? 'public, max-age=3600, s-maxage=604800, stale-while-revalidate=604800' : 'public, max-age=600, s-maxage=3600');
 
 const CORS = { 'Access-Control-Allow-Origin': '*' };
 
@@ -89,9 +100,7 @@ export async function GET(request) {
     const data = await handleDvf({ insee: url.searchParams.get('insee'), type: url.searchParams.get('type') });
     return new Response(JSON.stringify(data), {
       status: 200,
-      // Une semaine en cache chez Vercel : DVF n'est mis à jour que deux fois par an.
-      // Registre des DPE injoignable : réponse incomplète gardée une heure seulement.
-      headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': data.energy ? 'public, max-age=3600, s-maxage=604800, stale-while-revalidate=604800' : 'public, max-age=600, s-maxage=3600' },
+      headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': cacheControl(data) },
     });
   } catch (e) {
     return new Response(JSON.stringify({ ok: false, error: e.message }), {
@@ -101,4 +110,4 @@ export async function GET(request) {
   }
 }
 
-export { handleDvf, parseCsv, HttpError };
+export { handleDvf, parseCsv, cacheControl, HttpError };

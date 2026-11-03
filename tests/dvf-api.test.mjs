@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { handleDvf, parseCsv } from '../api/dvf.js';
+import { handleDvf, parseCsv, cacheControl } from '../api/dvf.js';
+import { communeDpe } from '../api/_lib/dpe-commune.js';
 
 const HEAD = 'id_mutation,date_mutation,numero_disposition,nature_mutation,valeur_fonciere,adresse_numero,adresse_suffixe,adresse_nom_voie,adresse_code_voie,code_postal,code_commune,nom_commune,code_departement,ancien_code_commune,ancien_nom_commune,id_parcelle,ancien_id_parcelle,numero_volume,lot1_numero,lot1_surface_carrez,lot2_numero,lot2_surface_carrez,lot3_numero,lot3_surface_carrez,lot4_numero,lot4_surface_carrez,lot5_numero,lot5_surface_carrez,nombre_lots,code_type_local,type_local,surface_reelle_bati,nombre_pieces_principales,code_nature_culture,nature_culture,code_nature_culture_speciale,nature_culture_speciale,surface_terrain,longitude,latitude';
 const line = (o) =>
@@ -56,10 +57,10 @@ test('commune invalide refusée, fichier en erreur signalé', async () => {
 test('Corse et outre-mer : bon dossier départemental', async () => {
   const a = fakeFetch({});
   await handleDvf({ insee: '2A004', type: null, fetchImpl: a.impl, now: Date.parse('2026-11-02') });
-  assert.ok(a.calls[0].includes('/communes/2A/2A004.csv'));
+  assert.ok(a.calls.some((u) => u.includes('/communes/2A/2A004.csv')));
   const b = fakeFetch({});
   await handleDvf({ insee: '97411', type: null, fetchImpl: b.impl, now: Date.parse('2026-11-02') });
-  assert.ok(b.calls[0].includes('/communes/974/97411.csv'));
+  assert.ok(b.calls.some((u) => u.includes('/communes/974/97411.csv')));
 });
 
 // Faux registre ADEME : deux pages reliées par `next`.
@@ -96,5 +97,52 @@ test('registre ADEME injoignable : ventes servies sans classes ni statistiques',
   const r = await handleDvf({ insee: '59636', type: 'maison', fetchImpl: impl, now: Date.parse('2026-11-02') });
   assert.equal(r.sales.length, 1);
   assert.equal(r.sales[0].energyClass, undefined);
+  assert.equal(r.energy, null);
+});
+
+test('registre ADEME trop long : seules les ventes antérieures au dernier DPE lu sont reliées', async () => {
+  const geo = fakeFetch({ 2025: CSV_2025 });
+  const ademe = [];
+  const impl = async (url) => {
+    if (!url.startsWith('https://data.ademe.fr/')) return geo.impl(url);
+    ademe.push(url);
+    const k = ademe.length - 1;
+    // Un vieux DPE de la maison vendue en page 1 ; le sien, plus récent, est au-delà de la coupure.
+    const results = [k === 0 ? row('d0', '2025-01-15', '12 Rue de Quesnoy 59118 Wambrechies', 100, 'F') : row(`d${k}`, `2025-0${k + 1}-15`, '99 Rue Ailleurs 59118 Wambrechies', 100, 'B')];
+    return { ok: true, status: 200, json: async () => ({ results, next: `https://data.ademe.fr/data-fair/api/v1/datasets/dpe03existant/lines?after=${k}` }) };
+  };
+  const r = await handleDvf({ insee: '59636', type: 'maison', fetchImpl: impl, now: Date.parse('2026-11-02') });
+  assert.equal(ademe.length, 5);
+  assert.equal(r.sales[0].energyClass, undefined);
+  assert.equal(r.energy.partial, true);
+  // Réponse incomplète : gardée une heure seulement, comme sans registre.
+  assert.match(cacheControl(r), /s-maxage=3600$/);
+  assert.match(cacheControl({ energy: { byClass: {}, delay: null } }), /s-maxage=604800/);
+});
+
+test('registre ADEME qui ne répond pas : abandonné, ventes servies sans classes', { timeout: 3000 }, async () => {
+  const hang = (url, opts = {}) => new Promise((resolve, reject) => opts.signal && opts.signal.addEventListener('abort', () => reject(new Error('abandon'))));
+  const t = Date.now();
+  assert.equal(await communeDpe('59636', 'maison', { fetchImpl: hang, pageMs: 50 }), null);
+  assert.ok(Date.now() - t < 1000);
+});
+
+test('registre ADEME lent : lecture arrêtée au délai total, la réponse dit jusqu’où elle est complète', { timeout: 3000 }, async () => {
+  let k = 0;
+  const slow = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    k++;
+    return { ok: true, status: 200, json: async () => ({ results: [row(`d${k}`, `2025-0${k}-15`, '1 Rue X 59118 Wambrechies', 100, 'C')], next: 'https://data.ademe.fr/suite' }) };
+  };
+  const dpe = await communeDpe('59636', 'maison', { fetchImpl: slow, deadlineMs: 50 });
+  assert.ok(dpe.records.length >= 1 && dpe.records.length < 5);
+  assert.equal(dpe.until, dpe.records[dpe.records.length - 1].date);
+});
+
+test('ventes sans le registre des DPE quand on n’en a pas besoin (robot)', async () => {
+  const { impl, calls } = withAdeme({ 2025: CSV_2025 }, 'DOWN');
+  const r = await handleDvf({ insee: '59636', type: null, fetchImpl: impl, now: Date.parse('2026-11-02'), withEnergy: false });
+  assert.equal(calls.length, 0);
+  assert.equal(r.sales.length, 2);
   assert.equal(r.energy, null);
 });

@@ -3,11 +3,13 @@
 const MONTH_DAYS = 30.44;
 const months = (days) => Math.max(1, Math.round(days / MONTH_DAYS));
 
-// « Classe D à Wambrechies : 3 379 €/m² médian (82 ventes) », ou null sans statistique.
+// « Classe D à Wambrechies : 3 379 €/m² médian, la moitié des ventes entre 3 050 et 3 700 €/m²
+// (82 ventes) », ou null sans statistique : un repère, pas une estimation.
 function classLine(energyClass, insee, energy, communeName, num) {
   const stats = energy && energy[insee] && energy[insee].byClass ? energy[insee].byClass[energyClass] : null;
   if (!energyClass || !stats) return null;
-  return `Classe ${energyClass} à ${communeName || 'la commune'} : ${num(stats.median)} €/m² médian (${num(stats.count)} ventes)`;
+  const range = stats.p25 != null && stats.p75 != null ? `, la moitié des ventes entre ${num(stats.p25)} et ${num(stats.p75)} €/m²` : '';
+  return `Classe ${energyClass} à ${communeName || 'la commune'} : ${num(stats.median)} €/m² médian${range} (${num(stats.count)} ventes)`;
 }
 
 // « Délai médian entre le DPE et la vente : 5 mois (4 à 7 mois), 177 ventes reliées ».

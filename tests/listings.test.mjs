@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { groupListings, statusOf, listingFacts, trackingKeyOf, negotiation, saleOf } from '../src/common/listings.js';
+import { groupListings, statusOf, listingFacts, trackingKeyOf, negotiation, negotiationText, saleOf } from '../src/common/listings.js';
 import { handleListings } from '../api/listings.js';
 import { fakeRedis } from './helpers/fake-redis.mjs';
 
@@ -75,4 +75,24 @@ test('marge de négociation : écart entre le premier prix affiché et le prix s
   const three = groupListings([sold('a', 500000, 465000, 'sure'), sold('b', 300000, 291000), sold('c', 400000, 380000)]);
   assert.deepEqual(negotiation(three), { count: 3, median: 5, sure: 1 });
   assert.deepEqual(saleOf(three[0]), { date: '2027-04-10', price: 465000, pricePerM2: 4000, how: 'sure', margin: 7 });
+});
+
+test('texte de la marge : liens probables comptés à part, honoraires d’agence signalés', () => {
+  assert.equal(negotiationText(null), null);
+  assert.equal(negotiationText({ count: 3, median: 5, sure: 1 }), 'Écart médian entre le premier prix relevé et le prix signé : 5 % (3 ventes reliées : 1 sûre, 2 probables). Le prix affiché comprend souvent les honoraires d’agence, que le prix de l’acte n’inclut pas.');
+  assert.match(negotiationText({ count: 4, median: 6, sure: 0 }), /\(4 ventes reliées, toutes probables\)/);
+  assert.match(negotiationText({ count: 3, median: 4, sure: 3 }), /\(3 ventes reliées, toutes sûres\)/);
+});
+
+test('bien encore en vente quelque part : aucune vente affichée', () => {
+  const sale = { date: '2027-04-10', price: 290000, pricePerM2: 2900, how: 'probable' };
+  // Annonce revenue en ligne avec une vente restée posée.
+  const [back] = groupListings([base({ id: 'orpi:/b', source: 'orpi', url: 'https://www.orpi.com/b', sale })]);
+  assert.equal(saleOf(back), null);
+  // Même bien sur deux sites : retiré de l'un, toujours en ligne sur l'autre.
+  const gone = base({ id: 'maes:/bien-immobilier/x/', source: 'maes', url: 'https://www.maesimmobilier.fr/bien-immobilier/x/', surface: 109, energyConsumption: 224, gesEmission: 32, removedAt: NOW - 60 * DAY, sale });
+  const live = base({ id: 'lesiteimmo:/acheter/maison/1', source: 'lesiteimmo', url: 'https://www.lesiteimmo.com/acheter/maison-5pieces/wambrechies-59118/1', surface: 109.4, energyConsumption: 224, gesEmission: 32 });
+  const groups = groupListings([gone, live]);
+  assert.equal(groups.length, 1);
+  assert.equal(saleOf(groups[0]), null);
 });

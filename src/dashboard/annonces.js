@@ -2,7 +2,7 @@
 // communes de la recherche. Un même bien publié par plusieurs sources forme une seule carte ;
 // étiquettes Nouveau, Prix baissé, Retiré ; Garder et Écarter comme pour les annonces vues.
 import { checkCriteria, trackingKey, STATUSES } from '../common/zones.js';
-import { groupListings, listingFacts, statusOf, trackingKeyOf, urlKey, saleOf, negotiation, SOURCE_LABELS } from '../common/listings.js';
+import { groupListings, listingFacts, statusOf, trackingKeyOf, urlKey, saleOf, negotiation, negotiationText, SOURCE_LABELS } from '../common/listings.js';
 import { nearestSales, isComparable } from '../common/sectors.js';
 import { loadSearchSales } from './sector-layer.js';
 import { classLine } from '../common/energy-text.js';
@@ -27,11 +27,11 @@ function factsLine(f) {
     .join(' · ');
 }
 
-// Bien retiré relié à sa vente DVF : prix signé et écart au premier prix affiché.
+// Bien retiré relié à sa vente DVF : prix signé et écart au premier prix relevé par le robot.
 function soldLine(g) {
   const sale = saleOf(g);
   if (!sale) return null;
-  const gap = sale.margin == null ? '' : sale.margin >= 0 ? `, ${sale.margin} % sous le premier prix affiché` : `, ${-sale.margin} % au-dessus du premier prix affiché`;
+  const gap = sale.margin == null ? '' : sale.margin >= 0 ? `, ${sale.margin} % sous le premier prix relevé` : `, ${-sale.margin} % au-dessus du premier prix relevé`;
   return el('div', { class: 'imx-meta imx-sold' }, `Vendue ${UI.priceText(sale.price)} le ${UI.formatDate(sale.date)}${gap} (${sale.how === 'sure' ? 'lien sûr, même adresse' : 'lien probable'})`);
 }
 
@@ -95,7 +95,7 @@ function robotLine(data, groups = []) {
     { class: 'imx-meta', style: 'margin:0 0 6px' },
     data.lastRun ? `Dernier passage du robot : ${UI.formatDateTime(data.lastRun)}.` : 'Le robot n’est pas encore passé pour ces communes : il lit les sites chaque nuit.',
     paused.size ? ` ${[...paused].join(', ')} en pause : le site refuse le robot, nouvel essai dans une semaine.` : '',
-    nego ? el('div', { class: 'imx-nego' }, `Marge de négociation constatée : ${nego.median} % entre le premier prix affiché et le prix signé (${nego.count} ventes reliées${nego.sure ? `, dont ${nego.sure} sûres` : ''}).`) : null
+    nego ? el('div', { class: 'imx-nego' }, negotiationText(nego)) : null
   );
 }
 
