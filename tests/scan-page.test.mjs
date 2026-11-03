@@ -14,6 +14,35 @@ const PAGE = `<!doctype html><html><head><title>Maison 5 pièces Wambrechies</ti
 <p>${'Belle maison familiale proche des écoles, du tram et du centre. '.repeat(10)}</p>
 </body></html>`;
 
+// Bloc DPE d'une page Maes Immobilier (relevé le 03/11/2026) : la lettre n'est que dans le texte
+// alternatif de l'image, les valeurs sans unité dans « c-energy__index », la date en AAAA-MM-JJ.
+const MAES = `<!doctype html><html><head><title>Charmante bâtisse des années 30</title></head><body>
+<h1>Charmante bâtisse des années 30, jardin sud-ouest</h1>
+<main><p>Maison de 85 m² · 4 pièces · 3 chambres. Prix : 329 000 €</p>
+<p>${'Maison des années 30 rénovée, jardin exposé sud-ouest, proche du port. '.repeat(8)}</p>
+<div class="dpe-ges"><div class="o-grid">
+  <div class="large-6 columns o-grid__col"><div class="c-energy c-energy--3">
+    <img src="https://www.maesimmobilier.fr/wp-content/themes/spritz/dpe-ges/dpe/3.svg" alt="Consommation énergétique C" class="c-energy__img" />
+    <strong class="c-energy__index"> 128 </strong>
+    <strong class="c-energy__index c-energy__index--secondary"> 27 </strong>
+  </div></div>
+  <div class="large-6 columns o-grid__col"><div class="c-energy c-energy--ges c-energy--3">
+    <img src="https://www.maesimmobilier.fr/wp-content/themes/spritz/dpe-ges/ges/3.svg" alt="Émissions GES C" class="c-energy__img" />
+    <strong class="c-energy__index"> 27 </strong>
+  </div></div>
+</div></div>
+<div><strong>Date de réalisation du diagnostic énergétique :</strong> 2026-09-10 <br /></div>
+</main></body></html>`;
+
+test('page Maes : classe, consommation, émissions et date du DPE lues pour retrouver l’adresse', () => {
+  const r = readListing(MAES, 'https://www.maesimmobilier.fr/bien-immobilier/charmante-batisse-des-annees-30-jardin-sud-ouest/');
+  assert.equal(r.energyClass, 'C');
+  assert.equal(r.gesClass, 'C');
+  assert.equal(r.energyConsumption, 128);
+  assert.equal(r.gesEmission, 27);
+  assert.deepEqual(JSON.parse(JSON.stringify(r.dateRange)), { gte: '2026-09-10', lte: '2026-09-10', precision: 'day' });
+});
+
 test('page d’annonce lue côté serveur : prix, surfaces, pièces, chambres, DPE, photo', () => {
   const r = readListing(PAGE, 'https://www.agence-exemple.fr/bien/123');
   assert.equal(r.price, 332000);

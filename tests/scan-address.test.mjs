@@ -12,6 +12,13 @@ test('adresse posée seulement si le DPE désigne un logement avec une confiance
   assert.equal(unsure, null);
 });
 
+test('date du DPE lue sur l’annonce : transmise à la recherche', async () => {
+  const dateRange = { gte: '2026-09-10', lte: '2026-09-10', precision: 'day' };
+  let seen;
+  await addressLookup({ ...LISTING, dateRange }, { run: async (p) => ((seen = p), { highConfidence: false, candidates: [] }) });
+  assert.deepEqual(seen.dateRange, dateRange);
+});
+
 test('sans valeurs de DPE ni code postal : aucune recherche lancée', async () => {
   let calls = 0;
   const run = async () => (calls++, { highConfidence: true, candidates: [{ record }] });

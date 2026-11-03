@@ -291,6 +291,8 @@
     'i'
   );
   const DATE_MONTH = new RegExp(DATE_LABEL + '(\\d{1,2})[\\/.\\-](\\d{4})\\b', 'i');
+  // « Date de réalisation du diagnostic énergétique : 2026-09-10 » (Maes).
+  const DATE_ISO = new RegExp(DATE_LABEL + '(\\d{4})-(\\d{2})-(\\d{2})\\b', 'i');
 
   function dpeDateRange(text, now = new Date()) {
     let y;
@@ -298,6 +300,7 @@
     let d = null;
     let m = text.match(DATE_DAY);
     if (m) [d, mo, y] = [+m[1], +m[2], +m[3]];
+    else if ((m = text.match(DATE_ISO))) [y, mo, d] = [+m[1], +m[2], +m[3]];
     else if ((m = text.match(DATE_NAMED))) {
       y = +m[3];
       mo = MONTHS[ex.stripAccents(m[2]).toLowerCase()];
@@ -310,9 +313,20 @@
     return ex.parseDateRange({ year: y, month: mo, day: d });
   }
 
-  function surfaceFromHeadline(text) {
-    const m = text.match(/(\d{1,4}(?:[.,]\d{1,2})?)\s*m\s*[²2]/i);
-    return m ? ex.normalizeSurface(m[1]) : null;
+  // Surface du titre : la première qui n'est pas celle d'une annexe (« Parcelle de +500 m2 –
+  // Garage 30 m2 » chez Maes). Pour un terrain à bâtir, `annexes: true` garde la parcelle.
+  // « Maison avec terrain 120 m² » : les 120 m² sont ceux de la maison (« avec » décrit le bien).
+  const ANNEX_BEFORE = /(terrain|jardin|terrasse|balcon|cave|parcelle|garage|cour|grenier|v[ée]randa|d[ée]pendance)[^\d]{0,15}$/i;
+  const WITH_ANNEX = /avec\s+(?:\S+\s+)?(?:terrain|jardin|terrasse|balcon|cave|garage|cour|grenier|v[ée]randa|d[ée]pendance)\s*$/i;
+  function surfaceFromHeadline(text, { annexes = false } = {}) {
+    const re = /(\d{1,4}(?:[.,]\d{1,2})?)\s*m\s*[²2]/gi;
+    let m;
+    while ((m = re.exec(text))) {
+      const before = text.slice(Math.max(0, m.index - 25), m.index);
+      if (!annexes && ANNEX_BEFORE.test(before) && !WITH_ANNEX.test(before)) continue;
+      return ex.normalizeSurface(m[1]);
+    }
+    return null;
   }
 
   // Dernier recours : surface écrite après le type de bien (« Appartement 19 m² »,
@@ -581,13 +595,16 @@
     // 3 bis. Valeurs sans unité portées par une classe explicite : <strong class="conso-index">184</strong>,
     //    <strong class="emi-index">39</strong> (Immotram). « conso-index2 » (le GES rappelé sur
     //    l'étiquette énergie) ne correspond pas : \b exige la fin du mot après « index ».
+    //    Écriture BEM (Maes) : <strong class="c-energy__index">128</strong> dans un bloc
+    //    « c-energy--ges » pour le GES ; « --secondary » (le GES rappelé) est ignoré.
     for (const node of doc.querySelectorAll('[class]')) {
       const cls = classOf(node);
-      if (node.children.length || !/(?:conso|energ|dpe|emi|ges|co2|climat)[-_]?(?:index|value|valeur|val|chiffre|number|nb|kwh|kg)\b/i.test(cls)) continue;
-      if (inOtherListing(node, doc)) continue;
+      if (node.children.length || !/(?:conso|energ(?:y|ie)?|dpe|emi|ges|co2|climat)[-_]{0,2}(?:index|value|valeur|val|chiffre|number|nb|kwh|kg)\b/i.test(cls)) continue;
+      if (/secondary/i.test(cls) || inOtherListing(node, doc)) continue;
       const n = parseNumber((node.textContent || '').replace(/\*/g, ''));
       if (n == null || n <= 0) continue;
-      if (/emi|ges|co2|climat/i.test(cls)) {
+      const parentCls = node.parentElement ? classOf(node.parentElement) : '';
+      if (/emi|ges|co2|climat/i.test(cls) || /(?:^|[-_\s])(?:ges|emi\w*|co2|climat)(?:$|[-_\s])/i.test(parentCls)) {
         if (r.gesEmission == null && n <= 400) r.gesEmission = n;
       } else if (r.energyConsumption == null && n <= 1500) r.energyConsumption = n;
     }
@@ -622,7 +639,8 @@
       const label = `${img.getAttribute('alt') || ''} ${img.getAttribute('title') || ''}`;
       // Pas de \b devant « énergie » : en JavaScript, \b ne reconnaît pas les lettres accentuées.
       // Dans le texte alternatif, la lettre doit être une majuscule isolée (« classe énergie : C »).
-      let m = label.match(/(?:dpe|[ée]nergie|consommation)[^A-Za-z]{0,10}([A-G])(?![A-Za-z])/i);
+      // « Consommation énergétique C » (Maes) : « énergétique » compte comme « énergie ».
+      let m = label.match(/(?:dpe|[ée]nergie|[ée]nerg[ée]tique|consommation)[^A-Za-z]{0,10}([A-G])(?![A-Za-z])/i);
       if (m && LETTER.test(m[1])) put('dpe', m[1]);
       m = label.match(/(?:ges|climat|co2)[^A-Za-z]{0,10}([A-G])(?![A-Za-z])/i);
       if (m && LETTER.test(m[1])) put('ges', m[1]);
@@ -1013,7 +1031,7 @@
         const ha = text.match(HECTARE_PATTERN);
         if (ha) land = Math.round(parseNumber(ha[1]) * 10000);
       }
-      if (land == null) land = surfaceFromHeadline(head);
+      if (land == null) land = surfaceFromHeadline(head, { annexes: true });
       const surface = ex.normalizeLandSurface(land);
       const result = {
         kind: 'land',

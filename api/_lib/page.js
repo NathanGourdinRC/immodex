@@ -113,6 +113,8 @@ function readListing(html, url) {
     gesClass: p.gesClass || null,
     energyConsumption: p.energyConsumption ?? null,
     gesEmission: p.gesEmission ?? null,
+    // Date du DPE quand l'annonce la donne : elle resserre la recherche d'adresse.
+    dateRange: p.dateRange || null,
   };
   win.close();
   return listing;

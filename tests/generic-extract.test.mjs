@@ -373,6 +373,17 @@ test('libellés d’agences : « DPE conso : 144, Lettre : C », « Consommation
   assert.equal(r2.gesEmission, 9);
 });
 
+test('titre qui commence par la parcelle et le garage (Maes) : la surface habitable n’est pas la leur', () => {
+  const r = extract(
+    page(
+      long(`<h1>Maison semi-individuelle – 3 chambres – Parcelle de +500 m2 – Garage 30 m2</h1>
+        <p>Partager : Surface : 92 m<sup>2</sup> Surface terrain : 510 m<sup>2</sup> Nombre de chambres : 3</p>
+        <p>Découvrez cette maison semi-individuelle de 92m2 hors véranda, bâtie sur une belle parcelle de plus de 500 m2. 59118 Wambrechies.</p>`)
+    )
+  );
+  assert.equal(r.surface, 92);
+});
+
 test('Immotram : lettres dans les noms d’images, valeurs sans unité dans conso-index / emi-index', () => {
   const r = extract(
     page(

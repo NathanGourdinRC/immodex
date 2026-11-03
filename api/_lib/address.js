@@ -15,6 +15,7 @@ async function addressLookup(listing, { run = runLookup } = {}) {
     gesClass: listing.gesClass || null,
     energyConsumption: listing.energyConsumption ?? null,
     gesEmission: listing.gesEmission ?? null,
+    dateRange: listing.dateRange || null,
     buildingType: listing.type === 'appartement' ? 'appartement' : listing.type === 'maison' ? 'maison' : null,
   };
   try {

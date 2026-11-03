@@ -178,6 +178,20 @@ test('adresse probable posée sur l’annonce après lecture de sa page', async 
   assert.deepEqual([a1.lat, a1.lon], [50.686, 3.048]);
 });
 
+test('page sans code postal (Maes) : l’adresse est cherchée dans la commune du scan', async () => {
+  const redis = fakeRedis();
+  const w = world({ 'https://alpha.test/vente/59636': results('alpha', [['a1', '300 000 €']]), 'https://beta.test/vente/59636': results('beta', []) });
+  await withSearch(redis, w.now());
+  // Ville mal lue sur la page (un titre de section) et aucun code postal.
+  const reader = (html, url) => ({ ...readListingImpl(html, url), postal: null, city: 'Jardin Sud-Est', energyConsumption: 128, gesEmission: 27 });
+  const asked = [];
+  const lookup = async (l) => (asked.push([l.postal, l.city]), null);
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl: reader, lookup });
+  assert.deepEqual(asked, [['59118', 'Wambrechies']]);
+  // La ville lue sur la page reste celle de l'annonce : seule la recherche utilise la commune.
+  assert.equal([...(await listingsOf(redis, '59636')).values()][0].city, 'Jardin Sud-Est');
+});
+
 // ─── Défauts relevés par la relecture finale ───
 
 const paged = (id, size) => ({ ...makeSource(id), pageSize: size, pageUrl: (url, n) => `${url}?page=${n}` });

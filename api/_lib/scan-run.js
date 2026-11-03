@@ -24,10 +24,11 @@ const LOOKUP_MS = 8000; // recherche d'adresse ADEME : au-delà, abandonnée
 const KEEP_MS = 3 * 365 * 24 * HOUR;
 const DAY = 24 * HOUR;
 const SALES_CHECK_MS = 30 * DAY; // ventes des annonces retirées : une vérification par mois
-const DETAIL_FIELDS = ['surface', 'pieces', 'chambres', 'terrain', 'garage', 'photo', 'postal', 'city', 'energyClass', 'gesClass', 'energyConsumption', 'gesEmission'];
+const DETAIL_FIELDS = ['surface', 'pieces', 'chambres', 'terrain', 'garage', 'photo', 'postal', 'city', 'energyClass', 'gesClass', 'energyConsumption', 'gesEmission', 'dateRange'];
 // Version du lecteur de pages d'annonce : une annonce lue par une version plus ancienne (qui
 // prenait par exemple le terrain d'un bien similaire en bas de page) est relue une fois.
-const READER_VERSION = 2;
+// Version 3 : DPE des pages Maes (lettre, valeurs, date) et date du DPE pour l'adresse.
+const READER_VERSION = 3;
 const needsReading = (l) => !l.removedAt && (!l.detail || (l.readerVersion || 1) < READER_VERSION);
 
 const idOf = (source, url) => `${source.id}:${new URL(url).pathname}`;
@@ -126,6 +127,13 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
     return loaded.get(insee);
   };
   const metas = new Map();
+  // Page sans code postal (Maes) : l'adresse est cherchée dans la commune où le robot a vu
+  // l'annonce (son code postal s'il n'y en a qu'un), la ville lue sur la page pouvant être fausse.
+  const forLookup = (l, insee) => {
+    const c = communes.find((x) => x.code === insee);
+    if (l.postal || !c) return l;
+    return { ...l, postal: c.codesPostaux && c.codesPostaux.length === 1 ? c.codesPostaux[0] : null, city: c.nom };
+  };
 
   const queue = await readQueue(redis);
   const queued = new Set(queue.map((q) => q.id));
@@ -263,7 +271,7 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
             l.price = d.price;
             l.prices = [{ at: now(), price: d.price }];
           }
-          if (lookup && now() < detailsDeadline) Object.assign(l, (await withTimeout(lookup(l), LOOKUP_MS)) || {});
+          if (lookup && now() < detailsDeadline) Object.assign(l, (await withTimeout(lookup(forLookup(l, item.insee)), LOOKUP_MS)) || {});
           summary.details++;
         } catch (err) {
           console.error('[scan] page d’annonce illisible', item.url, err && err.message);
