@@ -33,7 +33,7 @@
 | Annonce republiée (autre site, autre agence, nouvelle annonce) | invisible | **suivi des biens** : chaque annonce ouverte est mémorisée (12 mois, dans Chrome) ; un même bien retrouvé est signalé sur le bouton (« +2 ») avec ses parutions et l'évolution du prix ; onglet **Biens** du popup |
 | Vérifier un candidat | lien Google Maps | + **Street View** à l'adresse de chaque candidat (comparer la façade aux photos) et **carte des candidats** numérotés (OpenStreetMap, dans un onglet) |
 | Prix du marché | rien | **Ventes passées** à l'adresse de chaque candidat (DVF, 5 dernières années) : prix, surface, prix au m², vente de surface proche de l'annonce mise en avant, médianes de la rue et du secteur |
-| Suivre une recherche sur des semaines | rien | **Mes recherches** (bouton du popup) : communes et critères (type, budget, surface, terrain, pièces, chambres), puis trois vues. **Fil** : « Annonces en vente » lues chaque nuit par un robot sur Orpi, ParuVendu, Lesiteimmo, Maes Immobilier et Deleu Immobilier (nouveautés, baisses de prix, retraits, un même bien publié deux fois réuni en une carte, adresse probable par le DPE), annonces vues qui passent les critères, avec Garder, Écarter et note, et « Bientôt en vente ? » (nouveaux DPE, souvent une annonce en préparation). **Carte** : secteurs d'environ 400 m en 3 niveaux (moins cher, dans la moyenne, plus cher que la commune) avec le nombre de ventes DVF. **Ventes passées** : ventes DVF sur 5 ans avec prix au m², terrain et dépendance, et fourchette des 15 ventes les plus proches d'un bien |
+| Suivre une recherche sur des semaines | rien | **Mes recherches** (bouton du popup) : communes et critères (type, budget, surface, terrain, pièces, chambres), puis trois vues. **Fil** : « Annonces en vente » lues chaque nuit par un robot sur Orpi, ParuVendu, Lesiteimmo, Maes Immobilier et Deleu Immobilier (nouveautés, baisses de prix, retraits, un même bien publié deux fois réuni en une carte, adresse probable par le DPE), annonces vues qui passent les critères, avec Garder, Écarter et note, et « Bientôt en vente ? » (nouveaux DPE, souvent une annonce en préparation). **Carte** : secteurs d'environ 400 m en 3 niveaux (moins cher, dans la moyenne, plus cher que la commune) avec le nombre de ventes DVF. **Ventes passées** : ventes DVF sur 5 ans avec prix au m², terrain, dépendance et classe du DPE établi avant la vente (reliés par l'adresse), délai médian entre le DPE et la vente, prix au m² médian par classe énergie. Dans le Fil, chaque bien montre son prix au m², le repère « Classe D à Wambrechies : 3 379 €/m² médian », la fourchette des 15 ventes les plus proches et, une fois retiré puis vendu, le prix signé et l'écart au premier prix affiché (marge de négociation constatée) |
 | Sur le téléphone | rien | **appli téléphone** [immodex.vercel.app](https://immodex.vercel.app) : recherche d'adresse, historique, biens suivis et tableau de bord, **synchronisés avec l'extension** (bouton téléphone du popup, appairage par QR code) ; annonce **partagée** vers l'appli (Android) ou **collée** (lien ou texte copié) : critères lus, recherche lancée, annonce ajoutée aux biens suivis |
 | Historique de prix partagé | rien | bouton **Castorus** : copie le lien de l'annonce et ouvre la recherche par URL de Castorus (pas d'API publique, pas de collecte automatique) |
 
@@ -264,11 +264,13 @@ src/
     popup.html/.css/.js # Recherche manuelle (popup d'extension)
 api/
   sync.js               # Fonction Vercel de synchro (Upstash Redis)
-  dvf.js                # Ventes DVF allégées d'une commune (fichiers geo-dvf, cache d'une semaine)
+  dvf.js                # Ventes DVF allégées d'une commune (fichiers geo-dvf, cache d'une semaine),
+                        #   avec la classe du DPE de chaque vente et les repères énergie de la commune
   scan.js               # Robot des annonces, tâche planifiée chaque nuit (vercel.json)
   listings.js           # Annonces lues par le robot, par commune
   _lib/                 # Code du robot : page.js (jsdom + lecteur de l'extension), sources.js,
-                        #   polite.js (robots.txt, 5 s entre deux pages), scan-run.js, scan-store.js, address.js
+                        #   polite.js (robots.txt, 5 s entre deux pages), scan-run.js, scan-store.js, address.js,
+                        #   dpe-commune.js (DPE d'une commune), sale-link.js (annonce retirée ↔ vente DVF)
 web/                    # Appli téléphone : les pages de src/ + adaptateur web (platform/)
 scripts/build-web.mjs   # Construit dist-web/ pour Vercel
 ```
