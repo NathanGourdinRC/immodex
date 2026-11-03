@@ -489,3 +489,12 @@ test('annonce partagée depuis le téléphone : titre, texte et lien lus sans ch
   // Texte hostile : posé comme texte, jamais interprété en HTML.
   assert.equal(read({ title: '<img src=x onerror=alert(1)> Maison 90 m² Duingt (74410)' }).payload.postal, '74410');
 });
+
+test('« superficie : 174 m² » est un libellé sûr, lu avant « Maison - 4 Pièces - 170 m² » d’un autre bien', () => {
+  const r = extract(
+    page(`<div class="header-bien"><p class="superficie-bien"><span>superficie : </span>174 m²</p><p class="terrain-bien"><span>terrain : </span>950 m²</p></div>
+      <p>${'Maison familiale au calme, vue sur le lac et les montagnes. '.repeat(8)}</p>
+      <div class="bien-vente"><a href="/acheter/maison-saint-jorioz-50"><span>1 290 000 €</span><span>Maison - 4 Pièces - 170 m²</span></a></div>`)
+  );
+  assert.equal(r.surface, 174);
+});

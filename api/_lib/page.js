@@ -34,7 +34,11 @@ function listingText(doc, url) {
   if (!doc.body) return '';
   const here = new URL(url);
   const body = doc.body.cloneNode(true);
-  for (const el of [...body.querySelectorAll('nav, footer, aside, form, script, style, noscript')]) el.remove();
+  for (const el of [...body.querySelectorAll('nav, footer, aside, script, style, noscript')]) el.remove();
+  // Formulaires (recherche, contact) écartés, sauf celui qui enveloppe toute la page (sites
+  // ASP.NET : la fiche entière est dans <form id="aspnetForm">).
+  const total = norm(body.textContent).length;
+  for (const el of [...body.querySelectorAll('form')]) if (body.contains(el) && norm(el.textContent).length < total / 2) el.remove();
   for (const el of [...body.querySelectorAll('header')]) if (!el.closest('main, article')) el.remove();
   for (const el of [...body.querySelectorAll('[class], [id]')]) {
     const name = `${typeof el.className === 'string' ? el.className : ''} ${el.id || ''}`;

@@ -263,6 +263,8 @@
   const SURFACE_PATTERNS = [
     new RegExp(`surface\\s+(?:habitable|hab\\.?|loi\\s+carrez|carrez|totale\\s+habitable)\\s*(?:\\(m\\s*[²2]\\))?\\s*[:\\-–]?\\s*(?:de\\s+)?${APPROX}${NUM}${M2}`, 'i'),
     new RegExp(`${NUM}${M2}\\s*(?:habitables?|hab\\.?|carrez)`, 'i'),
+    // « superficie : 174 m² » (Compagnie Immobilière du Lac) ; « superficie du terrain » n'a pas ce deux-points.
+    new RegExp(`\\bsuperficie\\s*(?:habitable\\s*)?(?:\\(m\\s*[²2]\\))?\\s*[:\\-–]\\s*${APPROX}${NUM}${M2}`, 'i'),
   ];
   // Formulations ambiguës : lues seulement si ni les libellés sûrs ni le titre ne donnent la surface.
   const SURFACE_WEAK_PATTERNS = [

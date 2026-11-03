@@ -16,6 +16,13 @@ function slugOf(s) {
     .replace(/^-+|-+$/g, '');
 }
 
+const withoutAccents = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+// Secteurs de la Compagnie Immobilière du Lac (menu « Acheter » de son site, 03/11/2026).
+const COMPIMMO_SECTORS = new Set(['annecy', 'argonay', 'doussard', 'duingt', 'entrevernes', 'faverges', 'faverges-seythenex', 'lathuile', 'leschaux', 'saint-jorioz', 'sevrier']);
+// Pages de Propriétés du Lac qui ne sont pas des biens (menu et pied de page, 03/11/2026).
+const PDL_PAGES = new Set(['nos-biens', 'biens-en-vente', 'biens-vendus', 'agence', 'notre-equipe', 'nos-conseils', 'estimation', 'agence-menthon-saint-bernard', 'coups-de-coeur', 'contact', 'honoraires', 'mentions-legales', 'feed']);
+
 const typesOf = (type) => (type ? [type] : TYPES);
 const withParam = (name) => (url, n) => {
   const u = new URL(url);
@@ -80,6 +87,36 @@ const SOURCES = [
     pageUrl: withParam('page'),
     isListing: (u) => /^\/fr\/propriete\/vente\+/.test(u.pathname),
     typeOf: (url) => (/vente\+appartement\+/.test(url) ? 'appartement' : /vente\+terrain\+/.test(url) ? 'terrain' : 'maison'),
+  },
+  {
+    // Agence de Saint-Jorioz : une liste par secteur (ses communes du lac), 18 annonces par
+    // page, le type en tête de l'adresse de l'annonce (« /acheter/terrain-saint-jorioz-95 »).
+    id: 'compimmo',
+    label: 'Compagnie Immobilière du Lac',
+    host: 'www.compimmo.com',
+    departments: ['74'],
+    pageSize: 18,
+    listUrls: (c) => (COMPIMMO_SECTORS.has(slugOf(c.nom)) ? [`https://www.compimmo.com/acheter?secteur=${encodeURIComponent(withoutAccents(c.nom))}`] : []),
+    pageUrl: withParam('p'),
+    isListing: (u) => /^\/acheter\/(maison|appartement|terrain)-[a-z0-9-]+-\d+$/.test(u.pathname),
+    typeOf: (url) => (/\/acheter\/appartement-/.test(url) ? 'appartement' : /\/acheter\/terrain-/.test(url) ? 'terrain' : 'maison'),
+  },
+  {
+    // Agence de Saint-Jorioz et Menthon-Saint-Bernard : tous ses biens sur une page, chacun sur
+    // une page du site à son nom (« /la-canopee/ »). Les pages de l'agence elle-même sont
+    // écartées par leur nom ; le type se lit dans la carte (« Type de bien Appartement T3 »).
+    id: 'proprietesdulac',
+    label: 'Propriétés du Lac',
+    host: 'proprietesdulacdannecy.fr',
+    departments: ['74'],
+    pageSize: null,
+    listUrls: () => ['https://proprietesdulacdannecy.fr/biens-en-vente/'],
+    pageUrl: () => null,
+    isListing: (u) => {
+      const m = /^\/(?:biens-en-vente\/)?([a-z0-9-]+)\/$/.exec(u.pathname);
+      return !!m && !PDL_PAGES.has(m[1]);
+    },
+    typeOf: (url, text) => guessType(`${url} ${text}`),
   },
 ];
 

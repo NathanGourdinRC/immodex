@@ -107,3 +107,25 @@ test('terrain écrit « 350 m<sup>2</sup> » dans la fiche détaillée', () => {
     <p>Prix : 284 000 €</p><p>${'Charmante maison flamande avec jardin. '.repeat(8)}</p></main></body></html>`;
   assert.equal(readListing(html, 'https://www.maesimmobilier.fr/bien-immobilier/x/').terrain, 350);
 });
+
+// Fiche de la Compagnie Immobilière du Lac (relevée le 03/11/2026) : site ASP.NET, toute la page
+// dans un formulaire, et des cartes d'autres biens (« Maison - 4 Pièces - 170 m² ») en bas.
+const COMPIMMO = `<!doctype html><html><head></head><body><form method=post action="/acheter/maison-saint-jorioz-184" id=aspnetForm>
+<div class="ctLarge dynamique-content-bien"><div class=header-bien><div class=info-descriptif><div class=title-descriptif>Saint-Jorioz</div><span class=price>1 150 000 €</span></div>
+<div class=caracteristique-bien><div class=left-caracteristique><p class=superficie-bien><span>superficie : </span>174 m²</p><p class=terrain-bien><span>terrain : </span>950 m²</p><p class=pieces-bien><span>Nbre de pièces : </span>5</p></div>
+<div class=right-caracteristique><p class=reference-bien><span>Référence : </span>2026/543</p></div></div></div>
+<p>${'Maison familiale au calme, vue sur le lac et les montagnes, proche des commerces. '.repeat(8)}</p>
+<p>consommation (énergie primaire) 206 kWh/m²/an émissions 7* kg CO₂/m²/an</p></div>
+<div class=ctLarge id=ctl00_cphPanMilieu_panAutresBien><h2>Vous pourriez être intéressés par ces propriétés</h2>
+<div class="bien-vente agreement-simple"><a href="https://www.compimmo.com/acheter/maison-saint-jorioz-50"><div class=description-vente><div class=info-descriptif><div class=title-descriptif>Saint-Jorioz</div><span class=price>1 290 000 €</span></div><div class=surface-descriptif><span class=type>Maison - 4 Pièces - 170 m²</span></div></div></a></div>
+<div class="bien-vente agreement-simple"><a href="https://www.compimmo.com/acheter/appartement-saint-jorioz-181"><div class=description-vente><div class=info-descriptif><div class=title-descriptif>Saint-Jorioz</div><span class=price>1 175 000 €</span></div><div class=surface-descriptif><span class=type>Appartement - 5 Pièces - 170 m² - Terrain 2 000 m²</span></div></div></a></div>
+</div></form></body></html>`;
+
+test('page dans un formulaire ASP.NET : la fiche est lue, pas les cartes des autres biens', () => {
+  const r = readListing(COMPIMMO, 'https://www.compimmo.com/acheter/maison-saint-jorioz-184');
+  assert.equal(r.surface, 174);
+  assert.equal(r.terrain, 950);
+  assert.equal(r.pieces, 5);
+  assert.equal(r.price, 1150000);
+  assert.equal(r.energyConsumption, 206);
+});
