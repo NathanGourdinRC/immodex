@@ -135,6 +135,19 @@ function groupsInZone(groups, zone) {
   return (groups || []).filter((g) => (g.sightings || []).some((s) => fpInZone(s.fp, zone)));
 }
 
+// Adresse d'un bien choisie à la main (piste du registre vérifiée sur Street View, ou adresse
+// saisie) : coordonnées en France métropolitaine, sinon rien. `{ none: true }` : bien
+// introuvable, laissé sans point.
+function cleanPlace(place, now) {
+  if (!place || typeof place !== 'object') return null;
+  if (place.none) return { none: true, at: now };
+  const lat = Number(place.lat);
+  const lon = Number(place.lon);
+  const address = String(place.address || '').trim().slice(0, 200);
+  if (!address || !isFinite(lat) || !isFinite(lon) || lat < 41 || lat > 51.5 || lon < -5.5 || lon > 10) return null;
+  return { address, lat, lon, by: place.by === 'saisie' ? 'saisie' : 'piste', at: now };
+}
+
 // Le suivi (statut, note) est rangé sous l'adresse de la première annonce du bien :
 // elle ne change pas quand le bien est republié ailleurs.
 const trackingKey = (group) => (group && group.sightings && group.sightings[0] ? group.sightings[0].url : null);
@@ -205,16 +218,18 @@ function createZoneStore(storageArea) {
       const data = await readKey(TRACKING_KEY, {});
       return data && typeof data === 'object' ? data : {};
     },
-    setTracking(url, { status, note }, now = Date.now()) {
+    setTracking(url, { status, note, place }, now = Date.now()) {
       return write(TRACKING_KEY, {}, (data) => {
         const all = { ...(data || {}) };
         const current = all[url] || {};
         const next = {
           status: status !== undefined ? (STATUSES[status] ? status : null) : current.status || null,
           note: note !== undefined ? String(note || '').slice(0, 1000) : current.note || '',
-          updatedAt: now,
         };
-        if (!next.status && !next.note) delete all[url];
+        const kept = place !== undefined ? cleanPlace(place, now) : current.place || null;
+        if (kept) next.place = kept;
+        next.updatedAt = now;
+        if (!next.status && !next.note && !next.place) delete all[url];
         else all[url] = next;
         return { data: all, value: all[url] || null };
       });

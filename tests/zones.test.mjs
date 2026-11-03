@@ -50,6 +50,28 @@ test('biens de la zone et clé de suivi stable (première annonce du bien)', () 
   assert.equal(trackingKey(inside[0]), 'https://a.fr/1');
 });
 
+test('adresse choisie à la main : gardée avec le suivi, effacée par null, coordonnées vérifiées', async () => {
+  const store = createZoneStore(memoryStorage());
+  const url = 'https://www.deleu.fr/vente/1';
+  // Seule information du suivi : l'entrée reste.
+  await store.setTracking(url, { place: { address: ' 19 Rue Rubens 59118 Wambrechies ', lat: 50.687, lon: 3.04, by: 'piste' } }, 1000);
+  assert.deepEqual((await store.tracking())[url], { status: null, note: '', place: { address: '19 Rue Rubens 59118 Wambrechies', lat: 50.687, lon: 3.04, by: 'piste', at: 1000 }, updatedAt: 1000 });
+  // Statut et note posés ensuite : l'adresse choisie ne bouge pas.
+  await store.setTracking(url, { status: 'favori' }, 2000);
+  assert.equal((await store.tracking())[url].place.address, '19 Rue Rubens 59118 Wambrechies');
+  await store.setTracking(url, { status: null, place: null }, 3000);
+  assert.equal((await store.tracking())[url], undefined);
+  // « Je ne le trouve pas » : retenu, sans point.
+  await store.setTracking(url, { place: { none: true } }, 4000);
+  assert.deepEqual((await store.tracking())[url].place, { none: true, at: 4000 });
+  // Coordonnées absentes ou hors de France : rien n'est posé.
+  await store.setTracking('https://x.fr/2', { place: { address: 'Quelque part', lat: 'abc', lon: 3 } }, 5000);
+  await store.setTracking('https://x.fr/3', { place: { address: 'Ailleurs', lat: 10, lon: 3 } }, 5000);
+  const all = await store.tracking();
+  assert.equal(all['https://x.fr/2'], undefined);
+  assert.equal(all['https://x.fr/3'], undefined);
+});
+
 test('stockage : création, modification, visite précédente, suivi effacé quand vide', async () => {
   const store = createZoneStore(memoryStorage());
   const z = await store.save({ communes: [LILLE], type: 'maison' }, 1000);

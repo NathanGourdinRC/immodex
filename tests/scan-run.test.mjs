@@ -192,6 +192,80 @@ test('page sans code postal (Maes) : l’adresse est cherchée dans la commune d
   assert.equal([...(await listingsOf(redis, '59636')).values()][0].city, 'Jardin Sud-Est');
 });
 
+test('annonce déjà lue sans adresse sûre : pistes cherchées une fois, sans relire sa page', async () => {
+  const redis = fakeRedis();
+  const w = world({ 'https://alpha.test/vente/59636': results('alpha', [['a1', '300 000 €'], ['a2', '310 000 €']]), 'https://beta.test/vente/59636': results('beta', []) });
+  await withSearch(redis, w.now());
+  const read = { source: 'alpha', insee: '59636', type: 'maison', price: 300000, prices: [], firstSeen: w.now(), lastSeen: w.now(), missed: 0, removedAt: null, detail: true, readerVersion: 3, postal: null, city: 'Wambrechies', surface: 90, energyConsumption: 211 };
+  await saveListings(redis, '59636', [
+    { ...read, id: 'alpha:/annonce/a1', url: 'https://alpha.test/annonce/a1' },
+    { ...read, id: 'alpha:/annonce/a2', url: 'https://alpha.test/annonce/a2', address: '12 Rue de Quesnoy 59118 Wambrechies', lat: 50.686, lon: 3.048 },
+  ]);
+  const leads = [{ address: '17 Rue Victor Hugo 59118 Wambrechies', lat: 50.686, lon: 3.041, score: 85, count: 1 }];
+  const asked = [];
+  const lookup = async (l) => (asked.push([l.surface, l.postal]), { leads });
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl, lookup });
+  // Seule l'annonce sans adresse est cherchée, dans la commune du scan ; aucune page d'annonce relue.
+  assert.deepEqual(asked, [[90, '59118']]);
+  assert.ok(!w.asked.some((u) => u.includes('/annonce/')));
+  const a1 = (await listingsOf(redis, '59636')).get('alpha:/annonce/a1');
+  assert.deepEqual(a1.leads, leads);
+  assert.equal(a1.lookupVersion, 2);
+  w.advance(DAY);
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl, lookup });
+  assert.equal(asked.length, 1);
+});
+
+test('registre des DPE injoignable : pistes cherchées de nouveau au passage suivant, une fois par passage', async () => {
+  const redis = fakeRedis();
+  const w = world({ 'https://alpha.test/vente/59636': results('alpha', [['a1', '300 000 €']]), 'https://beta.test/vente/59636': results('beta', []) });
+  await withSearch(redis, w.now());
+  const reader = (html, url) => ({ ...readListingImpl(html, url), energyConsumption: 211 });
+  let calls = 0;
+  const lookup = async () => (calls++, calls === 1 ? null : { leads: null });
+  // Premier passage : page lue, registre muet ; une seule demande malgré l'étape des pistes.
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl: reader, lookup });
+  assert.equal(calls, 1);
+  assert.equal((await listingsOf(redis, '59636')).get('alpha:/annonce/a1').lookupVersion, undefined);
+  w.advance(DAY);
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl: reader, lookup });
+  assert.equal(calls, 2);
+  assert.equal((await listingsOf(redis, '59636')).get('alpha:/annonce/a1').lookupVersion, 2);
+});
+
+test('registre muet trois passages de suite : la recherche est abandonnée, l’annonce n’est plus cherchée', async () => {
+  const redis = fakeRedis();
+  const w = world({ 'https://alpha.test/vente/59636': results('alpha', [['a1', '300 000 €']]), 'https://beta.test/vente/59636': results('beta', []) });
+  await withSearch(redis, w.now());
+  const reader = (html, url) => ({ ...readListingImpl(html, url), energyConsumption: 211 });
+  let calls = 0;
+  const lookup = async () => (calls++, null);
+  for (let i = 0; i < 4; i++) {
+    await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl: reader, lookup });
+    w.advance(DAY);
+  }
+  assert.equal(calls, 3);
+  const a1 = (await listingsOf(redis, '59636')).get('alpha:/annonce/a1');
+  assert.equal(a1.lookupVersion, 2);
+  assert.equal(a1.leads, null);
+});
+
+test('ventes DVF des annonces retirées vérifiées avant les pistes d’adresse (qui peuvent prendre tout le temps restant)', async () => {
+  const redis = fakeRedis();
+  const w = world({ 'https://alpha.test/vente/59636': results('alpha', []), 'https://beta.test/vente/59636': results('beta', []) });
+  await withSearch(redis, w.now());
+  const removedAt = w.now() - 60 * DAY;
+  await saveListings(redis, '59636', [
+    retired('r1', '9 Rue X 59118 Wambrechies', removedAt),
+    { id: 'alpha:/annonce/a1', source: 'alpha', url: 'https://alpha.test/annonce/a1', insee: '59636', type: 'maison', price: 300000, prices: [], firstSeen: w.now(), lastSeen: w.now(), missed: 0, removedAt: null, detail: true, readerVersion: 3, postal: '59118', surface: 90, energyConsumption: 211 },
+  ]);
+  const order = [];
+  const loadSales = async () => (order.push('ventes'), []);
+  const lookup = async () => (order.push('pistes'), { leads: null });
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl, lookup, loadSales });
+  assert.deepEqual(order, ['ventes', 'pistes']);
+});
+
 // ─── Défauts relevés par la relecture finale ───
 
 const paged = (id, size) => ({ ...makeSource(id), pageSize: size, pageUrl: (url, n) => `${url}?page=${n}` });

@@ -30,6 +30,12 @@ const DETAIL_FIELDS = ['surface', 'pieces', 'chambres', 'terrain', 'garage', 'ph
 // Version 3 : DPE des pages Maes (lettre, valeurs, date) et date du DPE pour l'adresse.
 const READER_VERSION = 3;
 const needsReading = (l) => !l.removedAt && (!l.detail || (l.readerVersion || 1) < READER_VERSION);
+// Version de la recherche d'adresse : une annonce lue, sans adresse sûre, cherchée par une
+// version plus ancienne est cherchée de nouveau dans le registre des DPE, sans relire sa page.
+// Version 2 : pistes d'adresse gardées (vérifiées par Nathan) et adresse sûre par immeuble.
+const LOOKUP_VERSION = 2;
+const needsLookup = (l) => !l.removedAt && l.detail && !l.address && (l.lookupVersion || 1) < LOOKUP_VERSION;
+const LOOKUP_TRIES = 3; // registre muet (délai, panne) trois passages de suite : abandon
 
 const idOf = (source, url) => `${source.id}:${new URL(url).pathname}`;
 
@@ -133,6 +139,24 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
     const c = communes.find((x) => x.code === insee);
     if (l.postal || !c) return l;
     return { ...l, postal: c.codesPostaux && c.codesPostaux.length === 1 ? c.codesPostaux[0] : null, city: c.nom };
+  };
+
+  // Recherche d'adresse, une fois par passage et par annonce. Sans réponse (délai, registre
+  // injoignable), l'annonce garde sa version et sera cherchée de nouveau au passage suivant,
+  // trois fois au plus : une recherche toujours trop lente ne bloque pas les autres.
+  const lookedUp = new Set();
+  const lookUp = async (l, insee) => {
+    lookedUp.add(l.id);
+    const found = await withTimeout(lookup(forLookup(l, insee)), LOOKUP_MS);
+    if (found) {
+      Object.assign(l, found);
+      delete l.lookupTries;
+    } else {
+      l.lookupTries = (l.lookupTries || 0) + 1;
+      if (l.lookupTries < LOOKUP_TRIES) return;
+      l.leads = null;
+    }
+    l.lookupVersion = LOOKUP_VERSION;
   };
 
   const queue = await readQueue(redis);
@@ -271,7 +295,7 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
             l.price = d.price;
             l.prices = [{ at: now(), price: d.price }];
           }
-          if (lookup && now() < detailsDeadline) Object.assign(l, (await withTimeout(lookup(forLookup(l, item.insee)), LOOKUP_MS)) || {});
+          if (lookup && now() < detailsDeadline) await lookUp(l, item.insee);
           summary.details++;
         } catch (err) {
           console.error('[scan] page d’annonce illisible', item.url, err && err.message);
@@ -323,6 +347,19 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
     }
     meta._sales = { lastCheck: start };
     await saveSourceMeta(redis, commune.code, meta);
+  }
+
+  // Annonces déjà lues dont l'adresse a été cherchée par une version plus ancienne : de
+  // nouveau, dans le temps restant (registre des DPE seulement, aucune page d'agence), après
+  // les ventes DVF pour ne pas leur prendre leur temps.
+  for (const commune of lookup ? communes : []) {
+    const listings = await listingsFor(commune.code);
+    for (const l of listings.values()) {
+      if (now() >= detailsDeadline) break;
+      if (!needsLookup(l) || lookedUp.has(l.id)) continue;
+      await lookUp(l, commune.code);
+      await saveListings(redis, commune.code, [l]);
+    }
   }
 
   // Refus pendant les pages d'annonce : un échec de plus pour la source, si ses pages de

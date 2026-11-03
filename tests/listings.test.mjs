@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { groupListings, statusOf, listingFacts, trackingKeyOf, negotiation, negotiationText, saleOf, shortPrice } from '../src/common/listings.js';
+import { groupListings, statusOf, listingFacts, trackingKeyOf, negotiation, negotiationText, saleOf, shortPrice, placeOf, needsPlace } from '../src/common/listings.js';
 import { handleListings } from '../api/listings.js';
 import { fakeRedis } from './helpers/fake-redis.mjs';
 
@@ -104,4 +104,43 @@ test('bien encore en vente quelque part : aucune vente affichée', () => {
   const groups = groupListings([gone, live]);
   assert.equal(groups.length, 1);
   assert.equal(saleOf(groups[0]), null);
+});
+
+test('pistes d’adresse d’un bien publié sur deux sites : une par adresse, la meilleure correspondance gardée', () => {
+  const lead = (address, score) => ({ address, lat: 50.68, lon: 3.04, score, count: 1 });
+  const a = base({ id: 'paruvendu:/1', source: 'paruvendu', url: 'https://www.paruvendu.fr/immobilier/vente/maison/1', surface: 100, energyConsumption: 234, gesEmission: 29, leads: [lead('Rue des Piqurières 59118 Wambrechies', 15)] });
+  const b = base({ id: 'lesiteimmo:/2', source: 'lesiteimmo', url: 'https://www.lesiteimmo.com/acheter/maison/2', surface: 100, energyConsumption: 234, gesEmission: 29, leads: [lead('Rue des Piqurieres 59118 Wambrechies', 30), lead('8 Rue Haute 59118 Wambrechies', 20)] });
+  const [g] = groupListings([a, b]);
+  const f = listingFacts(g);
+  assert.deepEqual(f.leads.map((l) => [l.address, l.score]), [['Rue des Piqurieres 59118 Wambrechies', 30], ['8 Rue Haute 59118 Wambrechies', 20]]);
+  assert.equal(f.hasDpe, true);
+  // Adresse sûre sur l'un des sites : plus de pistes.
+  const [placed] = groupListings([a, { ...b, address: '4 Rue des Piqurières 59118 Wambrechies', lat: 50.68, lon: 3.04 }]);
+  assert.equal(listingFacts(placed).leads, null);
+});
+
+test('point d’un bien : adresse du registre, sinon celle choisie à la main ; à placer sinon', () => {
+  const f = { lat: null, lon: null, address: null };
+  assert.equal(placeOf(f, {}), null);
+  assert.deepEqual(placeOf(f, { place: { address: '19 Rue Rubens', lat: 50.687, lon: 3.04, by: 'piste' } }), { address: '19 Rue Rubens', lat: 50.687, lon: 3.04, by: 'piste' });
+  // L'adresse vérifiée par Nathan l'emporte sur celle que le robot trouverait plus tard.
+  assert.deepEqual(placeOf({ address: '12 Rue de Quesnoy', lat: 50.686, lon: 3.048 }, {}), { address: '12 Rue de Quesnoy', lat: 50.686, lon: 3.048, by: 'registre' });
+  assert.deepEqual(placeOf({ address: '12 Rue de Quesnoy', lat: 50.686, lon: 3.048 }, { place: { address: '19 Rue Rubens', lat: 50.687, lon: 3.04, by: 'piste' } }), { address: '19 Rue Rubens', lat: 50.687, lon: 3.04, by: 'piste' });
+  assert.equal(placeOf(f, { place: { none: true } }), null);
+  assert.equal(needsPlace(f, {}, { status: null }), true);
+  assert.equal(needsPlace(f, { place: { none: true } }, { status: null }), false);
+  assert.equal(needsPlace(f, { status: 'ecarte' }, { status: null }), false);
+  assert.equal(needsPlace(f, {}, { status: 'retire' }), false);
+  assert.equal(needsPlace({ lat: 50.68, lon: 3.04 }, {}, { status: null }), false);
+});
+
+test('pistes pas encore cherchées par le robot (version de la recherche d’adresse) : signalé, pas « aucune piste »', () => {
+  const read = { surface: 90, energyConsumption: 211, gesEmission: 40 };
+  const [waiting] = groupListings([base({ id: 'deleu:/1', source: 'deleu', url: 'https://www.deleu-immobilier.fr/1', ...read })]);
+  assert.equal(listingFacts(waiting).leadsPending, true);
+  const [done] = groupListings([base({ id: 'deleu:/1', source: 'deleu', url: 'https://www.deleu-immobilier.fr/1', ...read, lookupVersion: 2, leads: null })]);
+  assert.equal(listingFacts(done).leadsPending, false);
+  // Sans DPE lu : rien à chercher dans le registre.
+  const [noDpe] = groupListings([base({ id: 'maes:/2', source: 'maes', url: 'https://www.maesimmobilier.fr/2', surface: 170 })]);
+  assert.equal(listingFacts(noDpe).leadsPending, false);
 });

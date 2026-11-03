@@ -14,6 +14,15 @@ async function fetchListings(codes, { fetchImpl = fetch } = {}) {
   return res.json();
 }
 
+// Adresse comparable : sans accents, sans majuscules, espaces réduits.
+const addressKey = (a) =>
+  String(a || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+
 const close = (a, b, tolerance) => a != null && b != null && Math.abs(a - b) <= tolerance;
 
 // Même bien : mêmes valeurs de DPE et surface à 1 m² près (sûr), ou à défaut même commune,
@@ -66,12 +75,46 @@ function listingFacts(g) {
   const live = g.listings.filter((l) => !l.removedAt);
   const prices = (live.length ? live : g.listings).map((l) => l.price).filter(Boolean);
   const fields = ['type', 'surface', 'pieces', 'chambres', 'terrain', 'garage', 'title', 'photo', 'postal', 'city', 'address', 'lat', 'lon', 'energyClass'];
+  const facts = Object.fromEntries(fields.map((f) => [f, first(g, f)]));
   return {
-    ...Object.fromEntries(fields.map((f) => [f, first(g, f)])),
+    ...facts,
     price: prices.length ? Math.min(...prices) : null,
     firstSeen: Math.min(...g.listings.map((l) => l.firstSeen)),
     removed: g.listings.every((l) => l.removedAt),
+    hasDpe: g.listings.some((l) => l.energyConsumption != null || l.energyClass),
+    leads: facts.address ? null : leadsOfGroup(g),
+    // Annonce lue, avec un DPE, pas encore cherchée par la recherche d'adresse actuelle du robot
+    // (LOOKUP_VERSION de api/_lib/scan-run.js) : ses pistes arrivent au prochain passage.
+    leadsPending: !facts.address && g.listings.some((l) => !l.removedAt && (l.energyConsumption != null || l.energyClass) && (l.lookupVersion || 1) < 2),
   };
+}
+
+// Pistes d'adresse du robot (api/_lib/address.js) pour un bien publié sur plusieurs sites :
+// une par adresse, avec la meilleure correspondance.
+function leadsOfGroup(g) {
+  const byAddress = new Map();
+  for (const lead of g.listings.flatMap((l) => l.leads || [])) {
+    const k = addressKey(lead.address);
+    if (!byAddress.has(k) || byAddress.get(k).score < lead.score) byAddress.set(k, lead);
+  }
+  const leads = [...byAddress.values()].sort((a, b) => b.score - a.score);
+  return leads.length ? leads : null;
+}
+
+// Point d'un bien sur la carte : l'adresse que Nathan a choisie (piste vérifiée sur Street View
+// ou adresse saisie, rangée avec son suivi), sinon celle retrouvée par le robot.
+function placeOf(f, track) {
+  const p = track && track.place;
+  if (p && p.lat != null && p.lon != null) return { address: p.address, lat: p.lat, lon: p.lon, by: p.by };
+  if (f.lat != null && f.lon != null) return { address: f.address, lat: f.lat, lon: f.lon, by: 'registre' };
+  return null;
+}
+
+// Bien encore en vente, ni écarté ni laissé sans point (« introuvable »), et sans point.
+function needsPlace(f, track, st) {
+  if (st.status === 'retire' || (track && track.status === 'ecarte')) return false;
+  if (track && track.place && track.place.none) return false;
+  return !placeOf(f, track);
 }
 
 function statusOf(g, previousVisit, now = Date.now()) {
@@ -148,4 +191,4 @@ function negotiationText(n) {
   return `Écart médian entre le premier prix relevé et le prix signé : ${n.median} % (${n.count} ventes reliées${how}). Le prix affiché comprend souvent les honoraires d’agence, que le prix de l’acte n’inclut pas.`;
 }
 
-export { LISTINGS_ENDPOINT, SOURCE_LABELS, urlKey, trackingKeyOf, saleOf, negotiation, negotiationText, shortPrice, fetchListings, groupListings, listingFacts, statusOf, sameProperty };
+export { LISTINGS_ENDPOINT, SOURCE_LABELS, addressKey, placeOf, needsPlace, urlKey, trackingKeyOf, saleOf, negotiation, negotiationText, shortPrice, fetchListings, groupListings, listingFacts, statusOf, sameProperty };

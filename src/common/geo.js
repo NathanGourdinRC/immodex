@@ -183,4 +183,22 @@ async function banReverse(lon, lat) {
   return value;
 }
 
-export { resolveInseeCodes, resolvePostalCodes, banReverse, normalizeCity, stripAccents };
+// Adresse saisie par Nathan pour placer un bien : cherchée dans la Base Adresse Nationale,
+// dans la commune du bien seulement. Numéro, rue ou lieu-dit retenus ; une réponse vague (la commune
+// entière) ou peu sûre ne place rien. Service injoignable : erreur, pour un message distinct.
+async function banSearch(q, citycode, { fetchImpl = fetch } = {}) {
+  // Le service refuse moins de 3 caractères et une ponctuation en tête : introuvable, pas une panne.
+  const text = String(q || '').replace(/^[^\p{L}\p{N}]+/u, '').trim();
+  if (text.length < 3) return null;
+  const url = `${BAN_BASE}/search/?q=${encodeURIComponent(text)}&citycode=${encodeURIComponent(citycode)}&limit=1&autocomplete=0`;
+  const res = await fetchImpl(url);
+  if (!res.ok) throw new Error(`BAN ${res.status}`);
+  const data = await res.json();
+  const f = Array.isArray(data && data.features) ? data.features[0] : null;
+  const p = f && f.properties;
+  if (!p || !['housenumber', 'street', 'locality'].includes(p.type) || !(p.score >= 0.5)) return null;
+  const [lon, lat] = f.geometry.coordinates;
+  return { address: p.label, lat, lon };
+}
+
+export { resolveInseeCodes, resolvePostalCodes, banReverse, banSearch, normalizeCity, stripAccents };

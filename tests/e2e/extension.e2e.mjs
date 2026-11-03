@@ -444,3 +444,82 @@ test('fil : annonces scannées, nouveautés, baisses et retraits, Garder', async
   assert.ok((await page.textContent('.imx-sales-table thead')).includes('DPE'));
   await page.close();
 });
+
+test('fil : biens sans point, pistes vérifiées sur Street View, adresse choisie ou saisie', async () => {
+  const now = Date.now();
+  const DAY = 24 * 3600 * 1000;
+  const l = (o) => ({ insee: '59636', type: 'maison', missed: 0, removedAt: null, detail: true, lastSeen: now - DAY, firstSeen: now - 5 * DAY, ...o });
+  const lead = (address, lat, score) => ({ address, lat, lon: 3.04, score, count: 1, surface: 89, date: '2026-09-23', diffs: ['surface 88.5 m² (annonce : 90)'] });
+  const listings = [
+    l({ id: 'orpi:/annonce-vente-maison-pistes-e2e/', source: 'orpi', url: 'https://www.orpi.com/annonce-vente-maison-pistes-e2e/', price: 389000, prices: [], surface: 120, address: '12 Rue de Quesnoy 59118 Wambrechies', lat: 50.6862, lon: 3.0489 }),
+    l({ id: 'deleu:/vente/pistes-e2e', source: 'deleu', url: 'https://www.deleu-immobilier.fr/vente/pistes-e2e', price: 312000, prices: [], surface: 90, energyConsumption: 211, gesEmission: 40, leads: [lead('17 Rue Victor Hugo 59118 Wambrechies', 50.6864, 85), lead('19 Rue Rubens 59118 Wambrechies', 50.6871, 85)] }),
+    l({ id: 'maes:/bien-immobilier/pistes-e2e/', source: 'maes', url: 'https://www.maesimmobilier.fr/bien-immobilier/pistes-e2e/', price: 450000, prices: [], surface: 170, city: 'Jardin Sud-Est' }),
+  ];
+  const page = await context.newPage();
+  await page.route('https://immodex.vercel.app/api/listings**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, listings, sources: {}, lastRun: now - DAY }) }));
+  await page.route('https://immodex.vercel.app/api/dvf**', (route) => route.fulfill({ status: 503, body: 'indisponible' }));
+  // Contour de la commune inutile ici : réponse immédiate, même quand le service public traîne.
+  await page.route('https://geo.api.gouv.fr/**', (route) => route.fulfill({ status: 503, body: 'indisponible' }));
+  let banQuery = null;
+  await page.route('https://api-adresse.data.gouv.fr/search/**', (route) => {
+    banQuery = new URL(route.request().url()).searchParams;
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ features: [{ geometry: { coordinates: [3.0452, 50.6851] }, properties: { label: '8 Rue de la Gare 59118 Wambrechies', type: 'housenumber', score: 0.93 } }] }) });
+  });
+  const openFil = async () => {
+    await page.goto(`chrome-extension://${extId}/src/dashboard/dashboard.html`);
+    await page.click('#zone-tabs button:has-text("Wambrechies")');
+    await page.click('.imx-views button:has-text("Fil")');
+    await page.waitForSelector('.imx-annonce', { timeout: 30000 });
+  };
+  const pins = () => page.locator('.imx-price-pin:not(.is-legend)').count();
+  await openFil();
+  const alert = page.locator('.imx-to-place');
+  await alert.filter({ hasText: /2 annonces sans point sur la carte/ }).waitFor({ timeout: 10000 });
+  // Ville mal lue sur la page (Maes) : la carte montre la commune de l'annonce.
+  assert.match(await page.locator('.imx-annonce').filter({ hasText: /450\s000/ }).textContent(), /Wambrechies · adresse non retrouvée/);
+  const deleuCard = page.locator('.imx-annonce').filter({ hasText: /312\s000/ });
+  // Écarté (carte affichée sans pistes au chargement suivant), puis gardé de nouveau : le bien
+  // rejoint les biens à placer, pistes comprises.
+  await deleuCard.locator('button:has-text("Écarter")').click();
+  await alert.filter({ hasText: /1 annonce sans point sur la carte/ }).waitFor({ timeout: 5000 });
+  await openFil();
+  await alert.filter({ hasText: /1 annonce sans point sur la carte/ }).waitFor({ timeout: 10000 });
+  await page.click('button:has-text("Afficher les écartées")');
+  assert.equal(await deleuCard.locator('.imx-lead').count(), 0);
+  await deleuCard.locator('button:has-text("Garder")').click();
+  await alert.filter({ hasText: /2 annonces sans point sur la carte/ }).waitFor({ timeout: 5000 });
+  assert.equal(await deleuCard.locator('.imx-lead').count(), 2);
+  await deleuCard.locator('button:has-text("Gardé")').click();
+  await page.click('button:has-text("Masquer les écartées")');
+  // « Les placer » : seuls les biens sans point restent, pistes dépliées.
+  await alert.locator('button:has-text("Les placer")').click();
+  assert.equal(await page.locator('.imx-annonce:visible').count(), 2);
+  const deleu = page.locator('.imx-annonce').filter({ hasText: /312\s000/ });
+  assert.equal(await deleu.locator('.imx-leads[open] .imx-lead').count(), 2);
+  assert.match(await deleu.locator('.imx-lead').nth(1).locator('a:has-text("Street View")').getAttribute('href'), /map_action=pano&viewpoint=50\.687100,3\.040000/);
+  assert.match(await deleu.textContent(), /logement de 89 m² · DPE du 23\/09\/2026/);
+  assert.match(await page.locator('.imx-annonce').filter({ hasText: /450\s000/ }).textContent(), /ne donne pas les chiffres de son DPE/);
+  // Piste vérifiée : la carte du Fil le dit, le point apparaît, la carte reste à l'écran.
+  assert.equal(await pins(), 1);
+  await deleu.locator('.imx-lead').nth(1).locator('button:has-text("C’est ici")').click();
+  await deleu.filter({ hasText: /19 Rue Rubens 59118 Wambrechies · adresse choisie par toi/ }).waitFor({ timeout: 5000 });
+  assert.equal(await pins(), 2);
+  assert.ok(await deleu.isVisible());
+  await alert.filter({ hasText: /1 annonce sans point sur la carte/ }).waitFor({ timeout: 5000 });
+  // Adresse saisie : cherchée dans la commune du bien.
+  const maes = page.locator('.imx-annonce').filter({ hasText: /450\s000/ });
+  await maes.locator('.imx-lead-input input').fill('8 rue de la gare');
+  await maes.locator('button:has-text("Placer")').click();
+  await maes.filter({ hasText: /8 Rue de la Gare 59118 Wambrechies · adresse saisie par toi/ }).waitFor({ timeout: 5000 });
+  assert.equal(banQuery.get('citycode'), '59636');
+  assert.equal(await pins(), 3);
+  assert.ok(await alert.isHidden());
+  // Choix gardés après rechargement ; « Annuler » rend le bien à placer.
+  await openFil();
+  await page.waitForFunction(() => document.querySelectorAll('.imx-price-pin:not(.is-legend)').length === 3, null, { timeout: 10000 });
+  assert.ok(await alert.isHidden());
+  await deleu.locator('.imx-placed-by-you button:has-text("Annuler")').click();
+  await alert.filter({ hasText: /1 annonce sans point sur la carte/ }).waitFor({ timeout: 5000 });
+  assert.equal(await pins(), 2);
+  await page.close();
+});

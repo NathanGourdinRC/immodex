@@ -89,6 +89,18 @@
       .imx-annonce.is-gone { opacity: 0.6; }
       .imx-bien-list.hide-ecarte .imx-annonce.is-ecarte { display: none; }
       .imx-btn.is-active { border-color: var(--imx-accent); color: var(--imx-accent); }
+      /* Biens sans point : alerte et filtre « Les placer », pistes d'adresse à vérifier (leads.js). */
+      .imx-to-place { align-items: center; }
+      .imx-to-place > div { flex: 1; }
+      .imx-to-place .imx-btn { flex: none; }
+      .imx-bien-list.only-to-place .imx-annonce:not(.is-to-place):not(.is-just-placed) { display: none; }
+      .imx-leads { padding: 7px 10px; border: 1px solid var(--imx-accent-line); border-radius: 8px; background: var(--imx-accent-soft); }
+      .imx-leads > * + * { margin-top: 8px; }
+      .imx-leads summary { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--imx-accent-text); }
+      .imx-lead-list { display: grid; padding: 0 8px; border-radius: 8px; background: var(--imx-bg); }
+      .imx-lead-input { display: flex; gap: 6px; }
+      .imx-lead-input .imx-input { flex: 1; min-width: 0; height: 30px; }
+      .imx-placed-by-you { color: var(--imx-text-2); }
       /* Secteurs : nombre de ventes au centre ; secteurs à trop peu de ventes en pointillés. */
       .imx-sector-count { display: flex; align-items: center; justify-content: center; font: 700 11px var(--imx-font); color: #0f172a; text-shadow: 0 0 3px #fff, 0 0 3px #fff; }
       .imx-sector-count.is-few { color: #64748b; font-weight: 600; }
