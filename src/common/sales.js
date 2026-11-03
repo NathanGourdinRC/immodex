@@ -82,7 +82,7 @@ async function communeSalesFast(insee, { type = null, fetchImpl = fetch, fallbac
     const res = await fetchImpl(`${DVF_ENDPOINT}?insee=${encodeURIComponent(insee)}&type=${type || 'tous'}`);
     if (!res.ok) throw new Error(`dvf ${res.status}`);
     const data = await res.json();
-    return { sales: data.sales || [], sections: null, loaded: null, failedSections: 0, partial: false, lastDate: data.lastDate || null };
+    return { sales: data.sales || [], energy: data.energy || null, sections: null, loaded: null, failedSections: 0, partial: false, lastDate: data.lastDate || null };
   } catch {
     return fallback(insee, { type });
   }
@@ -112,6 +112,8 @@ function createSearchSales({ load = communeSalesFast } = {}) {
         failedSections: parts.reduce((n, p) => n + (p.failedSections || 0), 0),
         empty: parts.filter((p) => !p.failed && !p.failedSections && !p.sales.length).map((p) => p.commune.nom),
         perCommune: parts.map((p) => ({ commune: p.commune, count: p.sales.length })),
+        // Prix au m² par classe énergie et délai DPE → vente, par commune (servis par api/dvf).
+        energy: Object.fromEntries(parts.map((p) => [p.commune.code, p.energy || null])),
       };
       if (result.failed.length || result.failedSections) cache.delete(key);
       return result;

@@ -7,6 +7,7 @@ import { nearestSales, isComparable } from '../common/sectors.js';
 import { loadSearchSales } from './sector-layer.js';
 import { loadAnnonces } from './annonces.js';
 import { fetchListings, urlKey } from '../common/listings.js';
+import { classLine } from '../common/energy-text.js';
 
 const UI = window.__immodexUI;
 const { el, icon, num } = UI;
@@ -193,6 +194,7 @@ function bienRow(g, track, unknown, onStatus) {
     ),
     unknown.length ? el('div', { class: 'imx-meta imx-unknown' }, unknown.join(' · ')) : null,
     el('div', { class: 'imx-meta imx-nearby imx-hidden' }),
+    el('div', { class: 'imx-meta imx-energy imx-hidden' }),
     el('div', { class: 'imx-actions' }, keep, drop),
     note,
     el(
@@ -303,9 +305,19 @@ async function loadBiens(ctx, body) {
 
   // Repère de prix : les 15 ventes de maisons les plus proches du bien placé sur la carte.
   const placed = inSearch.filter((x) => x.g.point);
-  if (!placed.length) return;
+  if (!placed.length && !inSearch.some((x) => (x.g.fp || {}).energyClass)) return;
   const data = await loadSearchSales(search).catch(() => null);
   if (!data || !isCurrent()) return;
+  // Classe énergie du bien : prix médian des biens de même classe vendus dans sa commune.
+  for (const { g } of inSearch) {
+    const fp = g.fp || {};
+    const commune = search.communes.length === 1 ? search.communes[0] : search.communes.find((c) => (c.codesPostaux || []).includes(String(fp.postal)));
+    const text = commune ? classLine(fp.energyClass, commune.code, data.energy, commune.nom, num) : null;
+    const line = rows.get(g).querySelector('.imx-energy');
+    if (!text || !line) continue;
+    line.textContent = text;
+    line.classList.remove('imx-hidden');
+  }
   for (const { g } of placed) {
     const near = nearestSales(data.sales, g.point);
     const line = rows.get(g).querySelector('.imx-nearby');

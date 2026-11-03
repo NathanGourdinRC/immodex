@@ -3,6 +3,7 @@
 // comparables aux critères de la recherche.
 import { loadSearchSales, salesNotes } from './sector-layer.js';
 import { isComparable } from '../common/sectors.js';
+import { delayLine } from '../common/energy-text.js';
 
 const UI = window.__immodexUI;
 const { el, num } = UI;
@@ -21,7 +22,31 @@ function saleRow(v) {
     el('td', { class: 'is-num', 'data-unit': ' €/m²' }, `${num(v.pricePerM2)}`),
     el('td', { class: 'is-num', 'data-label': 'Terrain' }, v.terrain ? `${num(v.terrain)} m²` : ''),
     // « oui » quand DVF signale une dépendance ; jamais « non » : DVF ne le sait pas.
-    el('td', { 'data-label': 'Dépendance' }, v.dependances ? 'oui' : '')
+    el('td', { 'data-label': 'Dépendance' }, v.dependances ? 'oui' : ''),
+    // Classe du DPE établi avant la vente (relié par l'adresse), quand il existe.
+    el('td', { 'data-label': 'DPE' }, v.energyClass ? UI.badge(v.energyClass, 'dpe') : '')
+  );
+}
+
+// Repères énergie d'une commune : délai DPE → vente et prix au m² médian par classe.
+function energyBlock(energy, name) {
+  if (!energy) return null;
+  const classes = Object.entries(energy.byClass || {});
+  const delay = delayLine(energy.delay, num);
+  if (!classes.length && !delay) return null;
+  return el(
+    'div',
+    { class: 'imx-energy-block' },
+    el('div', { class: 'imx-label' }, `Classe énergie · ${name}`),
+    delay ? el('p', { class: 'imx-meta', style: 'margin:0' }, delay) : null,
+    classes.length
+      ? el(
+          'div',
+          { class: 'imx-energy-classes' },
+          el('span', { class: 'imx-meta' }, 'Prix au m² selon la classe énergie :'),
+          classes.map(([c, st]) => el('span', { class: 'imx-energy-class' }, UI.badge(c, 'dpe'), el('strong', null, `${num(st.median)} €/m²`), el('small', null, `${num(st.count)} ventes`)))
+        )
+      : null
   );
 }
 
@@ -72,7 +97,7 @@ async function renderSalesView({ search, isCurrent, body, panel }) {
   const table = el(
     'table',
     { class: 'imx-sales-table' },
-    el('thead', null, el('tr', null, head('Date'), head('Rue'), head('Prix'), head('Surface'), head('€/m²'), head('Terrain'), head('Dépendance', DEPENDANCE_HELP))),
+    el('thead', null, el('tr', null, head('Date'), head('Rue'), head('Prix'), head('Surface'), head('€/m²'), head('Terrain'), head('Dépendance', DEPENDANCE_HELP), head('DPE', 'Classe du diagnostic énergie établi avant la vente, retrouvé par l’adresse (DPE depuis juillet 2021).'))),
     tbody
   );
   const medians = {};
@@ -88,6 +113,7 @@ async function renderSalesView({ search, isCurrent, body, panel }) {
         .join(', ')}.`
     ),
     ...notes,
+    ...search.communes.map((c) => energyBlock(data.energy && data.energy[c.code], c.nom)).filter(Boolean),
     el('label', { class: 'imx-check' }, filter, ` Comparables à ma recherche seulement (${num(comparables.length)} sur ${num(sorted.length)})`),
     el('div', { class: 'imx-table-wrap' }, table),
     more

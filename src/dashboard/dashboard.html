@@ -90,6 +90,12 @@
       .imx-sector-table .is-num { text-align: right; }
       .imx-sector-table td:nth-child(2) { white-space: normal; min-width: 140px; }
       .imx-ppm { color: var(--imx-text-2); font-weight: 600; }
+      /* Repères énergie : délai DPE → vente et prix au m² par classe. */
+      .imx-energy-block { display: grid; gap: 6px; margin: 8px 0; padding: 10px 12px; border: 1px solid var(--imx-border); border-radius: 10px; background: var(--imx-bg-muted); }
+      .imx-energy-classes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+      .imx-energy-class { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+      .imx-energy-class small { color: var(--imx-text-3); }
+      .imx-energy { color: var(--imx-text-2); }
       /* Téléphone : bulle compacte, sans les colonnes secondaires. */
       .imx-sector-popup.is-compact .col-full { display: none; }
       .imx-sector-popup.is-compact .imx-sector-stat strong { font-size: 13px; }

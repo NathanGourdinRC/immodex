@@ -127,3 +127,10 @@ test('ventes d’une recherche : communes réunies, échec non gardé en cache',
   assert.equal(second.lastDate, '2025-12-30');
   assert.equal(await loader(search), second);
 });
+
+test('repères énergie gardés par commune dans les ventes d’une recherche', async () => {
+  const energy = { byClass: { D: { count: 82, median: 3379 } }, delay: { count: 177, median: 156, p25: 126, p75: 224 } };
+  const loader = createSearchSales({ load: async (insee) => ({ sales: [], energy: insee === '59636' ? energy : null, partial: false, failedSections: 0, lastDate: null }) });
+  const r = await loader({ type: 'maison', communes: [{ code: '59636', nom: 'Wambrechies' }, { code: '59388', nom: 'Marquette' }] });
+  assert.deepEqual(r.energy, { 59636: energy, 59388: null });
+});

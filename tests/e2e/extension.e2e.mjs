@@ -383,7 +383,7 @@ test('fil : annonces scannées, nouveautés, baisses et retraits, Garder', async
   const DAY = 24 * 3600 * 1000;
   const l = (o) => ({ insee: '59636', type: 'maison', missed: 0, removedAt: null, detail: true, lastSeen: now - DAY, ...o });
   const listings = [
-    l({ id: 'orpi:/annonce-vente-maison-t5-wambrechies-e2e1/', source: 'orpi', url: 'https://www.orpi.com/annonce-vente-maison-t5-wambrechies-e2e1/', title: 'Maison 5 pièces Wambrechies', price: 389000, prices: [{ at: now - DAY, price: 389000 }], surface: 120, pieces: 5, chambres: 4, terrain: 300, firstSeen: now }),
+    l({ id: 'orpi:/annonce-vente-maison-t5-wambrechies-e2e1/', source: 'orpi', url: 'https://www.orpi.com/annonce-vente-maison-t5-wambrechies-e2e1/', title: 'Maison 5 pièces Wambrechies', price: 389000, prices: [{ at: now - DAY, price: 389000 }], surface: 120, pieces: 5, chambres: 4, terrain: 300, energyClass: 'D', firstSeen: now }),
     l({ id: 'paruvendu:/immobilier/vente/maison/1295516811E2E', source: 'paruvendu', url: 'https://www.paruvendu.fr/immobilier/vente/maison/1295516811E2E', title: 'Maison 4 pièces', price: 280000, prices: [{ at: now - 20 * DAY, price: 300000 }, { at: now - DAY, price: 280000 }], surface: 95, pieces: 4, firstSeen: now - 20 * DAY }),
     l({ id: 'lesiteimmo:/acheter/maison-4pieces/wambrechies-59118/9999', source: 'lesiteimmo', url: 'https://www.lesiteimmo.com/acheter/maison-4pieces/wambrechies-59118/9999', title: 'Maison retirée', price: 330000, prices: [{ at: now - 30 * DAY, price: 330000 }], surface: 100, firstSeen: now - 30 * DAY, removedAt: now - DAY }),
   ];
@@ -391,10 +391,17 @@ test('fil : annonces scannées, nouveautés, baisses et retraits, Garder', async
   await page.route('https://immodex.vercel.app/api/listings**', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, listings, sources: { 59636: { orpi: { lastRun: now - DAY, paused: false }, deleu: { lastRun: now - DAY, paused: true } } }, lastRun: now - DAY }) })
   );
+  // Ventes de la commune avec leur classe énergie et les statistiques DPE de la commune.
+  const sale = (i, cls, ppm) => ({ id: `s${i}`, date: '2025-06-01', commune: '59636', address: `${i} RUE DE QUESNOY`, price: ppm * 100, type: 'Maison', surface: 100, pieces: 5, terrain: 200, dependances: 0, pricePerM2: ppm, lon: 3.05 + i / 1000, lat: 50.68, energyClass: cls, dpeDays: 150 });
+  const dvf = { insee: '59636', type: 'maison', sales: Array.from({ length: 30 }, (_, i) => sale(i + 1, i % 2 ? 'D' : 'C', 3300 + i * 10)), energy: { byClass: { C: { count: 53, median: 3757 }, D: { count: 82, median: 3379 } }, delay: { count: 177, median: 156, p25: 126, p75: 224 } }, lastDate: '2025-12-30', years: [2025] };
+  await page.route('https://immodex.vercel.app/api/dvf**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(dvf) }));
   await page.goto(`chrome-extension://${extId}/src/dashboard/dashboard.html`);
   await page.click('#zone-tabs button:has-text("Wambrechies")');
   await page.click('.imx-views button:has-text("Fil")');
   await page.waitForSelector('.imx-annonce', { timeout: 30000 });
+  // Repère de la classe énergie : prix médian des maisons de classe D vendues dans la commune.
+  await page.waitForSelector('.imx-annonce .imx-energy', { timeout: 30000 });
+  assert.match(await page.locator('.imx-annonce').first().textContent(), /Classe D à Wambrechies : 3\s379\s€\/m² médian \(82 ventes\)/);
   assert.equal(await page.locator('.imx-annonce').count(), 3);
   const text = await page.textContent('.imx-view-fil');
   assert.match(text, /Nouveau/);
@@ -407,5 +414,12 @@ test('fil : annonces scannées, nouveautés, baisses et retraits, Garder', async
   const first = page.locator('.imx-annonce').first();
   await first.locator('button:has-text("Garder")').click();
   await first.locator('button:has-text("Gardé")').waitFor();
+  // Ventes passées : délai DPE → vente, prix par classe et colonne DPE.
+  await page.click('.imx-views button:has-text("Ventes passées")');
+  await page.waitForSelector('.imx-sales-table tbody tr', { timeout: 30000 });
+  const ventes = await page.textContent('.imx-view-ventes');
+  assert.match(ventes, /Délai médian entre le DPE et la vente : 5 mois/);
+  assert.match(ventes, /Prix au m² selon la classe énergie/);
+  assert.ok((await page.textContent('.imx-sales-table thead')).includes('DPE'));
   await page.close();
 });

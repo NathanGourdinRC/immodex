@@ -5,6 +5,7 @@ import { checkCriteria, trackingKey, STATUSES } from '../common/zones.js';
 import { groupListings, listingFacts, statusOf, trackingKeyOf, urlKey, SOURCE_LABELS } from '../common/listings.js';
 import { nearestSales, isComparable } from '../common/sectors.js';
 import { loadSearchSales } from './sector-layer.js';
+import { classLine } from '../common/energy-text.js';
 
 const UI = window.__immodexUI;
 const { el, icon, num } = UI;
@@ -48,6 +49,7 @@ function annonceRow(g, key, f, st, track, unknown, onStatus, now) {
     ),
     unknown.length ? el('div', { class: 'imx-meta imx-unknown' }, unknown.join(' · ')) : null,
     el('div', { class: 'imx-meta imx-nearby imx-hidden' }),
+    el('div', { class: 'imx-meta imx-energy imx-hidden' }),
     el('div', { class: 'imx-actions' }, keep, drop),
     note,
     el(
@@ -169,10 +171,19 @@ async function loadAnnonces(ctx, body) {
     layers.biens.addLayer(marker);
   }
 
-  // Repère de prix : les 15 ventes les plus proches des biens placés.
-  if (!placed.length) return;
+  // Repères de prix : classe énergie du bien dans sa commune, 15 ventes les plus proches.
+  if (!placed.length && !groups.some((x) => x.f.energyClass)) return;
   const sales = await loadSearchSales(search).catch(() => null);
   if (!sales || !isCurrent()) return;
+  for (const { g, f } of groups) {
+    const insee = g.listings[0].insee;
+    const name = (search.communes.find((c) => c.code === insee) || {}).nom;
+    const text = classLine(f.energyClass, insee, sales.energy, name, num);
+    const line = rows.get(g).querySelector('.imx-energy');
+    if (!text || !line) continue;
+    line.textContent = text;
+    line.classList.remove('imx-hidden');
+  }
   for (const { g, f } of placed) {
     const near = nearestSales(sales.sales, { lat: f.lat, lon: f.lon });
     const line = rows.get(g).querySelector('.imx-nearby');
