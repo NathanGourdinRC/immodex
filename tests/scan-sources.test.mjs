@@ -22,10 +22,16 @@ const CASES = {
   deleu: ['https://deleuimmobilier.com/fr/ventes', ['/fr/propriete/vente+maison+wambrechies+maison-3-chambres+86739359', '/fr/propriete/vente+maison+wambrechies+semi-flamande+87304342', '/fr/propriete/vente+maison+wambrechies+plain-pied+87508776']],
   compimmo: ['https://www.compimmo.com/acheter?secteur=Saint-Jorioz', ['https://www.compimmo.com/acheter/maison-saint-jorioz-184', '/acheter/appartement-saint-jorioz-181', 'https://www.compimmo.com/acheter/terrain-saint-jorioz-95']],
   proprietesdulac: ['https://proprietesdulacdannecy.fr/biens-en-vente/', ['https://proprietesdulacdannecy.fr/lecrin/', 'https://proprietesdulacdannecy.fr/biens-en-vente/le-patio/', '/la-canopee/']],
+  leduc: ['https://immobilier.agence-leduc.fr/ventes-immobilieres-a-lille', ['/ventes-immobilieres-a-lille/vm332-leduc-wambrechies', 'https://immobilier.agence-leduc.fr/ventes-immobilieres-a-lille/va1967-leduc-wambrechies', '/ventes-immobilieres-a-lille/vm318-leduc-wambrechies']],
+  vereecke: ['https://vereecke-immobilier.com/a-vendre/', ['/bien/maison-1930-3-chambres/', 'https://vereecke-immobilier.com/bien/appartement-t3-balcon/', '/bien/maison-semi-individuelle/']],
+  briquerouge: ['https://www.brique-rouge-immobilier.fr/acheter/logement/wambrechies/tous_quartiers/toutes_chambres/0-0', ['/vente/maison/rare-canon-d-or-belle-maison-1930_30306', '/vente/appartement/t2-balcon_33317', 'https://www.brique-rouge-immobilier.fr/vente/maison/plain-pied_33491']],
+  grimmelpont: ['https://www.grimmelpont.fr/acheter-biens-immobiliers', ['/immobilier/vente-maison-wambrechies/ref-VM473-GRIMMELPONT', 'https://www.grimmelpont.fr/immobilier/vente-appartement-wambrechies/ref-VA2375-GRIMMELPONT', '/immobilier/vente-maison-wambrechies/ref-VM480-GRIMMELPONT']],
+  marquetteimmo: ['https://www.marquette-immobilier.fr/transaction/vente/', ['/immobilier/belle-maison-individuelle/', 'https://www.marquette-immobilier.fr/immobilier/maison-atypique/', '/immobilier/semi-individuelle-4-chambres/']],
 };
 
-test('les sources : 5 de la première version, 2 agences de Saint-Jorioz', () => {
-  assert.deepEqual(SOURCES.map((s) => s.id), ['orpi', 'paruvendu', 'lesiteimmo', 'maes', 'deleu', 'compimmo', 'proprietesdulac']);
+test('les sources : 5 de la première version, 2 agences de Saint-Jorioz, 5 de Lambersart, Marquette et Saint-André', () => {
+  assert.deepEqual(SOURCES.map((s) => s.id), ['orpi', 'paruvendu', 'lesiteimmo', 'maes', 'deleu', 'compimmo', 'proprietesdulac', 'leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo']);
+  for (const id of ['leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo']) assert.deepEqual(sourceById(id).departments, ['59'], id);
   assert.deepEqual(sourceById('maes').departments, ['59']);
   assert.deepEqual(sourceById('compimmo').departments, ['74']);
   assert.deepEqual(sourceById('proprietesdulac').departments, ['74']);
@@ -115,6 +121,45 @@ test('Propriétés du Lac : une page pour toute l’agence, pages du site écart
     ['https://proprietesdulacdannecy.fr/biens-en-vente/le-patio/', 426400, 'appartement'],
     ['https://proprietesdulacdannecy.fr/la-canopee/', 1550000, 'maison'],
   ]);
+});
+
+test('agences de Lambersart, Marquette et Saint-André : listes, types, commune lue dans l’adresse quand la carte en cite d’autres', () => {
+  const LAMB = { code: '59328', nom: 'Lambersart', codesPostaux: ['59130'] };
+  const STA = { code: '59527', nom: 'Saint-André-lez-Lille', codesPostaux: ['59350'] };
+  const LOMPRET = { code: '59356', nom: 'Lompret', codesPostaux: ['59840'] };
+  // Brique Rouge : une liste par commune (404 quand l'agence n'y a aucun bien).
+  assert.deepEqual(sourceById('briquerouge').listUrls(STA, 'maison'), ['https://www.brique-rouge-immobilier.fr/acheter/logement/saint-andre-lez-lille/tous_quartiers/toutes_chambres/0-0']);
+  // Les autres : une seule page pour toute l'agence.
+  for (const id of ['leduc', 'vereecke', 'grimmelpont', 'marquetteimmo']) {
+    const [url, ...more] = sourceById(id).listUrls(LAMB, null);
+    assert.equal(more.length, 0, id);
+    assert.equal(sourceById(id).pageUrl(url, 2), null, id);
+  }
+  // Types lus dans l'adresse de l'annonce.
+  const g = sourceById('grimmelpont');
+  assert.equal(g.typeOf('https://www.grimmelpont.fr/immobilier/vente-immeuble-lille/ref-VI080-GRIMMELPONT', ''), 'immeuble');
+  assert.equal(g.typeOf('https://www.grimmelpont.fr/immobilier/vente-appartement-lomme/ref-VA2375-GRIMMELPONT', ''), 'appartement');
+  assert.equal(g.typeOf('https://www.grimmelpont.fr/immobilier/vente-maison-faches-thumesnil/ref-VM473-GRIMMELPONT', ''), 'maison');
+  assert.equal(sourceById('leduc').typeOf('https://immobilier.agence-leduc.fr/ventes-immobilieres-a-lille/va1967-leduc-lambersart', ''), 'appartement');
+  assert.equal(sourceById('leduc').typeOf('https://immobilier.agence-leduc.fr/ventes-immobilieres-a-lille/vm332-leduc-lambersart', ''), 'maison');
+  assert.equal(sourceById('briquerouge').typeOf('https://www.brique-rouge-immobilier.fr/vente/terrain/terrain-constructible-1513m_33538', ''), 'terrain');
+  // Grimmelpont : un appartement de Lomme « à la limite de Lambersart » n'est pas à Lambersart.
+  const html = page([
+    `<article><a href="/immobilier/vente-appartement-lomme/ref-VA2375-GRIMMELPONT">Appartement 53m² Lomme</a><p>179 000 €HAI</p><p>À la limite de Lambersart, au pied du métro</p></article>`,
+    `<article><a href="/immobilier/vente-maison-lambersart/ref-VM480-GRIMMELPONT">Maison 120m² Lambersart</a><p>420 000 €HAI</p></article>`,
+  ]);
+  assert.deepEqual(readResults(html, 'https://www.grimmelpont.fr/acheter-biens-immobiliers', g, LAMB).cards.map((c) => [c.url, c.price]), [['https://www.grimmelpont.fr/immobilier/vente-maison-lambersart/ref-VM480-GRIMMELPONT', 420000]]);
+  // Marquette Immobilier : commune en capitales dans la carte, biens vendus écartés.
+  const mq = page([
+    `<article><a href="/immobilier/belle-maison-individuelle/">Belle maison individuelle.</a>
+     <p>LOMPRET</p> <p>Vente</p> <p>540 000 €</p> <p>SHAB 112 m²</p></article>`,
+    `<article><a href="/immobilier/maison-atypique/">Maison atypique.</a>
+     <p>LOMPRET</p> <p>Vendu</p> <p>155 750 €</p></article>`,
+  ]);
+  assert.deepEqual(readResults(mq, 'https://www.marquette-immobilier.fr/transaction/vente/', sourceById('marquetteimmo'), LOMPRET).cards.map((c) => [c.price, c.type]), [[540000, 'maison']]);
+  // Vereecke : code postal et commune dans la carte.
+  const ve = page([`<article><a href="/bien/appartement-t3-balcon/">Appartement T3 avec balcon</a><p>245 000 €</p><p>59350 SAINT ANDRE LEZ LILLE</p></article>`]);
+  assert.deepEqual(readResults(ve, 'https://vereecke-immobilier.com/a-vendre/', sourceById('vereecke'), STA).cards.map((c) => [c.price, c.type]), [[245000, 'appartement']]);
 });
 
 test('chaque source du robot a son nom dans le Fil (lien vers l’annonce)', async () => {

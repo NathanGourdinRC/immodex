@@ -3,7 +3,7 @@
 
 const LISTINGS_ENDPOINT = 'https://immodex.vercel.app/api/listings';
 // Noms des sources du scan (api/_lib/sources.js, côté serveur seulement).
-const SOURCE_LABELS = { orpi: 'Orpi', paruvendu: 'ParuVendu', lesiteimmo: 'Lesiteimmo', maes: 'Maes Immobilier', deleu: 'Deleu Immobilier', compimmo: 'Compagnie Immobilière du Lac', proprietesdulac: 'Propriétés du Lac' };
+const SOURCE_LABELS = { orpi: 'Orpi', paruvendu: 'ParuVendu', lesiteimmo: 'Lesiteimmo', maes: 'Maes Immobilier', deleu: 'Deleu Immobilier', compimmo: 'Compagnie Immobilière du Lac', proprietesdulac: 'Propriétés du Lac', leduc: 'Leduc Immobilier', vereecke: 'Vereecke Immobilier', briquerouge: 'Brique Rouge Immobilier', grimmelpont: 'Grimmelpont', marquetteimmo: 'Marquette Immobilier' };
 const DAY = 24 * 3600 * 1000;
 const FRESH_MS = 3 * DAY; // première visite : « nouveau » = vu il y a moins de 3 jours
 

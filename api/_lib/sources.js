@@ -118,6 +118,75 @@ const SOURCES = [
     },
     typeOf: (url, text) => guessType(`${url} ${text}`),
   },
+  {
+    // Agence de Lambersart : tous ses biens sur une page, la commune en fin d'adresse
+    // (« /vm332-leduc-lambersart », vm maison, va appartement). La page n'a pas de bloc par
+    // bien : la carte est la page entière, d'où la commune lue dans l'adresse seule.
+    id: 'leduc',
+    label: 'Leduc Immobilier',
+    host: 'immobilier.agence-leduc.fr',
+    departments: ['59'],
+    pageSize: null,
+    communeInUrl: true,
+    listUrls: () => ['https://immobilier.agence-leduc.fr/ventes-immobilieres-a-lille'],
+    pageUrl: () => null,
+    isListing: (u) => /^\/ventes-immobilieres-a-lille\/v[a-z]\d+-leduc/.test(u.pathname),
+    typeOf: (url, text) => (/\/va\d/.test(url) ? 'appartement' : /\/vm\d/.test(url) ? 'maison' : guessType(`${url} ${text}`)),
+  },
+  {
+    // Agence de Saint-André-lez-Lille (WordPress, extension Estatik) : tous ses biens sur une
+    // page, code postal et commune dans la carte (« 59350 SAINT ANDRE LEZ LILLE »).
+    id: 'vereecke',
+    label: 'Vereecke Immobilier',
+    host: 'vereecke-immobilier.com',
+    departments: ['59'],
+    pageSize: null,
+    listUrls: () => ['https://vereecke-immobilier.com/a-vendre/'],
+    pageUrl: () => null,
+    isListing: (u) => /^\/bien\/[^/]+\/$/.test(u.pathname),
+    typeOf: (url, text) => guessType(`${url} ${text}`),
+  },
+  {
+    // Agence de Lambersart et Haubourdin : une liste par commune. Commune où l'agence n'a aucun
+    // bien : page 404, lue comme liste incomplète (aucun retrait déduit).
+    id: 'briquerouge',
+    label: 'Brique Rouge Immobilier',
+    host: 'www.brique-rouge-immobilier.fr',
+    departments: ['59'],
+    pageSize: null,
+    listUrls: (c) => [`https://www.brique-rouge-immobilier.fr/acheter/logement/${slugOf(c.nom)}/tous_quartiers/toutes_chambres/0-0`],
+    pageUrl: () => null,
+    isListing: (u) => /^\/vente\/(maison|appartement|terrain)\/[^/]+_\d+$/.test(u.pathname),
+    typeOf: (url) => (/\/vente\/appartement\//.test(url) ? 'appartement' : /\/vente\/terrain\//.test(url) ? 'terrain' : 'maison'),
+  },
+  {
+    // Agence de Lambersart : tous ses biens sur une page, la commune dans l'adresse
+    // (« /vente-appartement-lomme/ »). Ses cartes citent les communes voisines (« à la limite
+    // de Lambersart ») : la commune est lue dans l'adresse seule.
+    id: 'grimmelpont',
+    label: 'Grimmelpont',
+    host: 'www.grimmelpont.fr',
+    departments: ['59'],
+    pageSize: null,
+    communeInUrl: true,
+    listUrls: () => ['https://www.grimmelpont.fr/acheter-biens-immobiliers'],
+    pageUrl: () => null,
+    isListing: (u) => /^\/immobilier\/vente-[a-z]+-[a-z0-9-]+\/ref-[A-Za-z0-9-]+$/.test(u.pathname),
+    typeOf: (url) => (/\/vente-appartement-/.test(url) ? 'appartement' : /\/vente-immeuble-/.test(url) ? 'immeuble' : /\/vente-terrain-/.test(url) ? 'terrain' : 'maison'),
+  },
+  {
+    // Agence de Marquette-lez-Lille (WordPress) : tous ses biens sur une page, la commune en
+    // capitales dans la carte ; les biens vendus y restent, écartés par leur mention « Vendu ».
+    id: 'marquetteimmo',
+    label: 'Marquette Immobilier',
+    host: 'www.marquette-immobilier.fr',
+    departments: ['59'],
+    pageSize: null,
+    listUrls: () => ['https://www.marquette-immobilier.fr/transaction/vente/'],
+    pageUrl: () => null,
+    isListing: (u) => /^\/immobilier\/[^/]+\/$/.test(u.pathname),
+    typeOf: (url, text) => guessType(`${url} ${text}`),
+  },
 ];
 
 const sourceById = (id) => SOURCES.find((s) => s.id === id) || null;
@@ -156,9 +225,10 @@ function readResults(html, pageUrl, source, commune) {
     const deepest = priced.find((el) => !priced.some((other) => other !== el && el.contains(other)));
     const price = deepest ? priceOf(deepest.textContent) : null;
     const text = norm(card.textContent);
-    // Biens déjà vendus (Orpi en montre) et annonces d'autres communes : écartés.
+    // Biens déjà vendus (Orpi en montre) et annonces d'autres communes : écartés. Commune lue
+    // dans l'adresse seule quand la carte du site cite d'autres communes (`communeInUrl`).
     if (/\bvendu\b/i.test(text)) continue;
-    if (!slugOf(`${url} ${text}`).includes(slugOf(commune.nom))) continue;
+    if (!slugOf(source.communeInUrl ? url : `${url} ${text}`).includes(slugOf(commune.nom))) continue;
     cards.push({ url, price, title: text.slice(0, 160), type: source.typeOf(url, text) });
   }
   return { cards, all: [...seen], full: !!source.pageSize && seen.size >= source.pageSize };
