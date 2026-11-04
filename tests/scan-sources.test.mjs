@@ -6,6 +6,7 @@ const WAMB = { code: '59636', nom: 'Wambrechies', codesPostaux: ['59118'] };
 const ANNECY = { code: '74010', nom: 'Annecy', codesPostaux: ['74000', '74370', '74600', '74940', '74960'] };
 const SJ = { code: '74242', nom: 'Saint-Jorioz', codesPostaux: ['74410'] };
 const SEVRIER = { code: '74267', nom: 'Sévrier', codesPostaux: ['74320'] };
+const LILLE_2 = { code: '59350', nom: 'Lille', codesPostaux: ['59000', '59800'] };
 
 // Une carte : lien de l'annonce (deux fois, photo et titre), compteur de photos, prix à part.
 const card = (href, price, extra = '') =>
@@ -29,10 +30,9 @@ const CASES = {
   marquetteimmo: ['https://www.marquette-immobilier.fr/transaction/vente/', ['/immobilier/belle-maison-individuelle/', 'https://www.marquette-immobilier.fr/immobilier/maison-atypique/', '/immobilier/semi-individuelle-4-chambres/']],
 };
 
-test('les sources : 5 de la première version, 2 agences de Saint-Jorioz, 5 de Lambersart, Marquette et Saint-André, 2 enseignes', () => {
-  assert.deepEqual(SOURCES.map((s) => s.id), ['orpi', 'paruvendu', 'lesiteimmo', 'maes', 'deleu', 'compimmo', 'proprietesdulac', 'leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo', 'century21', 'laforet']);
-  assert.equal(sourceById('century21').departments, null);
-  assert.equal(sourceById('laforet').departments, null);
+test('les sources : 5 de la première version, 2 agences de Saint-Jorioz, 5 de Lambersart, Marquette et Saint-André, 5 réseaux', () => {
+  assert.deepEqual(SOURCES.map((s) => s.id), ['orpi', 'paruvendu', 'lesiteimmo', 'maes', 'deleu', 'compimmo', 'proprietesdulac', 'leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo', 'century21', 'laforet', 'iad', 'safti', 'nestenn']);
+  for (const id of ['century21', 'laforet', 'iad', 'safti', 'nestenn']) assert.equal(sourceById(id).departments, null, id);
   for (const id of ['leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo']) assert.deepEqual(sourceById(id).departments, ['59'], id);
   assert.deepEqual(sourceById('maes').departments, ['59']);
   assert.deepEqual(sourceById('compimmo').departments, ['74']);
@@ -212,6 +212,45 @@ test('Laforêt : une page par commune et par type, biens « à proximité » ign
   const r = readResults(html, 'https://www.laforet.com/ville/achat-maison-lambersart-59130', src, LAMB);
   assert.deepEqual(r.cards.map((c) => [c.url, c.price, c.type]), [['https://www.laforet.com/agence-immobiliere/la-madeleine/acheter/lambersart/maison-5-pieces-52842835', 449000, 'maison']]);
   assert.equal(src.typeOf('https://www.laforet.com/agence-immobiliere/lille/acheter/lille/appartement-2-pieces-52979419', ''), 'appartement');
+});
+
+test('IAD et SAFTI : une liste par commune, code postal et type, commune lue dans l’adresse', () => {
+  const LAMB = { code: '59328', nom: 'Lambersart', codesPostaux: ['59130'] };
+  const iad = sourceById('iad');
+  assert.deepEqual(iad.listUrls(LAMB, null), ['https://www.iadfrance.fr/annonces/lambersart-59130/vente/maison', 'https://www.iadfrance.fr/annonces/lambersart-59130/vente/appartement']);
+  // Commune à plusieurs codes postaux : une liste par code postal.
+  assert.deepEqual(iad.listUrls(LILLE_2, 'maison'), ['https://www.iadfrance.fr/annonces/lille-59000/vente/maison', 'https://www.iadfrance.fr/annonces/lille-59800/vente/maison']);
+  assert.equal(iad.pageSize, 30);
+  assert.equal(iad.pageUrl('https://www.iadfrance.fr/annonces/lille-59000/vente/appartement', 2), 'https://www.iadfrance.fr/annonces/lille-59000/vente/appartement?page=2');
+  assert.equal(iad.typeOf('https://www.iadfrance.fr/annonce/appartement-vente-3-pieces-lille-62m2/r2100000', ''), 'appartement');
+  assert.equal(iad.typeOf('https://www.iadfrance.fr/annonce/maison-vente-4-pieces-lambersart-80m2/r2124051', ''), 'maison');
+  const safti = sourceById('safti');
+  assert.deepEqual(safti.listUrls(LAMB, 'maison'), ['https://www.safti.fr/annonces/achat/maison/lambersart-59130']);
+  assert.deepEqual(safti.listUrls(ANNECY, 'appartement'), ['https://www.safti.fr/annonces/achat/appartement/annecy-all-cp']);
+  assert.equal(safti.pageSize, 24);
+  assert.equal(safti.pageUrl('https://www.safti.fr/annonces/achat/maison/lambersart-59130', 2), 'https://www.safti.fr/annonces/achat/maison/lambersart-59130?page=2');
+  assert.equal(safti.typeOf('https://www.safti.fr/annonces/achat/immeuble/lavelanet-09300/1737652', ''), 'immeuble');
+  // IAD : un bien « Sous compromis » n'est plus à vendre.
+  const html = page([
+    `<article><a href="/annonce/maison-vente-4-pieces-lambersart-80m2/r2124051">Maison à Lambersart</a> <p>323 000 €</p> <p>80 m²</p></article>`,
+    `<article><a href="/annonce/maison-vente-5-pieces-lambersart-92m2/r2099836">Maison à Lambersart</a> <p>Sous compromis</p> <p>344 900 €</p></article>`,
+  ]);
+  assert.deepEqual(readResults(html, 'https://www.iadfrance.fr/annonces/lambersart-59130/vente/maison', iad, LAMB).cards.map((c) => c.price), [323000]);
+});
+
+test('Nestenn : une page par commune et par type, biens voisins (« À 900 m de 59130 ») et biens vendus écartés', () => {
+  const LAMB = { code: '59328', nom: 'Lambersart', codesPostaux: ['59130'] };
+  const src = sourceById('nestenn');
+  assert.deepEqual(src.listUrls(LAMB, null), ['https://nestenn.com/vente/maison/lambersart-59130', 'https://nestenn.com/vente/appartement/lambersart-59130']);
+  // Les biens disponibles viennent en tête de la première page ; les suivantes ne montrent que des biens vendus.
+  assert.equal(src.pageUrl('https://nestenn.com/vente/maison/lambersart-59130', 2), null);
+  const html = page([
+    `<div><a href="/lambersart-bourg-mairie-maison-renovee-4-chambres-et-jardin-ref-39657233"></a> <p>EXCLU</p> <p>59130 LAMBERSART</p> <p>Maison à vendre</p> <p>110m² 5 pièces 4 chambres</p> <p>435 000 €</p></div>`,
+    `<div><a href="/maison-lille-5-piece-s-112-m2-ref-39637823"></a> <p>EXCLU</p> <p>À 900 m de 59130 Lambersart</p> <p>Maison à vendre</p> <p>294 500 €</p></div>`,
+    `<div><a href="/lambersart-canteleu-ref-33088721"></a> <p>59130 LAMBERSART</p> <p>Maison vendue</p> <p>72m² 5 pièces</p></div>`,
+    `<div><a href="/maison-lambersart-ref-33088308"></a> <p>59130 LAMBERSART</p> <p>Maison plus disponible</p> <p>85m²</p></div>`,
+  ]);
+  assert.deepEqual(readResults(html, 'https://nestenn.com/vente/maison/lambersart-59130', src, LAMB).cards.map((c) => [c.url, c.price, c.type]), [['https://nestenn.com/lambersart-bourg-mairie-maison-renovee-4-chambres-et-jardin-ref-39657233', 435000, 'maison']]);
 });
 
 test('chaque source du robot a son nom dans le Fil (lien vers l’annonce)', async () => {

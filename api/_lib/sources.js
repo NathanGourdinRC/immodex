@@ -18,6 +18,10 @@ function slugOf(s) {
 
 const withoutAccents = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '');
 
+const UNAVAILABLE = /\bvendue?s?\b|sous compromis|plus disponible/i;
+// (« \b » ne marche pas devant « à » : JavaScript ne connaît que les lettres sans accent.)
+const NEARBY = /(?:^|\s)à\s+[\d.,]+\s*k?m\s+de\s+\d{5}\b/i;
+
 // Commune comparable dans une carte : « ST ANDRE LEZ LILLE » vaut « Saint-André-lez-Lille ».
 const placeSlug = (s) => slugOf(s).replace(/(^|-)st(?=-)/g, '$1saint').replace(/(^|-)ste(?=-)/g, '$1sainte');
 
@@ -222,6 +226,48 @@ const SOURCES = [
     cardOf: (a) => a.closest('[id^="standard--page"] article'),
     typeOf: (url) => (/\/acheter\/[^/]+\/appartement-/.test(url) ? 'appartement' : /\/acheter\/[^/]+\/terrain-/.test(url) ? 'terrain' : 'maison'),
   },
+  {
+    // Réseau de mandataires IAD : une liste par commune, code postal et type (« lambersart-59130 »),
+    // 30 biens par page, la commune dans l'adresse de l'annonce (« maison-vente-4-pieces-lambersart-80m2 »).
+    id: 'iad',
+    label: 'IAD',
+    host: 'www.iadfrance.fr',
+    departments: null,
+    pageSize: 30,
+    communeInUrl: true,
+    listUrls: (c, type) => typesOf(type).flatMap((t) => c.codesPostaux.map((cp) => `https://www.iadfrance.fr/annonces/${slugOf(c.nom)}-${cp}/vente/${t}`)),
+    pageUrl: withParam('page'),
+    isListing: (u) => /^\/annonce\/[a-z0-9-]+\/r\d+$/.test(u.pathname),
+    typeOf: (url) => (/\/annonce\/appartement-/.test(url) ? 'appartement' : /\/annonce\/terrain-/.test(url) ? 'terrain' : 'maison'),
+  },
+  {
+    // Réseau de mandataires SAFTI : une liste par commune et par type (« lambersart-59130 »,
+    // « annecy-all-cp » pour une commune à plusieurs codes postaux), 24 biens par page.
+    id: 'safti',
+    label: 'SAFTI',
+    host: 'www.safti.fr',
+    departments: null,
+    pageSize: 24,
+    communeInUrl: true,
+    listUrls: (c, type) => typesOf(type).map((t) => `https://www.safti.fr/annonces/achat/${t}/${slugOf(c.nom)}-${c.codesPostaux.length > 1 ? 'all-cp' : c.codesPostaux[0]}`),
+    pageUrl: withParam('page'),
+    isListing: (u) => /^\/annonces\/achat\/[a-z]+\/[a-z0-9-]+-\d{5}\/\d+$/.test(u.pathname),
+    typeOf: (url) => (/\/achat\/appartement\//.test(url) ? 'appartement' : /\/achat\/terrain\//.test(url) ? 'terrain' : /\/achat\/immeuble\//.test(url) ? 'immeuble' : 'maison'),
+  },
+  {
+    // Réseau Nestenn : une page par commune et par type. Les biens disponibles viennent en tête de
+    // la première page, avec des biens voisins (« À 900 m de 59130 Lambersart ») ; les pages
+    // suivantes ne montrent que des biens vendus (04/11/2026). robots.txt interdit /listing.
+    id: 'nestenn',
+    label: 'Nestenn',
+    host: 'nestenn.com',
+    departments: null,
+    pageSize: null,
+    listUrls: (c, type) => typesOf(type).map((t) => `https://nestenn.com/vente/${t}/${slugOf(c.nom)}-${c.codesPostaux[0]}`),
+    pageUrl: () => null,
+    isListing: (u) => /^\/[a-z0-9-]+-ref-\d+$/.test(u.pathname),
+    typeOf: (url, text) => (/appartement à vendre/i.test(text) ? 'appartement' : /terrain à vendre/i.test(text) ? 'terrain' : 'maison'),
+  },
 ];
 
 const sourceById = (id) => SOURCES.find((s) => s.id === id) || null;
@@ -264,9 +310,10 @@ function readResults(html, pageUrl, source, commune) {
     const deepest = priced.find((el) => !priced.some((other) => other !== el && el.contains(other)));
     const price = deepest ? priceOf(deepest.textContent) : null;
     const text = norm(card.textContent);
-    // Biens déjà vendus (Orpi en montre) et annonces d'autres communes : écartés. Commune lue
-    // dans l'adresse seule quand la carte du site cite d'autres communes (`communeInUrl`).
-    if (/\bvendu\b/i.test(text)) continue;
+    // Biens plus à vendre (« Vendu », « Maison vendue », « Sous compromis », « plus disponible »),
+    // biens voisins (« À 900 m de 59130 Lambersart ») et annonces d'autres communes : écartés.
+    // Commune lue dans l'adresse seule quand la carte cite d'autres communes (`communeInUrl`).
+    if (UNAVAILABLE.test(text) || NEARBY.test(text)) continue;
     if (!placeSlug(source.communeInUrl ? url : `${url} ${text}`).includes(placeSlug(commune.nom))) continue;
     cards.push({ url, price, title: text.slice(0, 160), type: source.typeOf(url, text) });
   }
