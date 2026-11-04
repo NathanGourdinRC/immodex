@@ -454,6 +454,8 @@ test('fil : biens sans point, pistes vérifiées sur Street View, adresse choisi
     l({ id: 'orpi:/annonce-vente-maison-pistes-e2e/', source: 'orpi', url: 'https://www.orpi.com/annonce-vente-maison-pistes-e2e/', price: 389000, prices: [], surface: 120, address: '12 Rue de Quesnoy 59118 Wambrechies', lat: 50.6862, lon: 3.0489 }),
     l({ id: 'deleu:/vente/pistes-e2e', source: 'deleu', url: 'https://www.deleu-immobilier.fr/vente/pistes-e2e', price: 312000, prices: [], surface: 90, energyConsumption: 211, gesEmission: 40, leads: [lead('17 Rue Victor Hugo 59118 Wambrechies', 50.6864, 85), lead('19 Rue Rubens 59118 Wambrechies', 50.6871, 85)] }),
     l({ id: 'maes:/bien-immobilier/pistes-e2e/', source: 'maes', url: 'https://www.maesimmobilier.fr/bien-immobilier/pistes-e2e/', price: 450000, prices: [], surface: 170, city: 'Jardin Sud-Est' }),
+    // Page pas encore lue par le robot (commune ajoutée la veille) : surface inconnue.
+    l({ id: 'paruvendu:/immobilier/vente/maison/non-lue-e2e', source: 'paruvendu', url: 'https://www.paruvendu.fr/immobilier/vente/maison/non-lue-e2e', price: 277000, prices: [], detail: false, firstSeen: now - DAY }),
   ];
   const page = await context.newPage();
   await page.route('https://immodex.vercel.app/api/listings**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, listings, sources: {}, lastRun: now - DAY }) }));
@@ -475,6 +477,9 @@ test('fil : biens sans point, pistes vérifiées sur Street View, adresse choisi
   await openFil();
   const alert = page.locator('.imx-to-place');
   await alert.filter({ hasText: /2 annonces sans point sur la carte/ }).waitFor({ timeout: 10000 });
+  // Page pas encore lue : comptée dans la ligne du robot, ni carte ni bien à placer.
+  assert.match(await page.locator('.imx-meta').filter({ hasText: /Dernier passage du robot/ }).textContent(), /1 autre annonce attend qu’il lise sa page/);
+  assert.equal(await page.locator('.imx-annonce').filter({ hasText: /277\s000/ }).count(), 0);
   // Ville mal lue sur la page (Maes) : la carte montre la commune de l'annonce.
   assert.match(await page.locator('.imx-annonce').filter({ hasText: /450\s000/ }).textContent(), /Wambrechies · adresse non retrouvée/);
   const deleuCard = page.locator('.imx-annonce').filter({ hasText: /312\s000/ });

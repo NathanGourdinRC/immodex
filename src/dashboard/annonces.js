@@ -98,8 +98,8 @@ function annonceRow(g, key, f, st, track, unknown, onStatus, now, where) {
   return row;
 }
 
-// Ligne d'état : passage du robot et sources en pause.
-function robotLine(data, groups = []) {
+// Ligne d'état : passage du robot, annonces qu'il n'a pas encore lues et sources en pause.
+function robotLine(data, groups = [], unread = 0) {
   const nego = negotiation(groups);
   const paused = new Set();
   for (const perSource of Object.values(data.sources || {})) for (const [id, m] of Object.entries(perSource)) if (m && m.paused) paused.add(SOURCE_LABELS[id] || id);
@@ -107,6 +107,8 @@ function robotLine(data, groups = []) {
     'div',
     { class: 'imx-meta', style: 'margin:0 0 6px' },
     data.lastRun ? `Dernier passage du robot : ${UI.formatDateTime(data.lastRun)}.` : 'Le robot n’est pas encore passé pour ces communes : il lit les sites chaque nuit.',
+    unread > 1 ? ` ${unread} autres annonces attendent qu’il lise leur page (prochaines nuits) : celles qui passent tes critères arriveront ici.` : '',
+    unread === 1 ? ' 1 autre annonce attend qu’il lise sa page (prochaine nuit) : si elle passe tes critères, elle arrivera ici.' : '',
     paused.size ? ` ${[...paused].join(', ')} en pause : le site refuse le robot, nouvel essai dans une semaine.` : '',
     nego ? el('div', { class: 'imx-nego' }, negotiationText(nego)) : null
   );
@@ -136,16 +138,19 @@ async function loadAnnonces(ctx, body) {
     // Pas d'annonces vues : les clés des annonces du robot suffisent.
   }
   if (!isCurrent()) return;
-  const groups = groupListings(data.listings || [])
+  const passing = groupListings(data.listings || [])
     .map((g) => {
       const f = listingFacts(g);
       return { g, f, st: statusOf(g, previousVisit, now), check: checkCriteria(f, search) };
     })
     .filter((x) => x.check.ok);
+  // Biens dont le robot n'a lu aucune page : comptés, pas montrés (surface et chambres inconnues).
+  const unread = passing.filter((x) => x.f.unread).length;
+  const groups = passing.filter((x) => !x.f.unread);
   groups.sort((a, b) => ORDER[a.st.status] - ORDER[b.st.status] || b.f.firstSeen - a.f.firstSeen);
 
   if (!groups.length) {
-    body.replaceChildren(robotLine(data), UI.empty('Aucune annonce en vente qui passe tes critères pour le moment.'));
+    body.replaceChildren(robotLine(data, [], unread), UI.empty('Aucune annonce en vente qui passe tes critères pour le moment.'));
     return;
   }
   let showDropped = false;
@@ -303,7 +308,7 @@ async function loadAnnonces(ctx, body) {
   list.replaceChildren(...rows.values());
   refreshDropped();
   refreshToPlace();
-  body.replaceChildren(robotLine(data, groups.map((x) => x.g)), alertBox, list, toggle);
+  body.replaceChildren(robotLine(data, groups.map((x) => x.g), unread), alertBox, list, toggle);
   for (const x of groups) pin(x);
 
   sales = await loadSearchSales(search).catch(() => null);

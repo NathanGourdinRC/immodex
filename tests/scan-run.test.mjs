@@ -424,6 +424,19 @@ test('passage sans commune à suivre : il ne garde pas le verrou, le suivant peu
   assert.equal(next.added, 1);
 });
 
+test('date de la première lecture de la page d’annonce gardée, pas changée par une relecture', async () => {
+  const redis = fakeRedis();
+  const w = world({ 'https://alpha.test/vente/59636': results('alpha', [['a1', '300 000 €']]), 'https://beta.test/vente/59636': results('beta', []) });
+  await withSearch(redis, w.now());
+  // b9 : lue par un ancien lecteur, avant que la date de lecture soit gardée.
+  await saveListings(redis, '59636', [{ id: 'beta:/annonce/b9', source: 'beta', url: 'https://beta.test/annonce/b9', insee: '59636', type: 'maison', price: 300000, prices: [], firstSeen: 1, lastSeen: 1, missed: 0, removedAt: null, detail: true, readerVersion: 1 }]);
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl });
+  const l = await listingsOf(redis, '59636');
+  const a1 = [...l.values()].find((x) => x.url.endsWith('/a1'));
+  assert.ok(a1.readAt > a1.firstSeen);
+  assert.equal([...l.values()].find((x) => x.url.endsWith('/b9')).readAt, undefined);
+});
+
 test('annonce lue par un ancien lecteur : relue une seule fois, les valeurs fausses effacées', async () => {
   const redis = fakeRedis();
   const w = world({ 'https://alpha.test/vente/59636': results('alpha', [['a1', '300 000 €']]), 'https://beta.test/vente/59636': results('beta', []) });

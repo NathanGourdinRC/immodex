@@ -278,6 +278,7 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
           } else if ((item.tries || 0) < 2 && !res.disallowed) remaining.push({ ...item, tries: (item.tries || 0) + 1 });
           else {
             // Abandonnée : jamais redemandée, même par une version plus récente du lecteur.
+            if (!l.detail) l.readAt = now();
             l.detail = true;
             l.readerVersion = READER_VERSION;
           }
@@ -300,7 +301,9 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
         } catch (err) {
           console.error('[scan] page d’annonce illisible', item.url, err && err.message);
         }
-        // Lue (ou illisible) : jamais redemandée ; enregistrée tout de suite.
+        // Lue (ou illisible) : jamais redemandée ; enregistrée tout de suite. La date de la
+        // première lecture est celle de l'arrivée du bien dans le Fil (badge « nouveau »).
+        if (!l.detail) l.readAt = now();
         l.detail = true;
         l.readerVersion = READER_VERSION;
         await saveListings(redis, item.insee, [l]);

@@ -134,6 +134,22 @@ test('point d’un bien : adresse du registre, sinon celle choisie à la main ; 
   assert.equal(needsPlace({ lat: 50.68, lon: 3.04 }, {}, { status: null }), false);
 });
 
+test('page d’annonce pas encore lue par le robot : signalée ; « nouveau » compté depuis sa lecture', () => {
+  // Commune ajoutée à une recherche : le robot voit des dizaines d'annonces d'un coup et lit
+  // leurs pages sur plusieurs nuits. Sans surface ni chambres, elles passeraient tous les critères.
+  const card = base({ id: 'orpi:/u', source: 'orpi', url: 'https://www.orpi.com/u', detail: false });
+  const [unread] = groupListings([card]);
+  assert.equal(listingFacts(unread).unread, true);
+  const read = base({ id: 'paruvendu:/r', source: 'paruvendu', url: 'https://www.paruvendu.fr/r', surface: 110, readAt: NOW - DAY });
+  const [both] = groupListings([{ ...card, surface: 110 }, read]);
+  assert.equal(listingFacts(both).unread, false);
+  // Vue par le robot avant la dernière visite, lue après : elle apparaît dans le Fil comme nouvelle.
+  const previousVisit = NOW - 2 * DAY;
+  assert.equal(statusOf(groupListings([read])[0], previousVisit, NOW).status, 'nouveau');
+  // Lue avant que la date de lecture soit gardée : comptée depuis sa première vue.
+  assert.equal(statusOf(groupListings([{ ...read, readAt: undefined }])[0], previousVisit, NOW).status, null);
+});
+
 test('pistes pas encore cherchées par le robot (version de la recherche d’adresse) : signalé, pas « aucune piste »', () => {
   const read = { surface: 90, energyConsumption: 211, gesEmission: 40 };
   const [waiting] = groupListings([base({ id: 'deleu:/1', source: 'deleu', url: 'https://www.deleu-immobilier.fr/1', ...read })]);

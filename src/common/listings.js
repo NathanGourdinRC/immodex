@@ -81,6 +81,9 @@ function listingFacts(g) {
     price: prices.length ? Math.min(...prices) : null,
     firstSeen: Math.min(...g.listings.map((l) => l.firstSeen)),
     removed: g.listings.every((l) => l.removedAt),
+    // Aucune page d'annonce lue par le robot : surface et chambres inconnues, le bien
+    // passerait tous les critères. Il attend la lecture (commune ajoutée à une recherche).
+    unread: g.listings.every((l) => !l.detail),
     hasDpe: g.listings.some((l) => l.energyConsumption != null || l.energyClass),
     leads: facts.address ? null : leadsOfGroup(g),
     // Annonce lue, avec un DPE, pas encore cherchée par la recherche d'adresse actuelle du robot
@@ -125,7 +128,10 @@ function statusOf(g, previousVisit, now = Date.now()) {
     if (!l.removedAt && p.length >= 2 && p[p.length - 1].price < p[p.length - 2].price) drop = Math.max(drop, p[p.length - 2].price - p[p.length - 1].price);
   }
   if (drop) return { status: 'baisse', drop };
-  const seen = Math.min(...g.listings.map((l) => l.firstSeen));
+  // Un bien entre dans le Fil quand le robot lit une de ses pages : « nouveau » compte depuis
+  // (readAt manque pour les pages lues avant le 04/11/2026 : leur première vue suffit).
+  const read = g.listings.filter((l) => l.detail).map((l) => l.readAt || l.firstSeen);
+  const seen = Math.min(...(read.length ? read : g.listings.map((l) => l.firstSeen)));
   if (previousVisit ? seen > previousVisit : now - seen < FRESH_MS) return { status: 'nouveau' };
   return { status: null };
 }
