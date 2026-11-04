@@ -18,6 +18,9 @@ function slugOf(s) {
 
 const withoutAccents = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '');
 
+// Commune comparable dans une carte : « ST ANDRE LEZ LILLE » vaut « Saint-André-lez-Lille ».
+const placeSlug = (s) => slugOf(s).replace(/(^|-)st(?=-)/g, '$1saint').replace(/(^|-)ste(?=-)/g, '$1sainte');
+
 // Secteurs de la Compagnie Immobilière du Lac (menu « Acheter » de son site, 03/11/2026).
 const COMPIMMO_SECTORS = new Set(['annecy', 'argonay', 'doussard', 'duingt', 'entrevernes', 'faverges', 'faverges-seythenex', 'lathuile', 'leschaux', 'saint-jorioz', 'sevrier']);
 // Pages de Propriétés du Lac qui ne sont pas des biens (menu et pied de page, 03/11/2026).
@@ -187,6 +190,38 @@ const SOURCES = [
     isListing: (u) => /^\/immobilier\/[^/]+\/$/.test(u.pathname),
     typeOf: (url, text) => guessType(`${url} ${text}`),
   },
+  {
+    // Réseau Century 21 : une liste par commune et par type (« v-saint+andre+lez+lille »), 20
+    // biens par page. Sous la liste, des biens « à proximité » d'autres communes : seules les
+    // cartes du bloc de la commune comptent (`cardOf`). robots.txt interdit /annonces/f/.
+    id: 'century21',
+    label: 'Century 21',
+    host: 'www.century21.fr',
+    departments: null,
+    pageSize: 20,
+    listUrls: (c, type) => typesOf(type).map((t) => `https://www.century21.fr/annonces/achat-${t}/v-${slugOf(c.nom).replace(/-/g, '+')}/`),
+    pageUrl: (url, n) => `${url}page-${n}/`,
+    isListing: (u) => /^\/trouver_logement\/detail\/\d+\/?$/.test(u.pathname),
+    cardOf: (a) => a.closest('.js-the-list-of-properties-list-property .c-the-property-thumbnail-with-content'),
+    typeOf: (url, text) => (/appartement à vendre/i.test(text) ? 'appartement' : /terrain à vendre/i.test(text) ? 'terrain' : 'maison'),
+  },
+  {
+    // Réseau Laforêt : une page par commune et par type avec tous ses biens (37 appartements à
+    // Lille sur une page, 04/11/2026), puis des biens « à proximité » dans un autre bloc. La
+    // recherche du site (/acheter/rechercher?) est interdite par robots.txt, pas ces pages.
+    // La fiche donne le code postal de l'agence (mentions légales) : ignoré (`pagePlace`).
+    id: 'laforet',
+    label: 'Laforêt',
+    host: 'www.laforet.com',
+    departments: null,
+    pageSize: null,
+    pagePlace: false,
+    listUrls: (c, type) => typesOf(type).map((t) => `https://www.laforet.com/ville/achat-${t}-${slugOf(c.nom)}-${c.codesPostaux[0]}`),
+    pageUrl: () => null,
+    isListing: (u) => /^\/agence-immobiliere\/[^/]+\/acheter\/[^/]+\/(maison|appartement|terrain)-[a-z0-9-]*\d{6,}$/.test(u.pathname),
+    cardOf: (a) => a.closest('[id^="standard--page"] article'),
+    typeOf: (url) => (/\/acheter\/[^/]+\/appartement-/.test(url) ? 'appartement' : /\/acheter\/[^/]+\/terrain-/.test(url) ? 'terrain' : 'maison'),
+  },
 ];
 
 const sourceById = (id) => SOURCES.find((s) => s.id === id) || null;
@@ -211,10 +246,14 @@ function readResults(html, pageUrl, source, commune) {
   for (const a of doc.querySelectorAll('a[href]')) {
     const url = keyOf(a);
     if (!url || seen.has(url)) continue;
+    // Bloc de carte propre au site (`cardOf`) : un lien hors de ce bloc (biens « à proximité »
+    // d'autres communes) n'est pas une annonce de la liste.
+    const own = source.cardOf ? source.cardOf(a) : null;
+    if (source.cardOf && !own) continue;
     seen.add(url);
-    // Plus grand bloc qui ne mène qu'à cette annonce.
-    let card = a;
-    while (card.parentElement && card.parentElement !== doc.body) {
+    // Sinon, plus grand bloc qui ne mène qu'à cette annonce.
+    let card = own || a;
+    while (!own && card.parentElement && card.parentElement !== doc.body) {
       const links = new Set([...card.parentElement.querySelectorAll('a[href]')].map(keyOf).filter(Boolean));
       if (links.size > 1) break;
       card = card.parentElement;
@@ -228,7 +267,7 @@ function readResults(html, pageUrl, source, commune) {
     // Biens déjà vendus (Orpi en montre) et annonces d'autres communes : écartés. Commune lue
     // dans l'adresse seule quand la carte du site cite d'autres communes (`communeInUrl`).
     if (/\bvendu\b/i.test(text)) continue;
-    if (!slugOf(source.communeInUrl ? url : `${url} ${text}`).includes(slugOf(commune.nom))) continue;
+    if (!placeSlug(source.communeInUrl ? url : `${url} ${text}`).includes(placeSlug(commune.nom))) continue;
     cards.push({ url, price, title: text.slice(0, 160), type: source.typeOf(url, text) });
   }
   return { cards, all: [...seen], full: !!source.pageSize && seen.size >= source.pageSize };

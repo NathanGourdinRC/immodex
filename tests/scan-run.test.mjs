@@ -424,6 +424,19 @@ test('passage sans commune à suivre : il ne garde pas le verrou, le suivant peu
   assert.equal(next.added, 1);
 });
 
+test('source dont la page donne le code postal de l’agence (pagePlace false) : celui de la page est écarté', async () => {
+  const redis = fakeRedis();
+  const w = world({ 'https://alpha.test/vente/59636': results('alpha', [['a1', '300 000 €']]), 'https://beta.test/vente/59636': results('beta', [['b1', '310 000 €']]) });
+  await withSearch(redis, w.now());
+  const sources = [{ ...SOURCES[0], pagePlace: false }, SOURCES[1]];
+  const reader = (html, url) => ({ ...readListingImpl(html, url), postal: '59700', city: 'La Madeleine' });
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources, readListingImpl: reader });
+  const l = [...(await listingsOf(redis, '59636')).values()];
+  const of = (end) => l.find((x) => x.url.endsWith(end));
+  assert.deepEqual([of('/a1').postal, of('/a1').city], [null, null]);
+  assert.deepEqual([of('/b1').postal, of('/b1').city], ['59700', 'La Madeleine']);
+});
+
 test('date de la première lecture de la page d’annonce gardée, pas changée par une relecture', async () => {
   const redis = fakeRedis();
   const w = world({ 'https://alpha.test/vente/59636': results('alpha', [['a1', '300 000 €']]), 'https://beta.test/vente/59636': results('beta', []) });

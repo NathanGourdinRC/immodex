@@ -29,8 +29,10 @@ const CASES = {
   marquetteimmo: ['https://www.marquette-immobilier.fr/transaction/vente/', ['/immobilier/belle-maison-individuelle/', 'https://www.marquette-immobilier.fr/immobilier/maison-atypique/', '/immobilier/semi-individuelle-4-chambres/']],
 };
 
-test('les sources : 5 de la première version, 2 agences de Saint-Jorioz, 5 de Lambersart, Marquette et Saint-André', () => {
-  assert.deepEqual(SOURCES.map((s) => s.id), ['orpi', 'paruvendu', 'lesiteimmo', 'maes', 'deleu', 'compimmo', 'proprietesdulac', 'leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo']);
+test('les sources : 5 de la première version, 2 agences de Saint-Jorioz, 5 de Lambersart, Marquette et Saint-André, 2 enseignes', () => {
+  assert.deepEqual(SOURCES.map((s) => s.id), ['orpi', 'paruvendu', 'lesiteimmo', 'maes', 'deleu', 'compimmo', 'proprietesdulac', 'leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo', 'century21', 'laforet']);
+  assert.equal(sourceById('century21').departments, null);
+  assert.equal(sourceById('laforet').departments, null);
   for (const id of ['leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo']) assert.deepEqual(sourceById(id).departments, ['59'], id);
   assert.deepEqual(sourceById('maes').departments, ['59']);
   assert.deepEqual(sourceById('compimmo').departments, ['74']);
@@ -160,6 +162,56 @@ test('agences de Lambersart, Marquette et Saint-André : listes, types, commune 
   // Vereecke : code postal et commune dans la carte.
   const ve = page([`<article><a href="/bien/appartement-t3-balcon/">Appartement T3 avec balcon</a><p>245 000 €</p><p>59350 SAINT ANDRE LEZ LILLE</p></article>`]);
   assert.deepEqual(readResults(ve, 'https://vereecke-immobilier.com/a-vendre/', sourceById('vereecke'), STA).cards.map((c) => [c.price, c.type]), [[245000, 'appartement']]);
+});
+
+test('commune abrégée dans la carte (« ST ANDRE LEZ LILLE ») : reconnue', () => {
+  const STA = { code: '59527', nom: 'Saint-André-lez-Lille', codesPostaux: ['59350'] };
+  const html = page([`<article><a href="/annonce-vente-maison-t4-aaa/">Maison 4 pièces</a> <p>ST ANDRE LEZ LILLE 59</p> <p>231 000 €</p></article>`]);
+  assert.deepEqual(readResults(html, 'https://www.orpi.com/x/', sourceById('orpi'), STA).cards.map((c) => c.price), [231000]);
+});
+
+test('Century 21 : une liste par commune et par type, 20 par page, les biens « à proximité » ignorés', () => {
+  const STA = { code: '59527', nom: 'Saint-André-lez-Lille', codesPostaux: ['59350'] };
+  const LAMB = { code: '59328', nom: 'Lambersart', codesPostaux: ['59130'] };
+  const src = sourceById('century21');
+  assert.deepEqual(src.listUrls(STA, null), ['https://www.century21.fr/annonces/achat-maison/v-saint+andre+lez+lille/', 'https://www.century21.fr/annonces/achat-appartement/v-saint+andre+lez+lille/']);
+  assert.deepEqual(src.listUrls(SEVRIER, 'maison'), ['https://www.century21.fr/annonces/achat-maison/v-sevrier/']);
+  assert.equal(src.pageUrl('https://www.century21.fr/annonces/achat-appartement/v-lille/', 2), 'https://www.century21.fr/annonces/achat-appartement/v-lille/page-2/');
+  assert.equal(src.pageSize, 20);
+  // Page réelle (04/11/2026) : la carte du bien de la commune est collée à l'en-tête « Maison à
+  // vendre Lambersart » ; les biens voisins sont dans un autre bloc.
+  const html = `<html><body><header>Maison à vendre Lambersart 1 annonce immobilière</header>
+    <section class="c-the-list-of-properties-list"><div class="tw-grid js-the-list-of-properties-list-property">
+      <div class="c-the-property-thumbnail-with-content js-the-property-thumbnail-with-content"><a href="/trouver_logement/detail/16958995219/"></a>
+        <p>LAMBERSART 59</p> <p>42 m2, 2 pièces</p> <p>Maison à vendre</p> <p>154 800 €</p></div></div></section>
+    <div class="c-the-list-of-properties-related"><div class="c-the-list-of-properties-related__item">
+      <div class="c-the-property-thumbnail"><a href="/trouver_logement/detail/16619588398/">Exclusivité LA MADELEINE 59</a> <p>529 000 €</p> <p>120 m2, maison, 5 pcs</p></div></div></div>
+    </body></html>`;
+  const r = readResults(html, 'https://www.century21.fr/annonces/achat-maison/v-lambersart/', src, LAMB);
+  assert.deepEqual(r.cards.map((c) => [c.url, c.price, c.type]), [['https://www.century21.fr/trouver_logement/detail/16958995219/', 154800, 'maison']]);
+  assert.equal(r.all.length, 1);
+  // Commune sans bien : seuls les biens voisins, aucun n'est rangé dans la commune.
+  const empty = html.replace(/<section[\s\S]*?<\/section>/, '').replace('Lambersart 1 annonce', 'Marquette-lez-Lille');
+  assert.deepEqual(readResults(empty, 'https://www.century21.fr/annonces/achat-maison/v-marquette+lez+lille/', src, { code: '59386', nom: 'Marquette-lez-Lille', codesPostaux: ['59520'] }).cards, []);
+});
+
+test('Laforêt : une page par commune et par type, biens « à proximité » ignorés, code postal de la page écarté', () => {
+  const src = sourceById('laforet');
+  const LAMB = { code: '59328', nom: 'Lambersart', codesPostaux: ['59130'] };
+  assert.deepEqual(src.listUrls(LAMB, 'maison'), ['https://www.laforet.com/ville/achat-maison-lambersart-59130']);
+  assert.deepEqual(src.listUrls(SJ, null), ['https://www.laforet.com/ville/achat-maison-saint-jorioz-74410', 'https://www.laforet.com/ville/achat-appartement-saint-jorioz-74410']);
+  assert.equal(src.pageUrl('https://www.laforet.com/ville/achat-maison-lambersart-59130', 2), null);
+  // La fiche donne le code postal de l'agence (mentions légales) : la commune de la liste fait foi.
+  assert.equal(src.pagePlace, false);
+  const html = page([
+    `<div id="standard--page--1" class="grid"><article><a href="/agence-immobiliere/la-madeleine/acheter/lambersart/maison-5-pieces-52842835"><img src="x.jpg"></a>
+      <p>Maison</p> <p>449 000 €</p> <p>LAMBERSART (59130)</p> <p>140 m² • 5 pièces • 4 chambres</p></article></div>`,
+    `<div id="nearest--page--1" class="grid"><article><a href="/agence-immobiliere/lambersart/acheter/lille/maison-6-pieces-52380889"><img src="x.jpg"></a>
+      <p>Maison</p> <p>675 000 €</p> <p>LILLE (59000) près de Lambersart</p></article></div>`,
+  ]);
+  const r = readResults(html, 'https://www.laforet.com/ville/achat-maison-lambersart-59130', src, LAMB);
+  assert.deepEqual(r.cards.map((c) => [c.url, c.price, c.type]), [['https://www.laforet.com/agence-immobiliere/la-madeleine/acheter/lambersart/maison-5-pieces-52842835', 449000, 'maison']]);
+  assert.equal(src.typeOf('https://www.laforet.com/agence-immobiliere/lille/acheter/lille/appartement-2-pieces-52979419', ''), 'appartement');
 });
 
 test('chaque source du robot a son nom dans le Fil (lien vers l’annonce)', async () => {

@@ -108,6 +108,19 @@ test('terrain écrit « 350 m<sup>2</sup> » dans la fiche détaillée', () => {
   assert.equal(readListing(html, 'https://www.maesimmobilier.fr/bien-immobilier/x/').terrain, 350);
 });
 
+test('terrain avec décimales (« 262,79 m2 ») et chambres en lettres (« trois chambres »)', () => {
+  // Fiche Century 21 d'une maison neuve à Sévrier (04/11/2026) : ni « 3 chambres » ni « Chambres : 3 ».
+  const html = `<!doctype html><html><body><main><h1>Maison à vendre 4 pièces - 105,27 m2 SEVRIER - 74</h1>
+    <p>L'étage est entièrement dédié à l'espace nuit, avec trois chambres et deux dressings.</p>
+    <ul><li>Surface terrain : 262,79 m2</li><li>Nombre de pièces : 4</li><li>Entrée (4,0 m2)</li><li>Séjour (50,6 m2)</li><li>Chambre 1 (11,3 m2)</li></ul>
+    <p>775 000 €</p><p>${'Maison contemporaine avec vue sur les montagnes. '.repeat(8)}</p></main></body></html>`;
+  const l = readListing(html, 'https://www.century21.fr/trouver_logement/detail/17085455057/');
+  assert.deepEqual([l.terrain, l.chambres, l.pieces], [262, 3, 4]);
+  // Le chiffre l'emporte sur les lettres quand la fiche donne les deux.
+  const both = readListing(html.replace('Nombre de pièces : 4', 'Nombre de chambres : 4'), 'https://www.century21.fr/trouver_logement/detail/1/');
+  assert.equal(both.chambres, 4);
+});
+
 // Fiche de la Compagnie Immobilière du Lac (relevée le 03/11/2026) : site ASP.NET, toute la page
 // dans un formulaire, et des cartes d'autres biens (« Maison - 4 Pièces - 170 m² ») en bas.
 const COMPIMMO = `<!doctype html><html><head></head><body><form method=post action="/acheter/maison-saint-jorioz-184" id=aspnetForm>

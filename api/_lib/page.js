@@ -85,6 +85,13 @@ function firstNumber(text, patterns) {
   return null;
 }
 
+// « trois chambres » quand la fiche ne donne pas le chiffre (maisons neuves, descriptions).
+const WORD_NUMBERS = { une: 1, deux: 2, trois: 3, quatre: 4, cinq: 5, six: 6, sept: 7, huit: 8 };
+function wordCount(text, noun) {
+  const m = text.match(new RegExp(`\\b(${Object.keys(WORD_NUMBERS).join('|')})\\s+${noun}`, 'i'));
+  return m ? WORD_NUMBERS[m[1].toLowerCase()] : null;
+}
+
 function readListing(html, url) {
   // Fenêtre où l'on exécute seulement nos lecteurs, jamais les scripts de la page.
   const dom = new JSDOM(html, { url, runScripts: 'outside-only', virtualConsole: quiet() });
@@ -104,9 +111,10 @@ function readListing(html, url) {
     price: gen.extractPrice(doc, 'vente') || null,
     surface: p.surface ?? null,
     pieces: firstNumber(text, [/nombre de pi[eè]ces?\s*:?\s*(\d{1,2})\b/i, /\bpi[eè]ces?\s*:\s*(\d{1,2})\b/i, /(?<![\d.,])(\d{1,2})\s*pi[eè]ces?\b/i]),
-    chambres: firstNumber(text, [/nombre de chambres?\s*:?\s*(\d{1,2})\b/i, /\bchambres?\s*:\s*(\d{1,2})\b/i, /(?<![\d.,])(\d{1,2})\s*chambres?\b/i]),
-    // « m<sup>2</sup> » devient « m 2 » quand le texte est lu nœud par nœud.
-    terrain: int(text.match(/terrain[^0-9]{0,30}(\d[\d ]{0,8})\s*m\s?(?:²|2)(?![a-z0-9])/i)),
+    chambres: firstNumber(text, [/nombre de chambres?\s*:?\s*(\d{1,2})\b/i, /\bchambres?\s*:\s*(\d{1,2})\b/i, /(?<![\d.,])(\d{1,2})\s*chambres?\b/i]) ?? wordCount(text, 'chambres?\\b'),
+    // « m<sup>2</sup> » devient « m 2 » quand le texte est lu nœud par nœud ; décimales
+    // (« 262,79 m2 ») ignorées.
+    terrain: int(text.match(/terrain[^0-9]{0,30}(\d[\d ]{0,8})(?:[.,]\d{1,2})?\s*m\s?(?:²|2)(?![a-z0-9])/i)),
     garage: /\bgarages?\b/i.test(text),
     title: norm(h1 ? h1.textContent : meta('og:title') || doc.title).slice(0, 200) || null,
     photo: meta('og:image'),

@@ -287,6 +287,10 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
         }
         try {
           const d = readListingImpl(res.html, item.url);
+          // Site dont la page donne le code postal de l'agence, pas celui du bien (`pagePlace`) :
+          // la commune de la liste fait foi, la recherche d'adresse prend son code postal.
+          const src = sources.find((s) => s.id === l.source);
+          if (src && src.pagePlace === false) Object.assign(d, { postal: null, city: null });
           // Ce que la page ne dit pas est effacé : une valeur d'une lecture plus ancienne était fausse.
           for (const f of DETAIL_FIELDS) l[f] = d[f] != null && d[f] !== '' ? d[f] : null;
           l.readerVersion = READER_VERSION;
