@@ -31,7 +31,7 @@ const CASES = {
 };
 
 test('les sources : 5 de la première version, 2 agences de Saint-Jorioz, 5 de Lambersart, Marquette et Saint-André, 5 réseaux, puis Marcq, Villeneuve-d’Ascq et Wasquehal', () => {
-  assert.deepEqual(SOURCES.map((s) => s.id), ['orpi', 'paruvendu', 'lesiteimmo', 'maes', 'deleu', 'compimmo', 'proprietesdulac', 'leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo', 'century21', 'laforet', 'iad', 'safti', 'nestenn', 'fnaim', 'citya', 'imko', 'immomarcq', 'heron', 'alerteimmo', 'cestpourtonbien', 'bhimmo', 'vastimmo', 'immotram', 'avenueimmo', 'brice', 'actionimmo']);
+  assert.deepEqual(SOURCES.map((s) => s.id), ['orpi', 'paruvendu', 'lesiteimmo', 'maes', 'deleu', 'compimmo', 'proprietesdulac', 'leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo', 'century21', 'laforet', 'iad', 'safti', 'nestenn', 'fnaim', 'citya', 'imko', 'immomarcq', 'heron', 'alerteimmo', 'cestpourtonbien', 'bhimmo', 'vastimmo', 'immotram', 'avenueimmo', 'brice', 'actionimmo', 'pepites', 'kw', 'duquesnoy', 'estime', 'duparque', 'rdimmo', 'clefs', 'immonot', 'vacossin', 'lekieffre', 'arthurimmo', 'barnes', 'bonte', 'drhouse', 'immosens']);
   for (const id of ['century21', 'laforet', 'iad', 'safti', 'nestenn']) assert.equal(sourceById(id).departments, null, id);
   for (const id of ['leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo']) assert.deepEqual(sourceById(id).departments, ['59'], id);
   assert.deepEqual(sourceById('maes').departments, ['59']);
@@ -346,6 +346,68 @@ test('Citya, Immotram, La Boîte Immo et Action : listes par commune, biens sous
   ]);
   const a = readResults(action, 'https://action.immo/achat-maison-villeneuve-d-ascq.php', sourceById('actionimmo'), VDA);
   assert.deepEqual(a.cards.map((c) => c.price), [310000]);
+});
+
+const WASQ = { code: '59646', nom: 'Wasquehal', codesPostaux: ['59290'] };
+
+test('lot 2 : adresses des listes (KW sous « /fr », Kaio, notaires, Arthurimmo, Dr House...)', () => {
+  assert.deepEqual(sourceById('kw').listUrls(MARCQ, 'maison'), ['https://www.kwfrance.com/fr/vente/maison/marcq-en-baroeul/59700']);
+  assert.equal(sourceById('kw').departments, null);
+  assert.deepEqual(sourceById('duquesnoy').listUrls(WASQ, 'maison'), ['https://www.duquesnoyimmobilier.com/vente/1-wasquehal/maison/1']);
+  assert.deepEqual(sourceById('estime').listUrls(MARCQ, 'appartement'), ['https://www.estime-immo.com/vente/158-marcq-en-baroeul/appartement/1']);
+  const kaio = sourceById('duparque');
+  assert.deepEqual(kaio.listUrls(MARCQ, null), ['https://www.valerie-duparque-immobilier.com/vente-maisons,c11/', 'https://www.valerie-duparque-immobilier.com/vente-appartements,c12/']);
+  assert.equal(kaio.pageUrl('https://www.valerie-duparque-immobilier.com/vente-maisons,c11/', 2), 'https://www.valerie-duparque-immobilier.com/vente-maisons,c11/page-2/');
+  assert.deepEqual(sourceById('rdimmo').listUrls(MARCQ, 'maison'), ['https://www.rdimmo.fr/vente/immobilier/marcq-en-baroeul/']);
+  assert.equal(sourceById('rdimmo').pageUrl('https://www.rdimmo.fr/vente/immobilier/marcq-en-baroeul/', 2), 'https://www.rdimmo.fr/vente/immobilier/marcq-en-baroeul/?p=2');
+  assert.deepEqual(sourceById('clefs').listUrls(VDA, 'maison'), ['https://www.lesclefsdechezmoi.fr/achat-immobilier/nord/villeneuve-d-ascq/maisons/']);
+  assert.deepEqual(sourceById('immonot').listUrls(MARCQ, 'maison'), ['https://www.immonot.com/immobilier-notaire/annonces/Ccom_59378_59700/achat-maison-a-vendre-59700-marcq-en-baroeul-nord.html']);
+  assert.deepEqual(sourceById('arthurimmo').listUrls(WASQ, 'maison'), ['https://www.arthurimmo.com/immobilier/achat/immo-wasquehal-59290/bien-maison']);
+  assert.deepEqual(sourceById('arthurimmo').listUrls(VDA, 'maison'), ['https://www.arthurimmo.com/immobilier/achat/immo-villeneuve-d-ascq-59/bien-maison']);
+  assert.deepEqual(sourceById('drhouse').listUrls(VDA, 'maison'), ['https://www.drhouse-immo.com/annonces/vente/maison/villeneuve-d-ascq-59491']);
+  assert.deepEqual(sourceById('immosens').listUrls(MARCQ, 'maison'), ['https://www.immosens.fr/vente-maison-marcq-en-baroeul.htm']);
+  assert.deepEqual(sourceById('barnes').listUrls(MARCQ, 'maison'), ['https://www.barnes-lille.com/fr/vente/marcq-en-baroeul.html']);
+});
+
+test('lot 2 : listes de toute l’agence, commune lue dans l’adresse de la fiche (même écrite « villeneuve-dascq »)', () => {
+  const html = page([
+    card('/ventes-immobilieres/annonces/vente-maison-t4-137m2-villeneuve-dascq-59650-9997.htm', '430 000,00 €'),
+    card('/ventes-immobilieres/annonces/vente-maison-t5-93m2-lomme-59160-10138.htm', '250 000,00 €'),
+    card('/ventes-immobilieres/annonces/vente-appartement-t3-75m2-roubaix-59100-10184.htm', '150 000,00 €'),
+  ]);
+  const r = readResults(html, 'https://vacossin-associes.notaires.fr/ventes-immobilieres.htm', sourceById('vacossin'), VDA);
+  assert.deepEqual(r.cards.map((c) => [c.price, c.type]), [[430000, 'maison']]);
+  assert.equal(r.all.length, 3);
+  const lk = page([
+    card('/fiche-maison-a-vendre-wasquehal-ref-114.php', '364 000 €'),
+    card('/fiche-type-5-a-vendre-wasquehal-ref-123.php', '199 000 €'),
+    card('/fiche-maison-a-vendre-lambersart-ref-122.php', '420 000 €'),
+  ]);
+  assert.deepEqual(readResults(lk, 'https://www.lekieffre-immobilier.fr/vente.php', sourceById('lekieffre'), WASQ).cards.map((c) => c.type), ['maison', 'appartement']);
+  const bonte = page([
+    card('/fr/propriete/vente+maison+marcq-en-baroeul+demeure-d-architecte+87302601', '1 490 000 €'),
+    card('/fr/propriete/vente+appartement+lannoy+appartement-t2+87109458', '120 000 €'),
+  ]);
+  assert.deepEqual(readResults(bonte, 'https://bonteimmo.com/fr/vente', sourceById('bonte'), MARCQ).cards.map((c) => c.price), [1490000]);
+  const kaio = page([
+    card('https://www.valerie-duparque-immobilier.com/vente-maison-marcq-en-baroeul,b562/', '289 500 €'),
+    card('https://www.valerie-duparque-immobilier.com/vente-maison-bondues,b570/', '389 500 €'),
+    card('https://www.valerie-duparque-immobilier.com/nos-biens-immobilier-vendus,c30/', '1 €'),
+  ]);
+  assert.deepEqual(readResults(kaio, 'https://www.valerie-duparque-immobilier.com/vente-maisons,c11/', sourceById('duparque'), MARCQ).cards.map((c) => c.price), [289500]);
+});
+
+test('KW (Netty sous « /fr ») : fiches sous « /fr/vente/ »', () => {
+  const html = nettyPage({ VM49828: prod('maison-individuelle-8-pieces-marcq-en-baroeul-59700', { city: 'Marcq-en-Baroeul', cp: '59700', price2: 848000 }) }, 1);
+  const r = readResults(html, 'https://www.kwfrance.com/fr/vente/maison/marcq-en-baroeul/59700', sourceById('kw'), MARCQ);
+  assert.deepEqual(r.cards.map((c) => [c.url, c.price]), [['https://www.kwfrance.com/fr/vente/maison-individuelle-8-pieces-marcq-en-baroeul-59700,VM49828', 848000]]);
+});
+
+test('Dr House : la carte s’arrête au bloc de l’annonce, le filtre de prix de la page est ignoré', () => {
+  const html = `<html><body><form><label>Prix max</label><span>75 000 €</span></form><div class="grid">
+    <article><a href="/annonce/vente/marcq-en-baroeul-59700/maison-4-pieces-83m2/162183">Maison 4 pièces de 83 m² - Marcq-en-Barœul (59700)</a><p><span>389 000 €</span></p></article></div></body></html>`;
+  const r = readResults(html, 'https://www.drhouse-immo.com/annonces/vente/maison/marcq-en-baroeul-59700', sourceById('drhouse'), MARCQ);
+  assert.deepEqual(r.cards.map((c) => c.price), [389000]);
 });
 
 test('chaque source du robot a son nom dans le Fil (lien vers l’annonce)', async () => {

@@ -52,7 +52,7 @@ const guessType = (text) => (/appartement|\bt[1-6]\b|studio/i.test(text) ? 'appa
 // type et code postal (« /vente/maison/villeneuve-d-ascq/59650 »), puis `?page=N`.
 const NETTY_STATUS = { 24: 'Sous offre', 1000: 'Sous compromis', 1001: 'Vendu', 1002: 'Loué' };
 const NETTY_TYPES = { house: 'Maison', appt: 'Appartement', land: 'Terrain', building: 'Immeuble' };
-function nettyCards(html, pageUrl, pageSize) {
+function nettyCards(html, pageUrl, pageSize, base = '') {
   const items = [];
   let count = null;
   for (const m of String(html).matchAll(/_TEMPLATE_DATA\s*=\s*JSON\.parse\(b64_to_utf8\(['"]([A-Za-z0-9+/=]+)['"]\)\)/g)) {
@@ -76,23 +76,23 @@ function nettyCards(html, pageUrl, pageSize) {
       const status = [p.promo, ...(Array.isArray(list) ? list : [])].map((x) => NETTY_STATUS[x]).filter(Boolean).join(' ');
       const title = p.title && typeof p.title === 'object' ? p.title.fr || '' : '';
       const text = `${NETTY_TYPES[p.prod_type] || ''} ${title} ${p.city || ''} ${p.cp || ''} ${status}`;
-      items.push({ href: `/vente/${slug},${ref}`, price: Number(p.price2 || p.pricePrimary) || null, text });
+      items.push({ href: `${base}/vente/${slug},${ref}`, price: Number(p.price2 || p.pricePrimary) || null, text });
     }
   }
   const n = Number(new URL(pageUrl).searchParams.get('page')) || 1;
   return { items, full: items.length >= pageSize && (count == null || n * pageSize < count) };
 }
-function netty({ id, label, host, pageSize = 12 }) {
+function netty({ id, label, host, base = '', pageSize = 12, departments = ['59'] }) {
   return {
     id,
     label,
     host,
-    departments: ['59'],
+    departments,
     pageSize,
-    listUrls: (c, type) => typesOf(type).flatMap((t) => c.codesPostaux.map((cp) => `https://${host}/vente/${t}/${slugOf(c.nom)}/${cp}`)),
+    listUrls: (c, type) => typesOf(type).flatMap((t) => c.codesPostaux.map((cp) => `https://${host}${base}/vente/${t}/${slugOf(c.nom)}/${cp}`)),
     pageUrl: withParam('page'),
-    cardsFrom: (html, pageUrl) => nettyCards(html, pageUrl, pageSize),
-    isListing: (u) => /^\/vente\/[a-z0-9-]+,[A-Za-z0-9_-]+$/.test(u.pathname),
+    cardsFrom: (html, pageUrl) => nettyCards(html, pageUrl, pageSize, base),
+    isListing: (u) => u.pathname.startsWith(`${base}/vente/`) && /^\/vente\/[a-z0-9-]+,[A-Za-z0-9_-]+$/.test(u.pathname.slice(base.length)),
     typeOf: (url, text) => (/^Appartement/.test(text) ? 'appartement' : /^Terrain/.test(text) ? 'terrain' : /^Immeuble/.test(text) ? 'immeuble' : 'maison'),
   };
 }
@@ -436,6 +436,176 @@ const SOURCES = [
     isListing: (u) => /^\/fiche-[a-z]+-a-vendre-[a-z0-9-]+-ref-\d+\.php$/.test(u.pathname),
     typeOf: (url) => (/\/fiche-appartement-/.test(url) ? 'appartement' : /\/fiche-terrain-/.test(url) ? 'terrain' : 'maison'),
   },
+  // Agences de Wasquehal et Croix, et réseau KW (sites Netty « Modelo », KW sous « /fr »).
+  netty({ id: 'pepites', label: 'Les Nouvelles Pépites', host: 'www.lesnouvellespepitesimmo.fr', pageSize: 10 }),
+  netty({ id: 'kw', label: 'KW Keller Williams', host: 'www.kwfrance.com', base: '/fr', pageSize: 10, departments: null }),
+  // Agences de Wasquehal et Marcq-en-Barœul sur La Boîte Immo.
+  boiteImmo({ id: 'duquesnoy', label: 'Duquesnoy Immobilier', host: 'www.duquesnoyimmobilier.com', cities: { wasquehal: 1 } }),
+  boiteImmo({ id: 'estime', label: 'Estime', host: 'www.estime-immo.com', cities: { 'marcq-en-baroeul': 158, wasquehal: 145 } }),
+  {
+    // Agence de Marcq-en-Barœul (Kaio) : une liste par type pour toutes ses communes
+    // (« /vente-maisons,c11/ », puis « page-2/ ») ; la commune se lit dans l'adresse de la fiche
+    // (« /vente-maison-marcq-en-baroeul,b562/ »). Les biens vendus sont sur une autre page.
+    id: 'duparque',
+    label: 'Valérie Duparque Immobilier',
+    host: 'www.valerie-duparque-immobilier.com',
+    departments: ['59'],
+    // 4 biens par page : la liste des maisons dépasse les 5 pages lues d'habitude.
+    pageSize: 4,
+    maxPages: 10,
+    communeInUrl: true,
+    listUrls: (c, type) => typesOf(type).map((t) => `https://www.valerie-duparque-immobilier.com/${t === 'appartement' ? 'vente-appartements,c12' : 'vente-maisons,c11'}/`),
+    pageUrl: (url, n) => `${url}page-${n}/`,
+    isListing: (u) => /^\/vente-[a-z]+-[a-z0-9-]+,b\d+\/$/.test(u.pathname),
+    typeOf: (url) => (/\/vente-appartement-/.test(url) ? 'appartement' : /\/vente-terrain-/.test(url) ? 'terrain' : 'maison'),
+  },
+  {
+    // Agence de Marcq-en-Barœul : une liste par commune (« /vente/immobilier/marcq-en-baroeul/ »,
+    // puis « ?p=2 »), biens à vendre puis biens vendus ; la commune finit l'adresse de la fiche.
+    id: 'rdimmo',
+    label: 'RD Immo',
+    host: 'www.rdimmo.fr',
+    departments: ['59'],
+    pageSize: 9,
+    communeInUrl: true,
+    listUrls: (c) => [`https://www.rdimmo.fr/vente/immobilier/${slugOf(c.nom)}/`],
+    pageUrl: withParam('p'),
+    isListing: (u) => /^\/vente\/\d+-[a-z0-9-]+$/.test(u.pathname),
+    typeOf: (url, text) => guessType(`${url} ${text}`),
+  },
+  {
+    // Portail Les Clefs de Chez Moi (annonces d'agences) : une page par commune et par type,
+    // sans pagination ; elle ajoute des biens de communes voisines, écartés par l'adresse.
+    id: 'clefs',
+    label: 'Les Clefs de Chez Moi',
+    host: 'www.lesclefsdechezmoi.fr',
+    departments: ['59'],
+    pageSize: null,
+    communeInUrl: true,
+    listUrls: (c, type) => typesOf(type).map((t) => `https://www.lesclefsdechezmoi.fr/achat-immobilier/nord/${slugOf(c.nom)}/${t}s/`),
+    pageUrl: () => null,
+    isListing: (u) => /^\/achat-immobilier\/nord\/[a-z0-9-]+\/(maisons|appartements)\/[a-z0-9-]+-\d+\.html$/.test(u.pathname),
+    typeOf: (url) => (/\/appartements\//.test(url) ? 'appartement' : 'maison'),
+  },
+  {
+    // Annonces des notaires (Immonot) : une liste par commune et par type, repérée par le code
+    // INSEE et le code postal (« Ccom_59378_59700 ») ; la commune est dans l'adresse de la fiche.
+    id: 'immonot',
+    label: 'Immonot (notaires)',
+    host: 'www.immonot.com',
+    departments: ['59'],
+    pageSize: 20,
+    communeInUrl: true,
+    listUrls: (c, type) => {
+      const cp = c.codesPostaux[0];
+      return typesOf(type).map((t) => `https://www.immonot.com/immobilier-notaire/annonces/Ccom_${c.code}_${cp}/achat-${t}-a-vendre-${cp}-${slugOf(c.nom)}-nord.html`);
+    },
+    pageUrl: withParam('page'),
+    isListing: (u) => /^\/immobilier-notaire\/detail\/[A-Za-z0-9_-]+\/achat-[a-z0-9-]+\.html$/.test(u.pathname),
+    typeOf: (url) => (/\/achat-appartement-/.test(url) ? 'appartement' : /\/achat-terrain-/.test(url) ? 'terrain' : 'maison'),
+  },
+  {
+    // Étude de notaires Vacossin & Associés (Lille) : toutes ses ventes sur une page ; la commune
+    // est dans l'adresse de la fiche, sans apostrophe (« villeneuve-dascq-59650 »).
+    id: 'vacossin',
+    label: 'Vacossin & Associés (notaires)',
+    host: 'vacossin-associes.notaires.fr',
+    departments: ['59'],
+    pageSize: null,
+    communeInUrl: true,
+    listUrls: () => ['https://vacossin-associes.notaires.fr/ventes-immobilieres.htm'],
+    pageUrl: () => null,
+    isListing: (u) => /^\/ventes-immobilieres\/annonces\/vente-[a-z0-9-]+-\d+\.htm$/.test(u.pathname),
+    typeOf: (url) => (/\/vente-appartement-/.test(url) ? 'appartement' : /\/vente-terrain-/.test(url) ? 'terrain' : 'maison'),
+  },
+  {
+    // Agence de Lambersart (Pilotim) : toutes ses ventes sur une page ; la commune est dans
+    // l'adresse de la fiche, les biens vendus marqués dans le texte de leur image.
+    id: 'lekieffre',
+    label: 'Guillaume Lekieffre Immobilier',
+    host: 'www.lekieffre-immobilier.fr',
+    departments: ['59'],
+    pageSize: null,
+    communeInUrl: true,
+    listUrls: () => ['https://www.lekieffre-immobilier.fr/vente.php'],
+    pageUrl: () => null,
+    isListing: (u) => /^\/fiche-[a-z0-9-]+-a-vendre-[a-z0-9-]+-ref-\d+\.php$/.test(u.pathname),
+    typeOf: (url) => (/\/fiche-maison-/.test(url) ? 'maison' : /\/fiche-terrain-/.test(url) ? 'terrain' : /\/fiche-(appartement|type-\d)-/.test(url) ? 'appartement' : 'maison'),
+  },
+  {
+    // Réseau Arthurimmo : une page par commune et par type (« immo-wasquehal-59290 », ou
+    // « immo-villeneuve-d-ascq-59 » pour une commune à plusieurs codes postaux).
+    id: 'arthurimmo',
+    label: 'Arthurimmo',
+    host: 'www.arthurimmo.com',
+    departments: null,
+    pageSize: null,
+    communeInUrl: true,
+    listUrls: (c, type) => {
+      const place = `${slugOf(c.nom)}-${c.codesPostaux.length > 1 ? c.code.slice(0, 2) : c.codesPostaux[0]}`;
+      return typesOf(type).map((t) => `https://www.arthurimmo.com/immobilier/achat/immo-${place}/bien-${t}`);
+    },
+    pageUrl: () => null,
+    isListing: (u) => /^\/annonces\/achat\/[a-z]+\/[a-z0-9-]+-\d{5}\/\d+\.htm$/.test(u.pathname),
+    typeOf: (url) => (/\/achat\/appartement\//.test(url) ? 'appartement' : /\/achat\/terrain\//.test(url) ? 'terrain' : 'maison'),
+  },
+  {
+    // Barnes Lille (Apimo) : une page par commune, qui montre aussi des biens d'autres
+    // communes ; la commune est dans l'adresse de la fiche (« /fr/vente/marcq-en-baroeul/87443424 »).
+    id: 'barnes',
+    label: 'Barnes Lille',
+    host: 'www.barnes-lille.com',
+    departments: ['59'],
+    pageSize: null,
+    communeInUrl: true,
+    listUrls: (c) => [`https://www.barnes-lille.com/fr/vente/${slugOf(c.nom)}.html`],
+    pageUrl: () => null,
+    isListing: (u) => /^\/fr\/vente\/[a-z0-9-]+\/\d+$/.test(u.pathname),
+    typeOf: (url, text) => guessType(text),
+  },
+  {
+    // Bonte Immobilier (Apimo, Roubaix et Marcq-en-Barœul) : toutes ses ventes, « ?page=2 » ;
+    // le type et la commune sont dans l'adresse (« /fr/propriete/vente+maison+marcq-en-baroeul+... »).
+    id: 'bonte',
+    label: 'Bonte Immobilier',
+    host: 'bonteimmo.com',
+    departments: ['59'],
+    pageSize: 12,
+    communeInUrl: true,
+    listUrls: () => ['https://bonteimmo.com/fr/vente'],
+    pageUrl: withParam('page'),
+    isListing: (u) => /^\/fr\/propriete\/vente\+[a-z]+\+[a-z0-9-]+\+/.test(u.pathname),
+    typeOf: (url) => (/vente\+appartement\+/.test(url) ? 'appartement' : /vente\+terrain\+/.test(url) ? 'terrain' : /vente\+maison\+/.test(url) ? 'maison' : 'immeuble'),
+  },
+  {
+    // Réseau Dr House : une liste par commune et par type (« marcq-en-baroeul-59700 » ; à
+    // Villeneuve-d'Ascq, un code postal donne toute la commune).
+    id: 'drhouse',
+    label: 'Dr House Immo',
+    host: 'www.drhouse-immo.com',
+    departments: null,
+    pageSize: 20,
+    communeInUrl: true,
+    listUrls: (c, type) => typesOf(type).map((t) => `https://www.drhouse-immo.com/annonces/vente/${t}/${slugOf(c.nom)}-${c.codesPostaux[0]}`),
+    pageUrl: withParam('page'),
+    // Carte : le bloc « article » de l'annonce (seule sur la page, elle s'étendrait au filtre de prix).
+    cardOf: (a) => a.closest('article'),
+    isListing: (u) => /^\/annonce\/vente\/[a-z0-9-]+-\d{5}\/[a-z0-9-]+\/\d+$/.test(u.pathname),
+    typeOf: (url) => (/\/appartement-/.test(url) ? 'appartement' : /\/terrain-/.test(url) ? 'terrain' : 'maison'),
+  },
+  {
+    // Agence Immosens (3Clics, Croix et Lille) : une page par commune et par type.
+    id: 'immosens',
+    label: 'Immosens',
+    host: 'www.immosens.fr',
+    departments: ['59'],
+    pageSize: null,
+    communeInUrl: true,
+    listUrls: (c, type) => typesOf(type).map((t) => `https://www.immosens.fr/vente-${t}-${slugOf(c.nom)}.htm`),
+    pageUrl: () => null,
+    isListing: (u) => /^\/vente-[a-z]+-[a-z0-9-]+,[A-Z0-9]+,\d+\.htm$/.test(u.pathname),
+    typeOf: (url) => (/\/vente-appartement-/.test(url) ? 'appartement' : /\/vente-terrain-/.test(url) ? 'terrain' : 'maison'),
+  },
 ];
 
 const sourceById = (id) => SOURCES.find((s) => s.id === id) || null;
@@ -459,7 +629,8 @@ function listingUrl(href, base, source) {
 function keeps(url, text, source, commune, code = null) {
   if (UNAVAILABLE.test(text) || NEARBY.test(text)) return false;
   if (code && commune.code) return code === commune.code;
-  return placeSlug(source.communeInUrl ? url : `${url} ${text}`).includes(placeSlug(commune.nom));
+  const where = placeSlug(source.communeInUrl ? url : `${url} ${text}`);
+  return where.includes(placeSlug(commune.nom)) || where.includes(placeSlug(String(commune.nom).replace(/['’]/g, '')));
 }
 
 function readResults(html, pageUrl, source, commune) {

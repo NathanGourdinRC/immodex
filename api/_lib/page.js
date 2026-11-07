@@ -17,7 +17,8 @@ const norm = (s) => String(s || '').replace(/[\s  ]+/g, ' ').trim();
 
 // Texte qui ne contient que le prix : « 299 500 € », « Prix : 332 000 € ».
 // Accepte aussi « 275 000 € * » et « 299 000 € HAI » (honoraires inclus).
-const ONLY_PRICE = /^(?:prix\s*:?\s*)?(\d{1,3}(?:[ .]\d{3}){1,2}|\d{4,7})\s?€\s*(?:\*|hai|fai|ttc|honoraires inclus)?$/i;
+// Centimes acceptés et ignorés (« 430 000,00 € », chez les notaires).
+const ONLY_PRICE = /^(?:prix\s*:?\s*)?(\d{1,3}(?:[ .]\d{3}){1,2}|\d{4,7})(?:,\d{2})?\s?€\s*(?:\*|hai|fai|ttc|honoraires inclus)?$/i;
 
 function priceOf(text) {
   const m = norm(text).match(ONLY_PRICE);
