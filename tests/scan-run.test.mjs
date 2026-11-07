@@ -214,7 +214,31 @@ test('annonce déjà lue sans adresse sûre : pistes cherchées une fois, sans r
   assert.ok(!w.asked.some((u) => u.includes('/annonce/')));
   const a1 = (await listingsOf(redis, '59636')).get('alpha:/annonce/a1');
   assert.deepEqual(a1.leads, leads);
-  assert.equal(a1.lookupVersion, 2);
+  assert.equal(a1.lookupVersion, 3);
+  w.advance(DAY);
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl, lookup });
+  assert.equal(asked.length, 1);
+});
+
+test('adresse sûre mais sans numéro (recherche version 2) : cherchée de nouveau une fois pour son numéro', async () => {
+  const redis = fakeRedis();
+  const w = world({ 'https://alpha.test/vente/59636': results('alpha', [['a1', '460 000 €'], ['a2', '310 000 €']]), 'https://beta.test/vente/59636': results('beta', []) });
+  await withSearch(redis, w.now());
+  const read = { source: 'alpha', insee: '59636', type: 'maison', price: 460000, prices: [], firstSeen: w.now(), lastSeen: w.now(), missed: 0, removedAt: null, detail: true, readerVersion: 3, postal: null, city: 'Wambrechies', surface: 115, energyConsumption: 325, lookupVersion: 2, addressConfidence: 'haute' };
+  await saveListings(redis, '59636', [
+    { ...read, id: 'alpha:/annonce/a1', url: 'https://alpha.test/annonce/a1', address: 'Rue du Général Leclerc 59118 Wambrechies' },
+    { ...read, id: 'alpha:/annonce/a2', url: 'https://alpha.test/annonce/a2', address: '52 Rue du Général Leclerc 59118 Wambrechies' },
+  ]);
+  const asked = [];
+  const lookup = async (l) => (asked.push(l.surface), { address: '49 F Rue du Général Leclerc 59118 Wambrechies', lat: 50.685, lon: 3.048, dpeId: 'X', addressConfidence: 'haute', leads: null });
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl, lookup });
+  // Seule l'adresse sans numéro est cherchée ; celle qui a un numéro ne bouge pas.
+  assert.equal(asked.length, 1);
+  const all = await listingsOf(redis, '59636');
+  assert.equal(all.get('alpha:/annonce/a1').address, '49 F Rue du Général Leclerc 59118 Wambrechies');
+  assert.equal(all.get('alpha:/annonce/a1').lookupVersion, 3);
+  assert.equal(all.get('alpha:/annonce/a2').address, '52 Rue du Général Leclerc 59118 Wambrechies');
+  // Une fois faite, la recherche n'est pas refaite au passage suivant.
   w.advance(DAY);
   await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl, lookup });
   assert.equal(asked.length, 1);
@@ -234,7 +258,7 @@ test('registre des DPE injoignable : pistes cherchées de nouveau au passage sui
   w.advance(DAY);
   await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl: reader, lookup });
   assert.equal(calls, 2);
-  assert.equal((await listingsOf(redis, '59636')).get('alpha:/annonce/a1').lookupVersion, 2);
+  assert.equal((await listingsOf(redis, '59636')).get('alpha:/annonce/a1').lookupVersion, 3);
 });
 
 test('registre muet trois passages de suite : la recherche est abandonnée, l’annonce n’est plus cherchée', async () => {
@@ -250,7 +274,7 @@ test('registre muet trois passages de suite : la recherche est abandonnée, l’
   }
   assert.equal(calls, 3);
   const a1 = (await listingsOf(redis, '59636')).get('alpha:/annonce/a1');
-  assert.equal(a1.lookupVersion, 2);
+  assert.equal(a1.lookupVersion, 3);
   assert.equal(a1.leads, null);
 });
 

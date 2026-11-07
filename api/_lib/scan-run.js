@@ -35,8 +35,10 @@ const needsReading = (l) => !l.removedAt && (!l.detail || (l.readerVersion || 1)
 // Version de la recherche d'adresse : une annonce lue, sans adresse sûre, cherchée par une
 // version plus ancienne est cherchée de nouveau dans le registre des DPE, sans relire sa page.
 // Version 2 : pistes d'adresse gardées (vérifiées par Nathan) et adresse sûre par immeuble.
-const LOOKUP_VERSION = 2;
-const needsLookup = (l) => !l.removedAt && l.detail && !l.address && (l.lookupVersion || 1) < LOOKUP_VERSION;
+// Version 3 : numéro de rue repris de l'adresse saisie par le diagnostiqueur quand l'adresse
+// normalisée s'arrête à la rue ; une adresse sûre mais sans numéro est donc cherchée de nouveau.
+const LOOKUP_VERSION = 3;
+const needsLookup = (l) => !l.removedAt && l.detail && (!l.address || !/^\d/.test(l.address)) && (l.lookupVersion || 1) < LOOKUP_VERSION;
 const LOOKUP_TRIES = 3; // registre muet (délai, panne) trois passages de suite : abandon
 
 const idOf = (source, url) => `${source.id}:${new URL(url).pathname}`;
