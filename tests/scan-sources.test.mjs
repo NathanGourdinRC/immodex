@@ -164,6 +164,17 @@ test('agences de Lambersart, Marquette et Saint-André : listes, types, commune 
   assert.deepEqual(readResults(ve, 'https://vereecke-immobilier.com/a-vendre/', sourceById('vereecke'), STA).cards.map((c) => [c.price, c.type]), [[245000, 'appartement']]);
 });
 
+test('ligature « œ » : Marcq-en-Barœul s’écrit « marcq-en-baroeul » dans les adresses et se reconnaît dans les cartes', () => {
+  const MARCQ = { code: '59378', nom: 'Marcq-en-Barœul', codesPostaux: ['59700'] };
+  assert.equal(slugOf('Marcq-en-Barœul'), 'marcq-en-baroeul');
+  assert.equal(slugOf("Villeneuve-d'Ascq"), 'villeneuve-d-ascq');
+  assert.deepEqual(sourceById('orpi').listUrls(MARCQ, 'maison'), ['https://www.orpi.com/annonces-immobilieres-marcq-en-baroeul/vente-maison/']);
+  assert.deepEqual(sourceById('century21').listUrls(MARCQ, 'maison'), ['https://www.century21.fr/annonces/achat-maison/v-marcq+en+baroeul/']);
+  const html = page([card('/annonce/maison-vente-5-pieces-marcq-en-baroeul-120m2/r1234567', '450 000 €')]);
+  const { cards } = readResults(html, 'https://www.iadfrance.fr/annonces/marcq-en-baroeul-59700/vente/maison', sourceById('iad'), MARCQ);
+  assert.equal(cards.length, 1);
+});
+
 test('commune abrégée dans la carte (« ST ANDRE LEZ LILLE ») : reconnue', () => {
   const STA = { code: '59527', nom: 'Saint-André-lez-Lille', codesPostaux: ['59350'] };
   const html = page([`<article><a href="/annonce-vente-maison-t4-aaa/">Maison 4 pièces</a> <p>ST ANDRE LEZ LILLE 59</p> <p>231 000 €</p></article>`]);

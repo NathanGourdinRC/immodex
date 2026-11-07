@@ -7,8 +7,14 @@ import { parseHtml, priceOf, norm } from './page.js';
 const TYPES = ['maison', 'appartement'];
 
 // « Saint-André-lez-Lille » → « saint-andre-lez-lille », comme dans les adresses des sites.
+// La ligature « œ » ne se décompose pas comme un accent : « Marcq-en-Barœul » s'écrit
+// « marcq-en-baroeul » sur les sites, pas « marcq-en-bar-ul ».
 function slugOf(s) {
   return String(s || '')
+    .replace(/œ/g, 'oe')
+    .replace(/Œ/g, 'Oe')
+    .replace(/æ/g, 'ae')
+    .replace(/Æ/g, 'Ae')
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
