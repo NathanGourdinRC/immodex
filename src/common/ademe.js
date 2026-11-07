@@ -14,6 +14,7 @@ const FIELD_MAP = {
     postal: 'code_postal_ban',
     city: 'nom_commune_ban',
     address: 'adresse_ban',
+    rawAddress: 'adresse_brut',
     energyClass: 'etiquette_dpe',
     gesClass: 'etiquette_ges',
     energyConsumption: 'conso_5_usages_par_m2_ep',
@@ -29,6 +30,7 @@ const FIELD_MAP = {
     postal: 'code_postal_ban',
     city: 'nom_commune_ban',
     address: 'adresse_ban',
+    rawAddress: 'adresse_brut',
     energyClass: 'etiquette_dpe',
     gesClass: 'etiquette_ges',
     energyConsumption: 'conso_5_usages_par_m2_ep',
@@ -84,6 +86,32 @@ function geopoint(value) {
   return m ? { lat: Number(m[1]), lon: Number(m[2]) } : { lat: null, lon: null };
 }
 
+// Les lettres accentuées et la ligature œ ramenées à leur forme simple, la ponctuation en espaces :
+// « Rue du Général-Leclerc » et « rue du general leclerc » se comparent.
+const fold = (s) =>
+  String(s || '')
+    .replace(/œ/gi, 'oe')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+// Numéro de rue saisi par le diagnostiqueur (« 49 F Rue du Général Leclerc »), repris quand
+// l'adresse normalisée par la Base adresse nationale s'arrête à la rue faute d'avoir reconnu ce
+// numéro. Seulement si le reste de la saisie est bien la même rue : une saisie approximative
+// (« 49 r du gal Leclerc ») ne remplace rien. Seule la première ligne de la saisie compte (la
+// suite est souvent un nom de résidence).
+function withStreetNumber(address, rawAddress) {
+  if (!address || /^\d/.test(String(address).trim()) || !rawAddress) return address;
+  const line = String(rawAddress).split(/\r?\n/)[0].trim();
+  const m = line.match(/^(\d{1,4}(?:\s?(?:bis|ter|quater|[a-z]))?)\b[\s,]+(.+)$/i);
+  if (!m) return address;
+  const street = fold(m[2]);
+  if (street.length < 4 || !fold(address).startsWith(street)) return address;
+  return `${m[1].replace(/\s+/g, ' ')} ${String(address).trim()}`;
+}
+
 function normalizeRecord(raw, fieldMap) {
   return {
     id: raw[fieldMap.id] ?? null,
@@ -91,7 +119,7 @@ function normalizeRecord(raw, fieldMap) {
     surface: raw[fieldMap.surface] != null ? Number(raw[fieldMap.surface]) : null,
     postal: raw[fieldMap.postal] ?? null,
     city: raw[fieldMap.city] ?? null,
-    address: raw[fieldMap.address] ?? null,
+    address: withStreetNumber(raw[fieldMap.address] ?? null, fieldMap.rawAddress ? raw[fieldMap.rawAddress] : null),
     energyClass: raw[fieldMap.energyClass] ?? null,
     gesClass: raw[fieldMap.gesClass] ?? null,
     energyConsumption: raw[fieldMap.energyConsumption] ?? null,
@@ -118,4 +146,4 @@ async function queryAdeme({ dataset, filters, size = 20, sort }) {
   };
 }
 
-export { ADEME_BASE, DATASETS, FIELD_MAP, buildAdemeUrl, queryAdeme, normalizeRecord };
+export { ADEME_BASE, DATASETS, FIELD_MAP, buildAdemeUrl, queryAdeme, normalizeRecord, withStreetNumber };
