@@ -30,8 +30,8 @@ const CASES = {
   marquetteimmo: ['https://www.marquette-immobilier.fr/transaction/vente/', ['/immobilier/belle-maison-individuelle/', 'https://www.marquette-immobilier.fr/immobilier/maison-atypique/', '/immobilier/semi-individuelle-4-chambres/']],
 };
 
-test('les sources : 5 de la première version, 2 agences de Saint-Jorioz, 5 de Lambersart, Marquette et Saint-André, 5 réseaux, puis Marcq, Villeneuve-d’Ascq et Wasquehal', () => {
-  assert.deepEqual(SOURCES.map((s) => s.id), ['orpi', 'paruvendu', 'lesiteimmo', 'maes', 'deleu', 'compimmo', 'proprietesdulac', 'leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo', 'century21', 'laforet', 'iad', 'safti', 'nestenn', 'fnaim', 'citya', 'imko', 'immomarcq', 'heron', 'alerteimmo', 'cestpourtonbien', 'bhimmo', 'vastimmo', 'immotram', 'avenueimmo', 'brice', 'actionimmo', 'pepites', 'kw', 'duquesnoy', 'estime', 'duparque', 'rdimmo', 'clefs', 'immonot', 'vacossin', 'lekieffre', 'arthurimmo', 'barnes', 'bonte', 'drhouse', 'immosens', 'demarez', 'abrinor']);
+test('les sources : 5 de la première version, 2 agences de Saint-Jorioz, 5 de Lambersart, Marquette et Saint-André, 5 réseaux, puis Marcq, Villeneuve-d’Ascq, Wasquehal et La Madeleine', () => {
+  assert.deepEqual(SOURCES.map((s) => s.id), ['orpi', 'paruvendu', 'lesiteimmo', 'maes', 'deleu', 'compimmo', 'proprietesdulac', 'leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo', 'century21', 'laforet', 'iad', 'safti', 'nestenn', 'fnaim', 'citya', 'imko', 'immomarcq', 'heron', 'alerteimmo', 'cestpourtonbien', 'bhimmo', 'vastimmo', 'immotram', 'avenueimmo', 'brice', 'actionimmo', 'pepites', 'kw', 'duquesnoy', 'estime', 'duparque', 'rdimmo', 'clefs', 'immonot', 'vacossin', 'lekieffre', 'arthurimmo', 'barnes', 'bonte', 'drhouse', 'immosens', 'demarez', 'abrinor', 'pulp', 'agencelamadeleine', 'lecoutre', 'ericfranques', 'immoclef', 'saintmaur', 'grimonprez']);
   for (const id of ['century21', 'laforet', 'iad', 'safti', 'nestenn']) assert.equal(sourceById(id).departments, null, id);
   for (const id of ['leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo']) assert.deepEqual(sourceById(id).departments, ['59'], id);
   assert.deepEqual(sourceById('maes').departments, ['59']);
@@ -434,6 +434,58 @@ test('Abrinor : interface JSON filtrée par commune, parkings et locations écar
     card('/fiche-studio-a-vendre-mons-en-baroeul-ref-1598.php', '99 000 €'),
   ]);
   assert.deepEqual(readResults(dm, 'https://www.demarezimmo.fr/vente.php', sourceById('demarez'), VDA).cards.map((c) => c.price), [555000]);
+});
+
+const LMD = { code: '59368', nom: 'La Madeleine', codesPostaux: ['59110'] };
+
+test('La Madeleine : Immotram, sites 3Clics, Saint Maur et Grimonprez', () => {
+  assert.deepEqual(sourceById('immotram').listUrls(LMD, 'maison'), ['https://www.immotram.fr/acheter-bien-immobilier-ville-la-madeleine-2.html']);
+  assert.deepEqual(sourceById('saintmaur').listUrls(LMD, 'maison'), ['https://www.agencesaintmaur.fr/vente/maison/la-madeleine/59110']);
+  assert.deepEqual(sourceById('grimonprez').listUrls(LMD, 'maison'), ['https://www.grimonprez.immo/vente/588-la-madeleine/maison/1']);
+  const adlm = sourceById('agencelamadeleine');
+  assert.deepEqual(adlm.listUrls(LMD, 'maison'), ['https://www.agencedelamadeleine.com/vente']);
+  assert.equal(adlm.pageUrl('https://www.agencedelamadeleine.com/vente', 2), 'https://www.agencedelamadeleine.com/vente/page-2');
+  assert.equal(sourceById('lecoutre').pageUrl('https://www.lecoutre-immobilier.com/vente', 2), null);
+  const html = page([
+    card('/vente/maison/la-madeleine/annonce-immobiliere-ref3724', '529 000 €'),
+    card('/vente/maison/la-madeleine/annonce-immobiliere-ref3657', '190 000 €', 'SOUS COMPROMIS'),
+    card('/vente/appartement/la-madeleine/annonce-immobiliere-ref3701', '187 000 €'),
+    card('/vente/parking/la-madeleine/annonce-immobiliere-ref3702', '15 000 €'),
+    card('/vente/maison/marcq-en-baroeul/annonce-immobiliere-ref3696-2', '450 000 €'),
+  ]);
+  const r = readResults(html, 'https://www.agencedelamadeleine.com/vente', adlm, LMD);
+  assert.deepEqual(r.cards.map((c) => [c.price, c.type]), [[529000, 'maison'], [187000, 'appartement']]);
+  assert.equal(r.all.length, 5);
+});
+
+test('Immoclef : la commune est celle de l’adresse de la fiche, sinon celle qui ouvre la carte', () => {
+  const src = sourceById('immoclef');
+  const c = (href, place, price, text) => `<article><a href="${href}"><img src="x.jpg"></a><div><a href="${href}">${place} Vente maison</a><span>${price}</span><p>${text}</p></div></article>`;
+  const html = page([
+    c('/bien-immobilier-vente-maison-la-madeleine-R-vm472.html', 'La Madeleine', '367 000 €', 'L’agence IMMOCLEF, rue Pompidou à La Madeleine'),
+    c('/bien-immobilier-vente-maison--R-vm462.html', 'Marcq-en-Baroeul', '390 000 €', 'L’agence IMMOCLEF à La Madeleine'),
+    c('/bien-immobilier-vente-maison--R-vm470.html', 'La Madeleine Exclu', '262 000 €', 'Maison 83 m²'),
+    c('/bien-immobilier-vente-appartement-lille-R-va2021.html', 'Lille', '294 000 €', 'L’agence IMMOCLEF à La Madeleine'),
+  ]);
+  const url = 'https://www.immoclef.fr/acheter-bien-immobilier.html';
+  assert.deepEqual(readResults(html, url, src, LMD).cards.map((x) => x.price), [367000, 262000]);
+  assert.deepEqual(readResults(html, url, src, MARCQ).cards.map((x) => x.price), [390000]);
+  assert.equal(src.pageUrl(url, 2), 'https://www.immoclef.fr/acheter-bien-immobilier.html?page=2');
+});
+
+test('Pulp : annonces lues dans le plan du site (interface interdite par robots.txt), prix lu sur la fiche', () => {
+  const src = sourceById('pulp');
+  const xml = `<?xml version="1.0"?><urlset>
+    <url><loc>https://www.pulp-immobilier.fr/annonces-vente/maison-la-madeleine-lam16905.htm</loc></url>
+    <url><loc>https://www.pulp-immobilier.fr/annonces-vente/appartement-la-madeleine-lam16950.htm</loc></url>
+    <url><loc>https://www.pulp-immobilier.fr/annonces-vente/garage-villeneuve-d-ascq-vda201.htm</loc></url>
+    <url><loc>https://www.pulp-immobilier.fr/annonces-vente/maison-seclin-secf64.htm</loc></url></urlset>`;
+  const r = readResults(xml, src.listUrls(LMD, 'maison')[0], src, LMD);
+  assert.deepEqual(r.cards.map((c) => [c.url, c.price, c.type]), [
+    ['https://www.pulp-immobilier.fr/annonces-vente/maison-la-madeleine-lam16905.htm', null, 'maison'],
+    ['https://www.pulp-immobilier.fr/annonces-vente/appartement-la-madeleine-lam16950.htm', null, 'appartement'],
+  ]);
+  assert.equal(r.full, false);
 });
 
 test('chaque source du robot a son nom dans le Fil (lien vers l’annonce)', async () => {

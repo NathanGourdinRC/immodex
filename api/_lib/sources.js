@@ -117,6 +117,27 @@ function boiteImmo({ id, label, host, cities, pageSize = 10 }) {
   };
 }
 
+// Sites d'agence 3Clics à fiches « /vente/maison/la-madeleine/annonce-immobiliere-ref3724 »
+// (Agence de La Madeleine, Lecoutre, Éric Franques) : la liste complète des ventes (`/vente`,
+// pages « /vente/page-2 » quand le site en a plusieurs) est lue une fois pour toutes les
+// communes ; la commune et le type sont dans l'adresse de la fiche, « sous compromis » sur la carte.
+function troisClics({ id, label, host, pageSize = null }) {
+  return {
+    id,
+    label,
+    host,
+    departments: ['59'],
+    pageSize,
+    communeInUrl: true,
+    listUrls: () => [`https://${host}/vente`],
+    pageUrl: pageSize ? (url, n) => `${url}/page-${n}` : () => null,
+    isListing: (u) => /^\/vente\/[a-z-]+\/[a-z0-9-]+\/annonce-immobiliere-[A-Za-z0-9-]+$/.test(u.pathname),
+    // Parkings, garages et locaux ne sont pas des logements.
+    wanted: (url) => !/\/vente\/(parking|garage|box|local|commerce|bureau|fonds|cave)/.test(url),
+    typeOf: (url) => (/\/vente\/(appartement|studio|loft|duplex)\//.test(url) ? 'appartement' : /\/vente\/terrain\//.test(url) ? 'terrain' : /\/vente\/immeuble\//.test(url) ? 'immeuble' : 'maison'),
+  };
+}
+
 const SOURCES = [
   {
     id: 'orpi',
@@ -402,7 +423,7 @@ const SOURCES = [
   netty({ id: 'bhimmo', label: 'B&H Immobilier', host: 'www.bh-immo.fr' }),
   netty({ id: 'vastimmo', label: 'Vastimmo', host: 'www.vastimmo.fr' }),
   {
-    // Agence de Marcq-en-Barœul, Wasquehal et Villeneuve-d'Ascq (3Clics) : une liste par
+    // Agence de La Madeleine, Marcq-en-Barœul, Wasquehal et Villeneuve-d'Ascq (3Clics) : une liste par
     // commune, repérée par un numéro du site ; les biens vendus y restent, avec leur mention.
     id: 'immotram',
     label: 'Immotram',
@@ -411,7 +432,7 @@ const SOURCES = [
     pageSize: 12,
     communeInUrl: true,
     listUrls: (c) => {
-      const ids = { 'marcq-en-baroeul': 3, wasquehal: 4, 'villeneuve-d-ascq': 5 };
+      const ids = { 'la-madeleine': 2, 'marcq-en-baroeul': 3, wasquehal: 4, 'villeneuve-d-ascq': 5 };
       const slug = slugOf(c.nom);
       return ids[slug] ? [`https://www.immotram.fr/acheter-bien-immobilier-ville-${slug}-${ids[slug]}.html`] : [];
     },
@@ -657,6 +678,48 @@ const SOURCES = [
     wanted: (url) => /\/annonce\/vente-(maison|appartement|terrain|immeuble)-/.test(url),
     typeOf: (url) => (/\/vente-appartement-/.test(url) ? 'appartement' : /\/vente-terrain-/.test(url) ? 'terrain' : /\/vente-immeuble-/.test(url) ? 'immeuble' : 'maison'),
   },
+  {
+    // Réseau Pulp Immobilier (agence de La Madeleine, 140 avenue Saint-Maur). Ses pages de liste
+    // n'affichent qu'un bien, le reste vient de son interface, interdite par robots.txt
+    // (« Disallow: /api/ »). Son plan du site des fiches (permis) donne toutes ses annonces, la
+    // commune et le type dans l'adresse ; il n'a pas de prix : le robot le lit sur la fiche.
+    id: 'pulp',
+    label: 'Pulp Immobilier',
+    host: 'www.pulp-immobilier.fr',
+    departments: ['59'],
+    pageSize: null,
+    communeInUrl: true,
+    listUrls: () => ['https://www.pulp-immobilier.fr/sitemap-biens-detail.xml'],
+    pageUrl: () => null,
+    cardsFrom: (xml) => ({ items: [...String(xml).matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)].map((m) => ({ href: m[1], text: '', price: null })), full: false }),
+    isListing: (u) => /^\/annonces-vente\/(maison|appartement|terrain|immeuble)-[a-z0-9-]+\.htm$/.test(u.pathname),
+    typeOf: (url) => (/\/annonces-vente\/appartement-/.test(url) ? 'appartement' : /\/annonces-vente\/terrain-/.test(url) ? 'terrain' : /\/annonces-vente\/immeuble-/.test(url) ? 'immeuble' : 'maison'),
+  },
+  troisClics({ id: 'agencelamadeleine', label: 'Agence de La Madeleine', host: 'www.agencedelamadeleine.com', pageSize: 10 }),
+  troisClics({ id: 'lecoutre', label: 'Lecoutre Immobilier', host: 'www.lecoutre-immobilier.com' }),
+  troisClics({ id: 'ericfranques', label: 'Éric Franques Immobilier', host: 'www.eric-franques.com' }),
+  {
+    // Immoclef (La Madeleine) : toutes ses ventes, 12 par page (« ?page=2 »). Certaines fiches
+    // n'ont pas la commune dans leur adresse (« vente-maison--R-vm450 ») ; la carte commence
+    // alors par elle (« Marcq-en-Baroeul Vente maison 1930 »). Le reste du texte cite l'adresse
+    // de l'agence à La Madeleine : seule cette commune de tête compte (`placeOf`).
+    id: 'immoclef',
+    label: 'Immoclef',
+    host: 'www.immoclef.fr',
+    departments: ['59'],
+    pageSize: 12,
+    listUrls: () => ['https://www.immoclef.fr/acheter-bien-immobilier.html'],
+    pageUrl: withParam('page'),
+    isListing: (u) => /^\/bien-immobilier-vente-[a-z]+-[a-z0-9-]*-R-[a-z0-9]+\.html$/.test(u.pathname),
+    placeOf: (url, text) => {
+      const m = url.match(/-vente-[a-z]+-([a-z0-9-]+)-R-[a-z0-9]+\.html$/);
+      return m ? m[1] : text.replace(/\s+(Exclu|Nouveaut[ée])\b[\s\S]*/i, '').split(' Vente ')[0];
+    },
+    typeOf: (url) => (/-vente-appartement-/.test(url) ? 'appartement' : /-vente-terrain-/.test(url) ? 'terrain' : /-vente-immeuble-/.test(url) ? 'immeuble' : 'maison'),
+  },
+  // L'Agence Saint Maur (Groupe Forest, La Madeleine), même gabarit Netty que l'Immobilière de Marcq.
+  netty({ id: 'saintmaur', label: 'L’Agence Saint Maur', host: 'www.agencesaintmaur.fr' }),
+  boiteImmo({ id: 'grimonprez', label: 'Grimonprez Immo', host: 'www.grimonprez.immo', cities: { 'la-madeleine': 588 } }),
 ];
 
 const sourceById = (id) => SOURCES.find((s) => s.id === id) || null;
@@ -682,6 +745,11 @@ function keeps(url, text, source, commune, code = null) {
   if (source.wanted && !source.wanted(url)) return false;
   if (UNAVAILABLE.test(text) || NEARBY.test(text)) return false;
   if (code && commune.code) return code === commune.code;
+  // Source qui sait où lire la commune d'une annonce (`placeOf`) : ce seul morceau, en entier.
+  if (source.placeOf) {
+    const place = placeSlug(source.placeOf(url, text) || '');
+    return place === placeSlug(commune.nom) || place === placeSlug(String(commune.nom).replace(/['’]/g, ''));
+  }
   const where = placeSlug(source.communeInUrl ? url : `${url} ${text}`);
   return where.includes(placeSlug(commune.nom)) || where.includes(placeSlug(String(commune.nom).replace(/['’]/g, '')));
 }
