@@ -30,8 +30,8 @@ const CASES = {
   marquetteimmo: ['https://www.marquette-immobilier.fr/transaction/vente/', ['/immobilier/belle-maison-individuelle/', 'https://www.marquette-immobilier.fr/immobilier/maison-atypique/', '/immobilier/semi-individuelle-4-chambres/']],
 };
 
-test('les sources : 5 de la première version, 2 agences de Saint-Jorioz, 5 de Lambersart, Marquette et Saint-André, 5 réseaux', () => {
-  assert.deepEqual(SOURCES.map((s) => s.id), ['orpi', 'paruvendu', 'lesiteimmo', 'maes', 'deleu', 'compimmo', 'proprietesdulac', 'leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo', 'century21', 'laforet', 'iad', 'safti', 'nestenn']);
+test('les sources : 5 de la première version, 2 agences de Saint-Jorioz, 5 de Lambersart, Marquette et Saint-André, 5 réseaux, puis Marcq, Villeneuve-d’Ascq et Wasquehal', () => {
+  assert.deepEqual(SOURCES.map((s) => s.id), ['orpi', 'paruvendu', 'lesiteimmo', 'maes', 'deleu', 'compimmo', 'proprietesdulac', 'leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo', 'century21', 'laforet', 'iad', 'safti', 'nestenn', 'fnaim', 'citya', 'imko', 'immomarcq', 'heron', 'alerteimmo', 'cestpourtonbien', 'bhimmo', 'vastimmo', 'immotram', 'avenueimmo', 'brice', 'actionimmo']);
   for (const id of ['century21', 'laforet', 'iad', 'safti', 'nestenn']) assert.equal(sourceById(id).departments, null, id);
   for (const id of ['leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo']) assert.deepEqual(sourceById(id).departments, ['59'], id);
   assert.deepEqual(sourceById('maes').departments, ['59']);
@@ -262,6 +262,90 @@ test('Nestenn : une page par commune et par type, biens voisins (« À 900 m de 
     `<div><a href="/maison-lambersart-ref-33088308"></a> <p>59130 LAMBERSART</p> <p>Maison plus disponible</p> <p>85m²</p></div>`,
   ]);
   assert.deepEqual(readResults(html, 'https://nestenn.com/vente/maison/lambersart-59130', src, LAMB).cards.map((c) => [c.url, c.price, c.type]), [['https://nestenn.com/lambersart-bourg-mairie-maison-renovee-4-chambres-et-jardin-ref-39657233', 435000, 'maison']]);
+});
+
+const MARCQ = { code: '59378', nom: 'Marcq-en-Barœul', codesPostaux: ['59700'] };
+const VDA = { code: '59009', nom: "Villeneuve-d'Ascq", codesPostaux: ['59491', '59493', '59650'] };
+
+// Page Netty : biens dans un bloc de données codé en base64, aucun lien vers les fiches.
+const nettyPage = (prodId, prodCount) => {
+  const b64 = (o) => Buffer.from(JSON.stringify(o), 'utf8').toString('base64');
+  return `<html><body><script>var _TEMPLATE_DATA = JSON.parse(b64_to_utf8('${b64({ menu: [1, 2] })}'));</script>
+    <script>var _TEMPLATE_DATA = JSON.parse(b64_to_utf8('${b64({ prodId, prodCount })}'));</script></body></html>`;
+};
+const prod = (slug, extra) => ({ url: { fr: slug }, type_offer: 1, prod_type: 'house', city: 'Villeneuve-d’Ascq', cp: '59650', price2: 300000, promo: 0, promo_list: '[]', title: { fr: '' }, ...extra });
+
+test('sites Netty : biens lus dans les données codées, vendus, locations et autres communes écartés', () => {
+  const src = sourceById('heron');
+  assert.deepEqual(src.listUrls(VDA, 'maison'), ['59491', '59493', '59650'].map((cp) => `https://www.heronimmobilier.fr/vente/maison/villeneuve-d-ascq/${cp}`));
+  const html = nettyPage(
+    {
+      VM1: prod('maison-individuelle-5-pieces-villeneuve-d-ascq-59650', { title: { fr: 'Maison familiale' } }),
+      VA2: prod('appartement-3-pieces-villeneuve-d-ascq-59650', { prod_type: 'appt', price2: 0, pricePrimary: 189000 }),
+      VM3: prod('maison-4-pieces-villeneuve-d-ascq-59650', { promo: 1000 }),
+      VM4: prod('maison-4-pieces-villeneuve-d-ascq-59650-b', { promo_list: '[1001]' }),
+      LM5: prod('maison-4-pieces-villeneuve-d-ascq-59650-c', { type_offer: 2 }),
+      VM6: prod('maison-lille-59000', { city: 'Lille', cp: '59000' }),
+    },
+    30,
+  );
+  const r = readResults(html, 'https://www.heronimmobilier.fr/vente/maison/villeneuve-d-ascq/59650', src, VDA);
+  assert.deepEqual(r.cards.map((c) => [c.url, c.price, c.type]), [
+    ['https://www.heronimmobilier.fr/vente/maison-individuelle-5-pieces-villeneuve-d-ascq-59650,VM1', 300000, 'maison'],
+    ['https://www.heronimmobilier.fr/vente/appartement-3-pieces-villeneuve-d-ascq-59650,VA2', 189000, 'appartement'],
+  ]);
+  // Les biens vendus et ceux d'autres communes comptent parmi les biens vus (pas la location).
+  assert.equal(r.all.length, 5);
+  assert.equal(r.full, false);
+  // Page pleine (12 biens) et d'autres pages annoncées : la liste continue.
+  const twelve = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`VM${i}`, prod(`maison-${i}-villeneuve-d-ascq-59650`)]));
+  const p2 = 'https://www.imko.fr/vente/maison/villeneuve-d-ascq/59650?page=2';
+  assert.equal(readResults(nettyPage(twelve, 30), p2, sourceById('imko'), VDA).full, true);
+  assert.equal(readResults(nettyPage(twelve, 24), p2, sourceById('imko'), VDA).full, false);
+  assert.equal(readResults('<html><body>Aucun bien</body></html>', p2, sourceById('imko'), VDA).cards.length, 0);
+});
+
+test('FNAIM : une liste par commune et par type, commune lue dans le code INSEE quand la fiche porte « nord-59 »', () => {
+  const src = sourceById('fnaim');
+  assert.deepEqual(src.listUrls(MARCQ, null), ['maison', 'appartement'].map((t) => `https://www.fnaim.fr/liste-annonces-immobilieres/17-acheter-${t}-marcq-en-baroeul-59700.htm`));
+  assert.equal(src.pageUrl(src.listUrls(MARCQ, 'maison')[0], 2), 'https://www.fnaim.fr/liste-annonces-immobilieres/17-acheter-maison-marcq-en-baroeul-59700-page-2.htm');
+  const fn = (id, slug, code, text) =>
+    `<li class="item"><a class="linkAnnonce" data-code="${code}" href="/annonce-immobiliere/${id}/17-acheter-maison-${slug}.htm#AGE_CONTACT"><img></a>
+     <a class="linkAnnonce" data-code="${code}" href="/annonce-immobiliere/${id}/17-acheter-maison-${slug}.htm">Maison 4 pièces</a><p>${text}</p><span>320 000€</span></li>`;
+  const html = page([
+    fn(1, 'marcq-en-baroeul-59700', '59378', 'MARCQ EN BAROEUL 59700'),
+    fn(2, 'nord-59', '59378', 'Jolie maison proche du tram'),
+    fn(3, 'nord-59', '59009', 'Jolie maison proche du lac'),
+    fn(4, 'nord-59', '59378', 'SOUS COMPROMIS ! Maison 1930'),
+  ]);
+  const r = readResults(html, src.listUrls(MARCQ, 'maison')[0], src, MARCQ);
+  assert.deepEqual(r.cards.map((c) => c.url.split('/')[4]), ['1', '2']);
+  assert.ok(r.cards.every((c) => c.price === 320000 && c.type === 'maison'));
+});
+
+test('Citya, Immotram, La Boîte Immo et Action : listes par commune, biens sous compromis ou vendus écartés', () => {
+  assert.deepEqual(sourceById('citya').listUrls(VDA, 'maison'), ['https://www.citya.com/annonces/vente/maison/villeneuve-dascq-59009']);
+  assert.deepEqual(sourceById('citya').listUrls(MARCQ, 'maison'), ['https://www.citya.com/annonces/vente/maison/marcq-en-baroeul-59700']);
+  assert.deepEqual(sourceById('immotram').listUrls(MARCQ, 'maison'), ['https://www.immotram.fr/acheter-bien-immobilier-ville-marcq-en-baroeul-3.html']);
+  assert.deepEqual(sourceById('immotram').listUrls(WAMB, 'maison'), []);
+  const brice = sourceById('brice');
+  assert.deepEqual(brice.listUrls(VDA, 'maison'), ['https://www.brice-habitat.com/vente/1-villeneuve-d-ascq/maison/1']);
+  assert.deepEqual(brice.listUrls(MARCQ, 'maison'), []);
+  assert.equal(brice.pageUrl('https://www.brice-habitat.com/vente/1-villeneuve-d-ascq/maison/1', 3), 'https://www.brice-habitat.com/vente/1-villeneuve-d-ascq/maison/3');
+  const lbi = page([
+    `<div class="bien"><a href="/vente/1-villeneuve-d-ascq/maison/4355-plain-pied-sur-1054-m">Villeneuve-d'Ascq (59493) Maison 3 pièce(s) <span>462 000 €</span></a></div>`,
+    `<div class="bien"><a href="/vente/1-villeneuve-d-ascq/maison/4235-3-chambres-jardin">Sous-compromis Villeneuve-d'Ascq (59650) Maison <span>323 900 €</span></a></div>`,
+    `<nav><a href="/vente/1-villeneuve-d-ascq/maison/2">2</a></nav>`,
+  ]);
+  const r = readResults(lbi, 'https://www.brice-habitat.com/vente/1-villeneuve-d-ascq/maison/1', brice, VDA);
+  assert.deepEqual(r.cards.map((c) => c.price), [462000]);
+  assert.equal(r.all.length, 2);
+  const action = page([
+    `<div class="bien"><a href="/fiche-maison-a-vendre-villeneuve-d-ascq-ref-1248.php"><img alt="Maison"> MAISON A VENDRE VILLENEUVE D ASCQ <b>310 000 €</b></a></div>`,
+    `<div class="bien"><a href="/fiche-maison-a-vendre-villeneuve-d-ascq-ref-1034.php"><img alt="Maison - VENDU"> MAISON A VENDRE VILLENEUVE D ASCQ <b>250 000 €</b></a></div>`,
+  ]);
+  const a = readResults(action, 'https://action.immo/achat-maison-villeneuve-d-ascq.php', sourceById('actionimmo'), VDA);
+  assert.deepEqual(a.cards.map((c) => c.price), [310000]);
 });
 
 test('chaque source du robot a son nom dans le Fil (lien vers l’annonce)', async () => {

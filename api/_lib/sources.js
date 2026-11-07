@@ -24,7 +24,7 @@ function slugOf(s) {
 
 const withoutAccents = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '');
 
-const UNAVAILABLE = /\bvendue?s?\b|sous compromis|plus disponible/i;
+const UNAVAILABLE = /\bvendue?s?\b|sous[- ]compromis|plus disponible/i;
 // (« \b » ne marche pas devant « à » : JavaScript ne connaît que les lettres sans accent.)
 const NEARBY = /(?:^|\s)à\s+[\d.,]+\s*k?m\s+de\s+\d{5}\b/i;
 
@@ -44,6 +44,78 @@ const withParam = (name) => (url, n) => {
 };
 // Type d'un bien d'agence d'après son adresse et sa carte : appartement, terrain, sinon maison.
 const guessType = (text) => (/appartement|\bt[1-6]\b|studio/i.test(text) ? 'appartement' : /terrain/i.test(text) && !/maison/i.test(text) ? 'terrain' : 'maison');
+
+// Sites Netty, gabarit « Modelo » (Imko, Immobilière de Marcq, Héron...) : la page de liste
+// n'a aucun lien vers les fiches. Ses biens sont dans un bloc de données codé en base64
+// (`_TEMPLATE_DATA = JSON.parse(b64_to_utf8('...'))`) : référence, adresse de la fiche (`url.fr`),
+// ville, prix, type et statut (`promo` : 1000 sous compromis, 1001 vendu). Une liste par commune,
+// type et code postal (« /vente/maison/villeneuve-d-ascq/59650 »), puis `?page=N`.
+const NETTY_STATUS = { 24: 'Sous offre', 1000: 'Sous compromis', 1001: 'Vendu', 1002: 'Loué' };
+const NETTY_TYPES = { house: 'Maison', appt: 'Appartement', land: 'Terrain', building: 'Immeuble' };
+function nettyCards(html, pageUrl, pageSize) {
+  const items = [];
+  let count = null;
+  for (const m of String(html).matchAll(/_TEMPLATE_DATA\s*=\s*JSON\.parse\(b64_to_utf8\(['"]([A-Za-z0-9+/=]+)['"]\)\)/g)) {
+    let data;
+    try {
+      data = JSON.parse(Buffer.from(m[1], 'base64').toString('utf8'));
+    } catch {
+      continue;
+    }
+    // Seul le bloc des biens porte `prodId` (les autres décrivent le menu, l'agence...).
+    if (!data || !data.prodId || typeof data.prodId !== 'object') continue;
+    if (Number.isFinite(Number(data.prodCount))) count = Number(data.prodCount);
+    for (const [ref, p] of Object.entries(data.prodId)) {
+      const slug = p && p.url && (p.url.fr || Object.values(p.url)[0]);
+      // Ventes seulement (`type_offer` 1), pas les locations.
+      if (!slug || Number(p.type_offer) !== 1) continue;
+      let list = [];
+      try {
+        list = JSON.parse(p.promo_list || '[]');
+      } catch {}
+      const status = [p.promo, ...(Array.isArray(list) ? list : [])].map((x) => NETTY_STATUS[x]).filter(Boolean).join(' ');
+      const title = p.title && typeof p.title === 'object' ? p.title.fr || '' : '';
+      const text = `${NETTY_TYPES[p.prod_type] || ''} ${title} ${p.city || ''} ${p.cp || ''} ${status}`;
+      items.push({ href: `/vente/${slug},${ref}`, price: Number(p.price2 || p.pricePrimary) || null, text });
+    }
+  }
+  const n = Number(new URL(pageUrl).searchParams.get('page')) || 1;
+  return { items, full: items.length >= pageSize && (count == null || n * pageSize < count) };
+}
+function netty({ id, label, host, pageSize = 12 }) {
+  return {
+    id,
+    label,
+    host,
+    departments: ['59'],
+    pageSize,
+    listUrls: (c, type) => typesOf(type).flatMap((t) => c.codesPostaux.map((cp) => `https://${host}/vente/${t}/${slugOf(c.nom)}/${cp}`)),
+    pageUrl: withParam('page'),
+    cardsFrom: (html, pageUrl) => nettyCards(html, pageUrl, pageSize),
+    isListing: (u) => /^\/vente\/[a-z0-9-]+,[A-Za-z0-9_-]+$/.test(u.pathname),
+    typeOf: (url, text) => (/^Appartement/.test(text) ? 'appartement' : /^Terrain/.test(text) ? 'terrain' : /^Immeuble/.test(text) ? 'immeuble' : 'maison'),
+  };
+}
+
+// Sites La Boîte Immo : une liste par commune et par type, la commune repérée par un numéro
+// propre à chaque site (« /vente/1-villeneuve-d-ascq/maison/1 », le dernier nombre est la page).
+// `cities` : numéro de chaque commune où l'agence a des biens (relevé sur son site).
+function boiteImmo({ id, label, host, cities, pageSize = 10 }) {
+  return {
+    id,
+    label,
+    host,
+    departments: ['59'],
+    pageSize,
+    listUrls: (c, type) => {
+      const slug = slugOf(c.nom);
+      return cities[slug] ? typesOf(type).map((t) => `https://${host}/vente/${cities[slug]}-${slug}/${t}/1`) : [];
+    },
+    pageUrl: (url, n) => url.replace(/\/1$/, `/${n}`),
+    isListing: (u) => /^\/vente\/\d+-[a-z0-9-]+\/(maison|appartement|terrain|immeuble)\/.*\d+.*$/.test(u.pathname) && !/\/(maison|appartement|terrain|immeuble)\/\d+\/?$/.test(u.pathname),
+    typeOf: (url) => (/\/appartement\//.test(url) ? 'appartement' : /\/terrain\//.test(url) ? 'terrain' : /\/immeuble\//.test(url) ? 'immeuble' : 'maison'),
+  };
+}
 
 const SOURCES = [
   {
@@ -280,6 +352,90 @@ const SOURCES = [
     isListing: (u) => /^\/[a-z0-9-]+-ref-\d+$/.test(u.pathname),
     typeOf: (url, text) => (/appartement à vendre/i.test(text) ? 'appartement' : /terrain à vendre/i.test(text) ? 'terrain' : 'maison'),
   },
+  {
+    // Portail de la FNAIM : une liste par commune et par type (« 17-acheter-maison-wasquehal-59290 »,
+    // un code postal suffit pour toute la commune), 25 biens par page, « -page-2.htm » ensuite.
+    // Il réunit des agences dont le site ne se lit pas (Abrinor, Sotheby's...). Certaines fiches
+    // portent « nord-59 » au lieu de la commune, sans la citer dans la carte : la commune se lit
+    // alors dans le code INSEE du lien (`data-code="59009"`).
+    id: 'fnaim',
+    label: 'FNAIM',
+    host: 'www.fnaim.fr',
+    departments: null,
+    pageSize: 25,
+    listUrls: (c, type) => typesOf(type).map((t) => `https://www.fnaim.fr/liste-annonces-immobilieres/17-acheter-${t}-${slugOf(c.nom)}-${c.codesPostaux[0]}.htm`),
+    pageUrl: (url, n) => url.replace(/\.htm$/, `-page-${n}.htm`),
+    codeOf: (a, card) => {
+      const el = a.closest('[data-code]') || card.querySelector('[data-code]');
+      const code = el ? el.getAttribute('data-code') : '';
+      return /^\d[\dAB]\d{3}$/.test(code) ? code : null;
+    },
+    isListing: (u) => /^\/annonce-immobiliere\/\d+\/17-acheter-[a-z0-9-]+\.htm$/.test(u.pathname),
+    typeOf: (url, text) => (/-acheter-appartement-/.test(url) ? 'appartement' : /-acheter-maison-/.test(url) ? 'maison' : guessType(`${url} ${text}`)),
+  },
+  {
+    // Réseau Citya : une liste par commune et par type, la commune écrite sans apostrophe et
+    // suivie de son code postal (« marcq-en-baroeul-59700 »), ou de son code INSEE quand elle
+    // en a plusieurs (« villeneuve-dascq-59009 ») ; une autre forme mène à la liste nationale.
+    // Toutes les agences Citya de la commune, 24 biens par page, puis « ?page=2 ».
+    id: 'citya',
+    label: 'Citya',
+    host: 'www.citya.com',
+    departments: null,
+    pageSize: 24,
+    listUrls: (c, type) => {
+      const place = `${slugOf(String(c.nom).replace(/['’]/g, ''))}-${c.codesPostaux.length > 1 ? c.code : c.codesPostaux[0]}`;
+      return typesOf(type).map((t) => `https://www.citya.com/annonces/vente/${t}/${place}`);
+    },
+    pageUrl: withParam('page'),
+    isListing: (u) => /^\/annonces\/vente\/(maison|appartement)\/[a-z0-9-]+\/[A-Za-z0-9-]+$/.test(u.pathname),
+    typeOf: (url) => (/\/vente\/appartement\//.test(url) ? 'appartement' : 'maison'),
+  },
+  // Sites Netty (gabarit « Modelo »), agences de Marcq-en-Barœul et Villeneuve-d'Ascq. Le Groupe
+  // Forest (Immobilière de Marcq, Croix Immobilier, Immobilière de Wasquehal, Agence de la Forêt)
+  // partage un seul fichier de biens : immomarcq.fr suffit.
+  netty({ id: 'imko', label: 'Imko', host: 'www.imko.fr' }),
+  netty({ id: 'immomarcq', label: 'Immobilière de Marcq', host: 'www.immomarcq.fr', pageSize: 10 }),
+  netty({ id: 'heron', label: 'Héron Immobilier', host: 'www.heronimmobilier.fr' }),
+  netty({ id: 'alerteimmo', label: 'Alerte Immobilier', host: 'www.alerteimmobilier.fr' }),
+  netty({ id: 'cestpourtonbien', label: 'C’est pour ton bien', host: 'www.cestpourtonbien.com' }),
+  netty({ id: 'bhimmo', label: 'B&H Immobilier', host: 'www.bh-immo.fr' }),
+  netty({ id: 'vastimmo', label: 'Vastimmo', host: 'www.vastimmo.fr' }),
+  {
+    // Agence de Marcq-en-Barœul, Wasquehal et Villeneuve-d'Ascq (3Clics) : une liste par
+    // commune, repérée par un numéro du site ; les biens vendus y restent, avec leur mention.
+    id: 'immotram',
+    label: 'Immotram',
+    host: 'www.immotram.fr',
+    departments: ['59'],
+    pageSize: 12,
+    communeInUrl: true,
+    listUrls: (c) => {
+      const ids = { 'marcq-en-baroeul': 3, wasquehal: 4, 'villeneuve-d-ascq': 5 };
+      const slug = slugOf(c.nom);
+      return ids[slug] ? [`https://www.immotram.fr/acheter-bien-immobilier-ville-${slug}-${ids[slug]}.html`] : [];
+    },
+    pageUrl: withParam('page'),
+    isListing: (u) => /^\/bien-immobilier-vente-[a-z]+-[a-z0-9-]+-R-[a-z0-9]+\.html$/.test(u.pathname),
+    typeOf: (url) => (/-vente-appartement-/.test(url) ? 'appartement' : /-vente-terrain-/.test(url) ? 'terrain' : /-vente-immeuble-/.test(url) ? 'immeuble' : 'maison'),
+  },
+  // Agences de Villeneuve-d'Ascq sur La Boîte Immo.
+  boiteImmo({ id: 'avenueimmo', label: 'Avenue Immobilier Métropole', host: 'www.avenue-immobilier-metropole.fr', cities: { 'villeneuve-d-ascq': 1, wasquehal: 5 } }),
+  boiteImmo({ id: 'brice', label: 'Brice Habitat', host: 'www.brice-habitat.com', cities: { 'villeneuve-d-ascq': 1 } }),
+  {
+    // Agence de Villeneuve-d'Ascq et Wattrelos (Pilotim) : une page par commune et par type ;
+    // les biens vendus y restent, marqués dans l'image (« - VENDU » dans son texte de remplacement).
+    id: 'actionimmo',
+    label: 'Action Immobilier',
+    host: 'action.immo',
+    departments: ['59'],
+    pageSize: null,
+    communeInUrl: true,
+    listUrls: (c, type) => typesOf(type).map((t) => `https://action.immo/achat-${t}-${slugOf(c.nom)}.php`),
+    pageUrl: () => null,
+    isListing: (u) => /^\/fiche-[a-z]+-a-vendre-[a-z0-9-]+-ref-\d+\.php$/.test(u.pathname),
+    typeOf: (url) => (/\/fiche-appartement-/.test(url) ? 'appartement' : /\/fiche-terrain-/.test(url) ? 'terrain' : 'maison'),
+  },
 ];
 
 const sourceById = (id) => SOURCES.find((s) => s.id === id) || null;
@@ -295,7 +451,34 @@ function listingUrl(href, base, source) {
   }
 }
 
+// Annonce gardée : encore à vendre, pas un bien voisin, dans la commune cherchée.
+// Biens plus à vendre (« Vendu », « Maison vendue », « Sous compromis », « plus disponible »),
+// biens voisins (« À 900 m de 59130 Lambersart ») et annonces d'autres communes : écartés.
+// Commune lue dans l'adresse seule quand la carte cite d'autres communes (`communeInUrl`), ou
+// d'après le code INSEE que le site donne pour le bien (`code`, lu par `codeOf`).
+function keeps(url, text, source, commune, code = null) {
+  if (UNAVAILABLE.test(text) || NEARBY.test(text)) return false;
+  if (code && commune.code) return code === commune.code;
+  return placeSlug(source.communeInUrl ? url : `${url} ${text}`).includes(placeSlug(commune.nom));
+}
+
 function readResults(html, pageUrl, source, commune) {
+  // Source dont les annonces ne sont pas des liens de la page (données codées, Netty) : elle
+  // les donne elle-même, avec leur texte et leur prix.
+  if (source.cardsFrom) {
+    const { items, full } = source.cardsFrom(html, pageUrl);
+    const cards = [];
+    const seen = new Set();
+    for (const it of items) {
+      const url = listingUrl(it.href, pageUrl, source);
+      if (!url || seen.has(url)) continue;
+      seen.add(url);
+      const text = norm(it.text);
+      if (!keeps(url, text, source, commune)) continue;
+      cards.push({ url, price: it.price || null, title: text.slice(0, 160), type: source.typeOf(url, text) });
+    }
+    return { cards, all: [...seen], full };
+  }
   const doc = parseHtml(html, pageUrl);
   const keyOf = (a) => listingUrl(a.getAttribute('href'), pageUrl, source);
   const cards = [];
@@ -322,11 +505,9 @@ function readResults(html, pageUrl, source, commune) {
     const deepest = priced.find((el) => !priced.some((other) => other !== el && el.contains(other)));
     const price = deepest ? priceOf(deepest.textContent) : null;
     const text = norm(card.textContent);
-    // Biens plus à vendre (« Vendu », « Maison vendue », « Sous compromis », « plus disponible »),
-    // biens voisins (« À 900 m de 59130 Lambersart ») et annonces d'autres communes : écartés.
-    // Commune lue dans l'adresse seule quand la carte cite d'autres communes (`communeInUrl`).
-    if (UNAVAILABLE.test(text) || NEARBY.test(text)) continue;
-    if (!placeSlug(source.communeInUrl ? url : `${url} ${text}`).includes(placeSlug(commune.nom))) continue;
+    // Mention « vendu » portée par une image (texte de remplacement « Maison - VENDU »).
+    const alts = [...card.querySelectorAll('img[alt]')].map((img) => img.getAttribute('alt')).join(' ');
+    if (UNAVAILABLE.test(alts) || !keeps(url, text, source, commune, source.codeOf ? source.codeOf(a, card) : null)) continue;
     cards.push({ url, price, title: text.slice(0, 160), type: source.typeOf(url, text) });
   }
   return { cards, all: [...seen], full: !!source.pageSize && seen.size >= source.pageSize };
