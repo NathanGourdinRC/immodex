@@ -31,7 +31,7 @@ const CASES = {
 };
 
 test('les sources : 5 de la première version, 2 agences de Saint-Jorioz, 5 de Lambersart, Marquette et Saint-André, 5 réseaux, puis Marcq, Villeneuve-d’Ascq et Wasquehal', () => {
-  assert.deepEqual(SOURCES.map((s) => s.id), ['orpi', 'paruvendu', 'lesiteimmo', 'maes', 'deleu', 'compimmo', 'proprietesdulac', 'leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo', 'century21', 'laforet', 'iad', 'safti', 'nestenn', 'fnaim', 'citya', 'imko', 'immomarcq', 'heron', 'alerteimmo', 'cestpourtonbien', 'bhimmo', 'vastimmo', 'immotram', 'avenueimmo', 'brice', 'actionimmo', 'pepites', 'kw', 'duquesnoy', 'estime', 'duparque', 'rdimmo', 'clefs', 'immonot', 'vacossin', 'lekieffre', 'arthurimmo', 'barnes', 'bonte', 'drhouse', 'immosens']);
+  assert.deepEqual(SOURCES.map((s) => s.id), ['orpi', 'paruvendu', 'lesiteimmo', 'maes', 'deleu', 'compimmo', 'proprietesdulac', 'leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo', 'century21', 'laforet', 'iad', 'safti', 'nestenn', 'fnaim', 'citya', 'imko', 'immomarcq', 'heron', 'alerteimmo', 'cestpourtonbien', 'bhimmo', 'vastimmo', 'immotram', 'avenueimmo', 'brice', 'actionimmo', 'pepites', 'kw', 'duquesnoy', 'estime', 'duparque', 'rdimmo', 'clefs', 'immonot', 'vacossin', 'lekieffre', 'arthurimmo', 'barnes', 'bonte', 'drhouse', 'immosens', 'demarez', 'abrinor']);
   for (const id of ['century21', 'laforet', 'iad', 'safti', 'nestenn']) assert.equal(sourceById(id).departments, null, id);
   for (const id of ['leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo']) assert.deepEqual(sourceById(id).departments, ['59'], id);
   assert.deepEqual(sourceById('maes').departments, ['59']);
@@ -408,6 +408,32 @@ test('Dr House : la carte s’arrête au bloc de l’annonce, le filtre de prix 
     <article><a href="/annonce/vente/marcq-en-baroeul-59700/maison-4-pieces-83m2/162183">Maison 4 pièces de 83 m² - Marcq-en-Barœul (59700)</a><p><span>389 000 €</span></p></article></div></body></html>`;
   const r = readResults(html, 'https://www.drhouse-immo.com/annonces/vente/maison/marcq-en-baroeul-59700', sourceById('drhouse'), MARCQ);
   assert.deepEqual(r.cards.map((c) => c.price), [389000]);
+});
+
+test('Abrinor : interface JSON filtrée par commune, parkings et locations écartés', () => {
+  const src = sourceById('abrinor');
+  const list = src.listUrls(VDA, 'maison')[0];
+  const u = new URL(list);
+  assert.equal(u.pathname, '/wp-json/laconfection-abrinor/v1/annonces-results');
+  assert.equal(u.searchParams.get('lab_cities[]'), "59009;Villeneuve-d'Ascq;;");
+  assert.equal(new URL(src.pageUrl(list, 3)).searchParams.get('paged'), '3');
+  const inner = page([
+    card('https://www.abrinor.fr/annonce/vente-maison-villeneuve-d-ascq-59650-vda-40301-ab/', '259 800 €'),
+    card('https://www.abrinor.fr/annonce/location-maison-villeneuve-d-ascq-59650-lmai1234/', '1 200 €'),
+    card('https://www.abrinor.fr/annonce/vente-parking-villeneuve-d-ascq-59650-260128/', '20 000 €'),
+    card('https://www.abrinor.fr/annonce/vente-appartement-lille-59000-lill-40290-jl/', '189 000 €'),
+  ]);
+  const r = readResults(JSON.stringify({ html: inner }), list, src, VDA);
+  assert.deepEqual(r.cards.map((c) => [c.price, c.type]), [[259800, 'maison']]);
+  assert.equal(r.all.length, 4);
+  // Réponse d'une autre forme : erreur (liste non confirmée), jamais une liste vide.
+  assert.throws(() => readResults('<html>erreur</html>', list, src, VDA));
+  assert.throws(() => readResults('{"code":"rest_no_route"}', list, src, VDA));
+  const dm = page([
+    card('/fiche-maison-a-vendre-villeneuve-d-ascq-ref-1887.php', '555 000 €'),
+    card('/fiche-studio-a-vendre-mons-en-baroeul-ref-1598.php', '99 000 €'),
+  ]);
+  assert.deepEqual(readResults(dm, 'https://www.demarezimmo.fr/vente.php', sourceById('demarez'), VDA).cards.map((c) => c.price), [555000]);
 });
 
 test('chaque source du robot a son nom dans le Fil (lien vers l’annonce)', async () => {

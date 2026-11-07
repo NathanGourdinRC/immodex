@@ -606,6 +606,57 @@ const SOURCES = [
     isListing: (u) => /^\/vente-[a-z]+-[a-z0-9-]+,[A-Z0-9]+,\d+\.htm$/.test(u.pathname),
     typeOf: (url) => (/\/vente-appartement-/.test(url) ? 'appartement' : /\/vente-terrain-/.test(url) ? 'terrain' : 'maison'),
   },
+  {
+    // Agence De Marez (Pilotim, Marcq-en-Barœul) : toutes ses ventes sur une page ; la commune
+    // est dans l'adresse de la fiche, les biens vendus marqués dans le texte de leur image.
+    id: 'demarez',
+    label: 'De Marez Immobilier',
+    host: 'www.demarezimmo.fr',
+    departments: ['59'],
+    pageSize: null,
+    communeInUrl: true,
+    listUrls: () => ['https://www.demarezimmo.fr/vente.php'],
+    pageUrl: () => null,
+    isListing: (u) => /^\/fiche-[a-z0-9-]+-a-vendre-[a-z0-9-]+-ref-\d+\.php$/.test(u.pathname),
+    typeOf: (url) => (/\/fiche-maison-/.test(url) ? 'maison' : /\/fiche-terrain-/.test(url) ? 'terrain' : /\/fiche-(appartement|studio|type-\d)-/.test(url) ? 'appartement' : 'maison'),
+  },
+  {
+    // Réseau Abrinor (Croix, Villeneuve-d'Ascq, Marcq, Lille...). La page de liste du site ne
+    // montre que les 20 premiers biens et ignore le numéro de page : la suite est chargée par
+    // l'interface de résultats du site (wp-json, permise par robots.txt), qui filtre par commune
+    // (code INSEE et nom, rayon 0) et renvoie du JSON dont le champ `html` contient les cartes.
+    // La commune et le type sont dans l'adresse de la fiche.
+    id: 'abrinor',
+    label: 'Abrinor',
+    host: 'www.abrinor.fr',
+    departments: ['59'],
+    pageSize: 20,
+    communeInUrl: true,
+    listUrls: (c) => {
+      const u = new URL('https://www.abrinor.fr/wp-json/laconfection-abrinor/v1/annonces-results');
+      u.searchParams.set('lab_search', '1');
+      u.searchParams.set('lab_op', 'vente');
+      u.searchParams.append('lab_cities[]', `${c.code};${c.nom};;`);
+      u.searchParams.set('lab_radius', '0');
+      u.searchParams.set('per_page', '20');
+      u.searchParams.set('part', 'full');
+      u.searchParams.set('paged', '1');
+      return [u.toString()];
+    },
+    pageUrl: withParam('paged'),
+    // Réponse JSON : seules les cartes (champ `html`) sont lues. Une réponse d'une autre forme
+    // lève une erreur : le robot tient alors la liste pour non confirmée et ne retire aucun bien
+    // (une page vide ferait croire que tous les biens ont disparu).
+    htmlOf: (body) => {
+      const { html } = JSON.parse(body);
+      if (typeof html !== 'string') throw new Error('réponse Abrinor sans cartes');
+      return html;
+    },
+    isListing: (u) => /^\/annonce\/(vente|location)-[a-z0-9-]+\/$/.test(u.pathname),
+    // Ventes de logements et de terrains seulement : parkings, locaux et locations écartés.
+    wanted: (url) => /\/annonce\/vente-(maison|appartement|terrain|immeuble)-/.test(url),
+    typeOf: (url) => (/\/vente-appartement-/.test(url) ? 'appartement' : /\/vente-terrain-/.test(url) ? 'terrain' : /\/vente-immeuble-/.test(url) ? 'immeuble' : 'maison'),
+  },
 ];
 
 const sourceById = (id) => SOURCES.find((s) => s.id === id) || null;
@@ -627,6 +678,8 @@ function listingUrl(href, base, source) {
 // Commune lue dans l'adresse seule quand la carte cite d'autres communes (`communeInUrl`), ou
 // d'après le code INSEE que le site donne pour le bien (`code`, lu par `codeOf`).
 function keeps(url, text, source, commune, code = null) {
+  // Annonce vue mais d'une autre sorte (location dans une liste mêlée, `wanted`) : écartée.
+  if (source.wanted && !source.wanted(url)) return false;
   if (UNAVAILABLE.test(text) || NEARBY.test(text)) return false;
   if (code && commune.code) return code === commune.code;
   const where = placeSlug(source.communeInUrl ? url : `${url} ${text}`);
@@ -650,7 +703,8 @@ function readResults(html, pageUrl, source, commune) {
     }
     return { cards, all: [...seen], full };
   }
-  const doc = parseHtml(html, pageUrl);
+  // Source qui répond en JSON (Abrinor) : elle en extrait le HTML de ses cartes.
+  const doc = parseHtml(source.htmlOf ? source.htmlOf(html) : html, pageUrl);
   const keyOf = (a) => listingUrl(a.getAttribute('href'), pageUrl, source);
   const cards = [];
   // `seen` : toutes les annonces de la page, avant les filtres (commune, biens vendus).
