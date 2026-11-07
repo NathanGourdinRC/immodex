@@ -72,6 +72,25 @@ test('adresse choisie à la main : gardée avec le suivi, effacée par null, coo
   assert.equal(all['https://x.fr/3'], undefined);
 });
 
+test('annonce ouverte : le clic est gardé avec le suivi, seul ou avec un statut, et par lot', async () => {
+  const store = createZoneStore(memoryStorage());
+  const url = 'orpi:/annonce-vente-maison-e2e/';
+  // Seule information du suivi : l'entrée reste (elle n'est plus jaune sur aucun appareil).
+  await store.setTracking(url, { opened: 1000 }, 1000);
+  assert.deepEqual((await store.tracking())[url], { status: null, note: '', opened: 1000, updatedAt: 1000 });
+  // Gardée puis remise sans statut : le clic reste.
+  await store.setTracking(url, { status: 'favori' }, 2000);
+  await store.setTracking(url, { status: null }, 3000);
+  assert.equal((await store.tracking())[url].opened, 1000);
+  // « Tout marquer comme vu » : une écriture, la date du premier clic ne bouge pas, le statut non plus.
+  await store.setTracking('deleu:/vente/2', { status: 'ecarte' }, 3500);
+  const all = await store.markOpened([url, 'deleu:/vente/2', 'maes:/3'], 4000);
+  assert.equal(all[url].opened, 1000);
+  assert.deepEqual((({ status, opened }) => ({ status, opened }))(all['deleu:/vente/2']), { status: 'ecarte', opened: 4000 });
+  assert.equal(all['maes:/3'].opened, 4000);
+  assert.deepEqual(Object.keys(await store.tracking()).sort(), ['deleu:/vente/2', 'maes:/3', url].sort());
+});
+
 test('stockage : création, modification, visite précédente, suivi effacé quand vide', async () => {
   const store = createZoneStore(memoryStorage());
   const z = await store.save({ communes: [LILLE], type: 'maison' }, 1000);

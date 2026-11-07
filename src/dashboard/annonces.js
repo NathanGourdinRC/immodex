@@ -1,26 +1,31 @@
 // Fil : « Annonces en vente », les annonces des sites lues par le robot (api/scan.js) pour les
 // communes de la recherche. Un même bien publié par plusieurs sources forme une seule carte ;
-// étiquettes Nouveau, Prix baissé, Retiré ; Garder et Écarter comme pour les annonces vues.
+// étiquettes Nouveau, Prix baissé, Retiré ; Garder et Écarter, dans la carte du Fil comme dans la
+// bulle du point (verdict.js). Une annonce apportée par le robot reste jaune (carte et point)
+// jusqu'au premier clic dessus ; ce clic est rangé avec le suivi, donc synchronisé.
 // Un bien sans adresse retrouvée montre ses pistes d'adresse, que Nathan vérifie (leads.js).
-import { checkCriteria, trackingKey, STATUSES } from '../common/zones.js';
-import { groupListings, listingFacts, statusOf, trackingKeyOf, urlKey, saleOf, negotiation, negotiationText, placeOf, needsPlace, SOURCE_LABELS } from '../common/listings.js';
+import { checkCriteria, trackingKey } from '../common/zones.js';
+import { groupListings, listingFacts, statusOf, isUnopened, trackingKeyOf, urlKey, saleOf, negotiation, negotiationText, placeOf, needsPlace, SOURCE_LABELS } from '../common/listings.js';
 import { nearestSales, isComparable } from '../common/sectors.js';
 import { loadSearchSales } from './sector-layer.js';
 import { classLine } from '../common/energy-text.js';
-import { placeListing } from './pins.js';
+import { placeListing, setPinState } from './pins.js';
 import { leadsBlock, placedLine } from './leads.js';
+import { verdictButtons, droppedChanged, droppedToggle } from './verdict.js';
 
 const UI = window.__immodexUI;
-const { el, icon, num } = UI;
+const { el, num } = UI;
 
 const ORDER = { nouveau: 0, baisse: 1, null: 2, retire: 3 };
 const DAY = 24 * 3600 * 1000;
 
-function tagOf(st) {
-  if (st.status === 'nouveau') return el('span', { class: 'imx-tag is-new' }, 'Nouveau');
-  if (st.status === 'baisse') return el('span', { class: 'imx-tag is-drop' }, `Prix baissé de ${UI.priceText(st.drop)}`);
-  if (st.status === 'retire') return el('span', { class: 'imx-tag is-gone' }, 'Retiré');
-  return null;
+// Étiquettes d'un bien. « Nouveau » (jaune) : annonce du robot pas encore ouverte.
+function tagsOf(st, fresh) {
+  return [
+    fresh ? el('span', { class: 'imx-tag is-fresh' }, 'Nouveau') : null,
+    st.status === 'baisse' ? el('span', { class: 'imx-tag is-drop' }, `Prix baissé de ${UI.priceText(st.drop)}`) : null,
+    st.status === 'retire' ? el('span', { class: 'imx-tag is-gone' }, 'Retiré') : null,
+  ].filter(Boolean);
 }
 
 function factsLine(f) {
@@ -38,22 +43,20 @@ function soldLine(g) {
   return el('div', { class: 'imx-meta imx-sold' }, `Vendue ${UI.priceText(sale.price)} le ${UI.formatDate(sale.date)}${gap} (${sale.how === 'sure' ? 'lien sûr, même adresse' : 'lien probable'})`);
 }
 
-// `where` : point du bien (placeOf), commune de l'annonce et choix d'adresse (onPlace).
+const priceHead = (f) => el('div', { class: 'imx-candidate-address' }, f.price ? UI.priceText(f.price) : 'Prix non précisé', f.price && f.surface ? el('span', { class: 'imx-ppm' }, ` · ${num(Math.round(f.price / f.surface))} €/m²`) : null);
+const sourceLinks = (g) => el('div', { class: 'imx-actions' }, g.listings.map((l) => UI.linkButton(l.url, SOURCE_LABELS[l.source] || l.source, { iconName: 'external' })));
+
+// Carte du Fil d'un bien. `where` : point du bien (placeOf), commune de l'annonce et choix
+// d'adresse (onPlace). Rend la carte et la fonction qui remet ses boutons Garder / Écarter à jour.
 function annonceRow(g, key, f, st, track, unknown, onStatus, now, where) {
-  const keep = el('button', { type: 'button', class: 'imx-btn imx-btn-sm' }, icon('check', 14), 'Garder');
-  const drop = el('button', { type: 'button', class: 'imx-btn imx-btn-sm imx-btn-ghost' }, icon('trash', 14), 'Écarter');
+  const verdict = verdictButtons((value) => onStatus(key, value));
   const note = el('textarea', { class: 'imx-note', placeholder: 'Note : visite, défauts, contact…', maxlength: '1000' }, track.note || '');
   const days = Math.max(0, Math.round((now - f.firstSeen) / DAY));
   const row = el(
     'div',
     { class: `imx-row imx-annonce${st.status === 'retire' ? ' is-gone' : ''}` },
-    el(
-      'div',
-      { class: 'imx-row-head' },
-      el('div', null, el('div', { class: 'imx-candidate-address' }, f.price ? UI.priceText(f.price) : 'Prix non précisé', f.price && f.surface ? el('span', { class: 'imx-ppm' }, ` · ${num(Math.round(f.price / f.surface))} €/m²`) : null), el('div', { class: 'imx-meta' }, factsLine(f) || f.title || 'Annonce')),
-      f.photo ? el('img', { class: 'imx-annonce-photo', src: f.photo, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }) : null
-    ),
-    el('div', { class: 'imx-tags' }, tagOf(st), g.probable ? el('span', { class: 'imx-tag' }, 'même bien probable') : null),
+    el('div', { class: 'imx-row-head' }, el('div', null, priceHead(f), el('div', { class: 'imx-meta' }, factsLine(f) || f.title || 'Annonce')), f.photo ? el('img', { class: 'imx-annonce-photo', src: f.photo, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }) : null),
+    el('div', { class: 'imx-tags' }),
     el(
       'div',
       { class: 'imx-meta' },
@@ -72,30 +75,12 @@ function annonceRow(g, key, f, st, track, unknown, onStatus, now, where) {
     el('div', { class: 'imx-meta imx-nearby imx-hidden' }),
     el('div', { class: 'imx-meta imx-energy imx-hidden' }),
     where.toPlace ? leadsBlock({ leads: f.leads, hasDpe: f.hasDpe, pending: f.leadsPending, address: f.address, insee: g.listings[0].insee, communeName: where.communeName, onPlace: where.onPlace }) : null,
-    el('div', { class: 'imx-actions' }, keep, drop),
+    verdict.node,
     note,
-    el(
-      'div',
-      { class: 'imx-actions' },
-      g.listings.map((l) => UI.linkButton(l.url, SOURCE_LABELS[l.source] || l.source, { iconName: 'external' }))
-    )
+    sourceLinks(g)
   );
-  const apply = (value) => {
-    row.classList.toggle('is-ecarte', value === 'ecarte');
-    keep.classList.toggle('is-active', value === 'favori');
-    keep.lastChild.textContent = value === 'favori' ? 'Gardé' : 'Garder';
-  };
-  apply(track.status || '');
-  let current = track.status || null;
-  const setStatus = async (value) => {
-    current = value;
-    apply(value);
-    await onStatus(key, value);
-  };
-  keep.addEventListener('click', () => setStatus(current === 'favori' ? null : 'favori'));
-  drop.addEventListener('click', () => setStatus('ecarte'));
   note.addEventListener('change', () => onStatus(key, undefined, note.value));
-  return row;
+  return { row, apply: verdict.apply };
 }
 
 // Ligne d'état : passage du robot, annonces qu'il n'a pas encore lues et sources en pause.
@@ -147,68 +132,111 @@ async function loadAnnonces(ctx, body) {
   // Biens dont le robot n'a lu aucune page : comptés, pas montrés (surface et chambres inconnues).
   const unread = passing.filter((x) => x.f.unread).length;
   const groups = passing.filter((x) => !x.f.unread);
-  groups.sort((a, b) => ORDER[a.st.status] - ORDER[b.st.status] || b.f.firstSeen - a.f.firstSeen);
 
   if (!groups.length) {
     body.replaceChildren(robotLine(data, [], unread), UI.empty('Aucune annonce en vente qui passe tes critères pour le moment.'));
     return;
   }
-  let showDropped = false;
-  const keyOf = new Map(groups.map((x) => [x.g, trackingKeyOf(x.g, tracking, seenByUrl)]));
+  for (const x of groups) x.key = trackingKeyOf(x.g, tracking, seenByUrl);
   const trackOf = (key) => tracking[key] || {};
-  const toggle = el('button', { type: 'button', class: 'imx-btn imx-btn-sm imx-btn-ghost' });
+  // Jaune : annonce du robot jamais ouverte, ni sur ce tableau de bord, ni sur le site d'origine.
+  const isFresh = (x) => isUnopened(x.g, trackOf(x.key), { seenUrls: seenByUrl });
+  // Les jaunes d'abord, puis baisses de prix, le reste, les retirées ; les plus récentes en tête.
+  groups.sort((a, b) => Number(isFresh(b)) - Number(isFresh(a)) || ORDER[a.st.status] - ORDER[b.st.status] || b.f.firstSeen - a.f.firstSeen);
+
   const list = el('div', { class: 'imx-bien-list' });
-  const refreshDropped = () => {
-    const n = groups.filter((x) => trackOf(keyOf.get(x.g)).status === 'ecarte').length;
-    list.classList.toggle('hide-ecarte', !showDropped);
-    toggle.textContent = showDropped ? 'Masquer les écartées' : `Afficher les écartées (${n})`;
-    toggle.classList.toggle('imx-hidden', !n && !showDropped);
-  };
-  toggle.addEventListener('click', () => {
-    showDropped = !showDropped;
-    refreshDropped();
-  });
-  const onStatus = async (key, status, note) => {
-    const next = await store.setTracking(key, note === undefined ? { status } : { note });
+  const toggle = droppedToggle(() => groups.filter((x) => trackOf(x.key).status === 'ecarte').length, isCurrent);
+  const keep = (key, next) => {
     if (next) tracking[key] = next;
     else delete tracking[key];
-    // Bien écarté puis gardé (ou l'inverse) : sa carte gagne ou perd le bloc des pistes.
+  };
+
+  // Carte du Fil, point et bulle d'un bien remis à jour d'après son suivi (Garder, Écarter, clic).
+  const refresh = (x) => {
+    const status = trackOf(x.key).status || null;
+    const fresh = isFresh(x);
+    x.row.classList.toggle('is-ecarte', status === 'ecarte');
+    x.row.classList.toggle('is-fresh', fresh);
+    x.applyRow(status);
+    x.row.querySelector('.imx-tags').replaceChildren(...tagsOf(x.st, fresh), ...(x.g.probable ? [el('span', { class: 'imx-tag' }, 'même bien probable')] : []));
+    if (!x.marker) return;
+    setPinState(x.marker, { price: x.f.price, status, fresh });
+    x.applyPopup(status);
+    x.popupTags.replaceChildren(...tagsOf(x.st, fresh));
+  };
+
+  // Bandeau des nouveautés : combien d'annonces jaunes, et les marquer toutes comme vues.
+  const freshBar = el('div', { class: 'imx-fresh-bar imx-hidden' });
+  const refreshFresh = () => {
+    const todo = groups.filter(isFresh);
+    freshBar.classList.toggle('imx-hidden', !todo.length);
+    if (!todo.length) return;
+    const all = el('button', { type: 'button', class: 'imx-btn imx-btn-sm' }, 'Tout marquer comme vu');
+    all.addEventListener('click', async () => {
+      const saved = await store.markOpened(todo.map((x) => x.key));
+      for (const x of todo) keep(x.key, saved[x.key]);
+      if (!isCurrent()) return;
+      todo.forEach(refresh);
+      refreshFresh();
+    });
+    const n = todo.length;
+    freshBar.replaceChildren(el('div', null, n > 1 ? `${n} nouvelles annonces, en jaune jusqu’à ce que tu les ouvres.` : '1 nouvelle annonce, en jaune jusqu’à ce que tu l’ouvres.'), all);
+  };
+
+  // Premier clic sur une annonce jaune (carte du Fil, point, bouton) : elle redevient normale.
+  const open = async (x) => {
+    if (!isFresh(x)) return;
+    keep(x.key, await store.setTracking(x.key, { opened: Date.now() }));
+    if (!isCurrent()) return;
+    refresh(x);
+    refreshFresh();
+  };
+
+  const onStatus = async (key, status, note) => {
+    keep(key, await store.setTracking(key, note === undefined ? { status } : { note }));
+    if (note !== undefined || !isCurrent()) return;
     for (const x of groups) {
-      if (keyOf.get(x.g) !== key) continue;
-      const want = needsPlace(x.f, trackOf(key), x.st);
-      if (want !== !!rows.get(x.g).querySelector('.imx-leads')) redraw(x);
+      if (x.key !== key) continue;
+      // Bien écarté puis gardé (ou l'inverse) : sa carte gagne ou perd le bloc des pistes.
+      if (needsPlace(x.f, trackOf(key), x.st) !== !!x.row.querySelector('.imx-leads')) redraw(x);
+      else refresh(x);
     }
-    refreshDropped();
+    droppedChanged();
     refreshToPlace();
   };
   const communeOf = (x) => (search.communes.find((c) => c.code === x.g.listings[0].insee) || {}).nom || x.f.city || '';
-  const placeFor = (x) => placeOf(x.f, trackOf(keyOf.get(x.g)));
+  const placeFor = (x) => placeOf(x.f, trackOf(x.key));
   let sales = null; // ventes DVF de la recherche, une fois chargées (repères de prix)
 
   // Carte du Fil d'un bien ; reconstruite quand Nathan choisit (ou annule) son adresse.
-  const rows = new Map();
   const build = (x) => {
-    const key = keyOf.get(x.g);
-    const track = trackOf(key);
+    const track = trackOf(x.key);
     const where = { place: placeFor(x), toPlace: needsPlace(x.f, track, x.st), communeName: communeOf(x), onPlace: (place) => setPlace(x, place) };
-    const row = annonceRow(x.g, key, x.f, x.st, track, x.check.unknown, onStatus, now, where);
-    rows.set(x.g, row);
+    const { row, apply } = annonceRow(x.g, x.key, x.f, x.st, track, x.check.unknown, onStatus, now, where);
+    // Tout clic dans la carte (bouton, lien, note) compte comme une ouverture.
+    row.addEventListener('click', () => open(x));
+    x.row = row;
+    x.applyRow = apply;
     return row;
   };
 
   // Point du bien sur la carte : adresse du registre ou choisie à la main, prix sur le point.
+  // Sa bulle reprend Garder et Écarter : au doigt, sur la vue Carte d'un téléphone.
   const pin = (x) => {
-    const key = keyOf.get(x.g);
-    const id = `annonce:${key}`;
+    const id = `annonce:${x.key}`;
     if (markers.has(id)) {
       layers.biens.removeLayer(markers.get(id));
       markers.delete(id);
     }
+    x.marker = null;
     const place = placeFor(x);
     if (!place || x.st.status === 'retire') return;
-    const { g, f, st } = x;
-    const status = trackOf(key).status || '';
-    placeListing({
+    const { g, f } = x;
+    const status = trackOf(x.key).status || '';
+    const verdict = verdictButtons((value) => onStatus(x.key, value));
+    x.popupTags = el('div', { class: 'imx-tags' });
+    x.applyPopup = verdict.apply;
+    x.marker = placeListing({
       layer: layers.biens,
       markers,
       id,
@@ -216,26 +244,29 @@ async function loadAnnonces(ctx, body) {
       lon: place.lon,
       price: f.price,
       status,
+      fresh: isFresh(x),
       title: place.address || f.title || '',
-      row: rows.get(g),
+      row: x.row,
       focus,
       popup: el(
         'div',
         { class: 'imx-pin-popup' },
         f.photo ? el('img', { class: 'imx-pin-photo', src: f.photo, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }) : null,
-        el('div', { class: 'imx-candidate-address' }, f.price ? UI.priceText(f.price) : 'Prix non précisé', f.price && f.surface ? el('span', { class: 'imx-ppm' }, ` · ${num(Math.round(f.price / f.surface))} €/m²`) : null),
-        el('div', { class: 'imx-meta' }, [factsLine(f), place.address, place.by === 'registre' ? null : 'adresse choisie par toi', STATUSES[status] || null].filter(Boolean).join(' · ')),
-        tagOf(st),
-        el('div', { class: 'imx-actions' }, g.listings.map((l) => UI.linkButton(l.url, SOURCE_LABELS[l.source] || l.source, { iconName: 'external' })))
+        priceHead(f),
+        el('div', { class: 'imx-meta' }, [factsLine(f), place.address, place.by === 'registre' ? null : 'adresse choisie par toi'].filter(Boolean).join(' · ')),
+        x.popupTags,
+        verdict.node,
+        sourceLinks(g)
       ),
     });
+    x.marker.on('popupopen', () => open(x));
+    refresh(x);
   };
 
   // Repères de prix d'une carte : classe énergie du bien dans sa commune, ventes les plus proches.
   const fillLines = (x) => {
     if (!sales) return;
-    const { g, f } = x;
-    const row = rows.get(g);
+    const { g, f, row } = x;
     const insee = g.listings[0].insee;
     const text = classLine(f.energyClass, insee, sales.energy, communeOf(x), num);
     const energy = row.querySelector('.imx-energy');
@@ -256,11 +287,11 @@ async function loadAnnonces(ctx, body) {
   let onlyToPlace = false;
   const alertBox = el('div', { class: 'imx-notice imx-to-place imx-hidden' });
   const refreshToPlace = () => {
-    const todo = groups.filter((x) => needsPlace(x.f, trackOf(keyOf.get(x.g)), x.st));
-    for (const x of groups) rows.get(x.g).classList.toggle('is-to-place', todo.includes(x));
+    const todo = groups.filter((x) => needsPlace(x.f, trackOf(x.key), x.st));
+    for (const x of groups) x.row.classList.toggle('is-to-place', todo.includes(x));
     if (!todo.length) {
       onlyToPlace = false;
-      for (const row of rows.values()) row.classList.remove('is-just-placed');
+      for (const x of groups) x.row.classList.remove('is-just-placed');
     }
     list.classList.toggle('only-to-place', onlyToPlace);
     alertBox.classList.toggle('imx-hidden', !todo.length);
@@ -269,14 +300,14 @@ async function loadAnnonces(ctx, body) {
     button.addEventListener('click', () => {
       onlyToPlace = !onlyToPlace;
       // Biens à placer : pistes dépliées, cartes déjà placées pendant la vérification gardées.
-      for (const x of todo) rows.get(x.g).querySelector('.imx-leads')?.toggleAttribute('open', onlyToPlace);
-      if (!onlyToPlace) for (const row of rows.values()) row.classList.remove('is-just-placed');
+      for (const x of todo) x.row.querySelector('.imx-leads')?.toggleAttribute('open', onlyToPlace);
+      if (!onlyToPlace) for (const x of groups) x.row.classList.remove('is-just-placed');
       refreshToPlace();
       if (onlyToPlace) list.scrollIntoView({ block: 'start' });
     });
     const n = todo.length;
     alertBox.replaceChildren(
-      icon('pin', 16),
+      UI.icon('pin', 16),
       el('div', null, `${n} annonce${n > 1 ? 's' : ''} sans point sur la carte. Vérifie les adresses possibles sur Street View, ou saisis la bonne.`),
       button
     );
@@ -284,32 +315,32 @@ async function loadAnnonces(ctx, body) {
 
   // Carte du Fil reconstruite et point replacé (choix d'adresse, bien écarté puis gardé).
   const redraw = (x) => {
-    const old = rows.get(x.g);
+    const old = x.row;
     const row = build(x);
     if (onlyToPlace) row.classList.add('is-just-placed');
     old.replaceWith(row);
     pin(x);
+    if (!x.marker) refresh(x);
     fillLines(x);
   };
   const setPlace = async (x, place) => {
     // Autre recherche ouverte entre-temps (adresse saisie lente) : rien ne change sur sa carte.
     if (!isCurrent()) return;
-    const key = keyOf.get(x.g);
-    const next = await store.setTracking(key, { place });
-    if (next) tracking[key] = next;
-    else delete tracking[key];
+    keep(x.key, await store.setTracking(x.key, { place }));
     if (!isCurrent()) return;
     redraw(x);
-    refreshDropped();
+    droppedChanged();
     refreshToPlace();
   };
 
   for (const x of groups) build(x);
-  list.replaceChildren(...rows.values());
-  refreshDropped();
+  list.replaceChildren(...groups.map((x) => x.row));
+  for (const x of groups) refresh(x);
   refreshToPlace();
-  body.replaceChildren(robotLine(data, groups.map((x) => x.g), unread), alertBox, list, toggle);
+  refreshFresh();
+  body.replaceChildren(robotLine(data, groups.map((x) => x.g), unread), freshBar, alertBox, list, toggle);
   for (const x of groups) pin(x);
+  droppedChanged();
 
   sales = await loadSearchSales(search).catch(() => null);
   if (!sales || !isCurrent()) {

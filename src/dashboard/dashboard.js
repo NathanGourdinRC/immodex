@@ -8,6 +8,7 @@ import { searchCommunes, communeContour } from '../common/zone-data.js';
 import { renderFeed } from './feed.js';
 import { renderSectors } from './sector-layer.js';
 import { renderSalesView } from './sales-view.js';
+import { droppedShown, setDroppedShown, onDroppedChange, droppedChanged } from './verdict.js';
 
 const UI = window.__immodexUI;
 const { el, icon, num } = UI;
@@ -52,6 +53,8 @@ syncZoomClass();
 function clearMap() {
   Object.values(layers).forEach((l) => l.clearLayers());
   markers.clear();
+  // Plus aucun point : le bouton des écartées de la carte se recompte (il disparaît).
+  droppedChanged();
   lastBounds = null;
   needsFit = false;
   focused = false;
@@ -68,7 +71,8 @@ legend.onAdd = () => {
     { class: 'imx-map-legend', open: !matchMedia('(max-width: 600px)').matches },
     el('summary', null, 'Légende'),
     el('div', null, pill('is-aucun', '389 k€'), 'Annonce en vente, prix affiché (point violet en vue d’ensemble)'),
-    el('div', null, pill('is-favori', 'k€'), 'gardée', pill('is-ecarte', 'k€'), 'écartée'),
+    el('div', null, pill('is-aucun is-fresh', 'k€'), 'nouvelle du robot, jaune tant que tu ne l’as pas ouverte'),
+    el('div', null, pill('is-favori', 'k€'), 'gardée', pill('is-ecarte', 'k€'), 'écartée (cachée, bouton « Voir les écartées »)'),
     el('div', null, dot('#0d9488'), 'DPE récent : bientôt en vente ?'),
     el('div', null, dot('#f79009'), 'DPE nouveau depuis ta visite'),
     el('div', null, 'Hexagones : prix des ventes DVF du secteur'),
@@ -78,6 +82,24 @@ legend.onAdd = () => {
   return box;
 };
 legend.addTo(map);
+
+// Bouton de la carte pour les biens écartés : cachés par défaut, montrés en gris d'un appui
+// (le même réglage que les boutons « Afficher les écartées » du Fil, verdict.js). Il ne paraît
+// que s'il y a des écartés parmi les points posés.
+const droppedControl = L.control({ position: 'topright' });
+droppedControl.onAdd = () => {
+  const button = el('button', { type: 'button', class: 'imx-btn imx-btn-sm imx-map-dropped imx-hidden' });
+  const refresh = () => {
+    const n = map.getContainer().querySelectorAll('.imx-price-pin.is-ecarte:not(.is-legend)').length;
+    button.textContent = droppedShown() ? 'Cacher les écartées' : `Voir les écartées (${n})`;
+    button.classList.toggle('imx-hidden', !n && !droppedShown());
+  };
+  button.addEventListener('click', () => setDroppedShown(!droppedShown()));
+  onDroppedChange(refresh);
+  L.DomEvent.disableClickPropagation(button);
+  return button;
+};
+droppedControl.addTo(map);
 
 // Cadre des communes de la recherche. Sur un téléphone, la carte est cachée hors de la vue
 // Carte : Leaflet ne peut pas cadrer une carte de taille nulle, on cadre à son apparition.

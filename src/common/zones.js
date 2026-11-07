@@ -151,6 +151,21 @@ function cleanPlace(place, now) {
   return { address, lat, lon, by: place.by === 'saisie' ? 'saisie' : 'piste', at: now };
 }
 
+// Suivi d'un bien après une modification ; null quand il n'a plus rien à garder (ni statut, ni
+// note, ni adresse choisie, ni clic sur l'annonce).
+function nextTracking(current, { status, note, place, opened }, now) {
+  const next = {
+    status: status !== undefined ? (STATUSES[status] ? status : null) : current.status || null,
+    note: note !== undefined ? String(note || '').slice(0, 1000) : current.note || '',
+  };
+  const kept = place !== undefined ? cleanPlace(place, now) : current.place || null;
+  if (kept) next.place = kept;
+  const seen = opened !== undefined ? Number(opened) || null : current.opened || null;
+  if (seen) next.opened = seen;
+  next.updatedAt = now;
+  return next.status || next.note || next.place || next.opened ? next : null;
+}
+
 // Le suivi (statut, note) est rangé sous l'adresse de la première annonce du bien :
 // elle ne change pas quand le bien est republié ailleurs.
 const trackingKey = (group) => (group && group.sightings && group.sightings[0] ? group.sightings[0].url : null);
@@ -221,20 +236,23 @@ function createZoneStore(storageArea) {
       const data = await readKey(TRACKING_KEY, {});
       return data && typeof data === 'object' ? data : {};
     },
-    setTracking(url, { status, note, place }, now = Date.now()) {
+    // `opened` : date du premier clic sur une annonce du robot (elle n'est plus jaune). Rangé
+    // avec le statut, il suit la même synchro entre appareils.
+    setTracking(url, { status, note, place, opened }, now = Date.now()) {
       return write(TRACKING_KEY, {}, (data) => {
         const all = { ...(data || {}) };
-        const current = all[url] || {};
-        const next = {
-          status: status !== undefined ? (STATUSES[status] ? status : null) : current.status || null,
-          note: note !== undefined ? String(note || '').slice(0, 1000) : current.note || '',
-        };
-        const kept = place !== undefined ? cleanPlace(place, now) : current.place || null;
-        if (kept) next.place = kept;
-        next.updatedAt = now;
-        if (!next.status && !next.note && !next.place) delete all[url];
-        else all[url] = next;
-        return { data: all, value: all[url] || null };
+        const next = nextTracking(all[url] || {}, { status, note, place, opened }, now);
+        if (next) all[url] = next;
+        else delete all[url];
+        return { data: all, value: next };
+      });
+    },
+    // Plusieurs annonces ouvertes d'un coup (« Tout marquer comme vu ») : une seule écriture.
+    markOpened(urls, now = Date.now()) {
+      return write(TRACKING_KEY, {}, (data) => {
+        const all = { ...(data || {}) };
+        for (const url of urls) if (url && !(all[url] && all[url].opened)) all[url] = nextTracking(all[url] || {}, { opened: now }, now);
+        return { data: all, value: all };
       });
     },
   };

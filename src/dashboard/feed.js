@@ -8,7 +8,8 @@ import { loadSearchSales } from './sector-layer.js';
 import { loadAnnonces } from './annonces.js';
 import { fetchListings, urlKey } from '../common/listings.js';
 import { classLine } from '../common/energy-text.js';
-import { placeListing } from './pins.js';
+import { placeListing, setPinState } from './pins.js';
+import { verdictButtons, droppedChanged, droppedToggle } from './verdict.js';
 
 const UI = window.__immodexUI;
 const { el, icon, num } = UI;
@@ -181,8 +182,7 @@ function bienRow(g, track, unknown, onStatus) {
     el('option', { value: '' }, 'Sans statut'),
     Object.entries(STATUSES).map(([value, label]) => el('option', { value, selected: track.status === value }, label))
   );
-  const keep = el('button', { type: 'button', class: 'imx-btn imx-btn-sm' }, icon('check', 14), 'Garder');
-  const drop = el('button', { type: 'button', class: 'imx-btn imx-btn-sm imx-btn-ghost' }, icon('trash', 14), 'Écarter');
+  const verdict = verdictButtons((value) => setStatus(value));
   const note = el('textarea', { class: 'imx-note', placeholder: 'Note : visite, défauts, contact…', maxlength: '1000' }, track.note || '');
   const row = el(
     'div',
@@ -196,7 +196,7 @@ function bienRow(g, track, unknown, onStatus) {
     unknown.length ? el('div', { class: 'imx-meta imx-unknown' }, unknown.join(' · ')) : null,
     el('div', { class: 'imx-meta imx-nearby imx-hidden' }),
     el('div', { class: 'imx-meta imx-energy imx-hidden' }),
-    el('div', { class: 'imx-actions' }, keep, drop),
+    verdict.node,
     note,
     el(
       'div',
@@ -205,11 +205,11 @@ function bienRow(g, track, unknown, onStatus) {
       UI.castorusButton(last.url)
     )
   );
+  // Statut choisi ici ou dans la bulle du point (même bien) : la ligne suit.
   const apply = (value) => {
     status.value = value || '';
     row.classList.toggle('is-ecarte', value === 'ecarte');
-    keep.classList.toggle('is-active', value === 'favori');
-    keep.lastChild.textContent = value === 'favori' ? 'Gardé' : 'Garder';
+    verdict.apply(value);
   };
   apply(track.status || '');
   // La ligne change d'abord, puis le compteur des écartées : jamais l'inverse à l'écran.
@@ -218,10 +218,8 @@ function bienRow(g, track, unknown, onStatus) {
     await onStatus(key, value);
   };
   status.addEventListener('change', () => setStatus(status.value || null));
-  keep.addEventListener('click', () => setStatus(status.value === 'favori' ? null : 'favori'));
-  drop.addEventListener('click', () => setStatus('ecarte'));
   note.addEventListener('change', () => onStatus(key, undefined, note.value));
-  return row;
+  return { row, apply };
 }
 
 async function loadBiens(ctx, body) {
@@ -256,30 +254,34 @@ async function loadBiens(ctx, body) {
     return;
   }
 
-  // Les annonces écartées sortent du fil ; un bouton permet de les revoir.
-  let showDropped = false;
-  const toggle = el('button', { type: 'button', class: 'imx-btn imx-btn-sm imx-btn-ghost' });
+  // Les annonces écartées sortent du fil et de la carte ; un bouton permet de les revoir (verdict.js).
   const list = el('div', { class: 'imx-bien-list' });
-  const refreshDropped = () => {
-    const n = count('ecarte');
-    list.classList.toggle('hide-ecarte', !showDropped);
-    toggle.textContent = showDropped ? 'Masquer les écartées' : `Afficher les écartées (${n})`;
-    toggle.classList.toggle('imx-hidden', !n && !showDropped);
-  };
-  toggle.addEventListener('click', () => {
-    showDropped = !showDropped;
-    refreshDropped();
-  });
+  const toggle = droppedToggle(() => count('ecarte'), isCurrent);
+  // Ligne du Fil, point et bulle d'un bien, par clé de suivi : un choix fait d'un côté passe de l'autre.
+  const views = new Map();
   const onStatus = async (key, status, note) => {
     const next = await store.setTracking(key, note === undefined ? { status } : { note });
     if (next) tracking[key] = next;
     else delete tracking[key];
+    if (note === undefined && views.has(key)) {
+      const v = views.get(key);
+      v.applyRow(status);
+      if (v.marker) {
+        setPinState(v.marker, { price: v.price, status });
+        v.applyPopup(status);
+      }
+    }
     refreshKpi();
-    refreshDropped();
+    droppedChanged();
   };
-  const rows = new Map(inSearch.map(({ g, check }) => [g, bienRow(g, trackOf(g), check.unknown, onStatus)]));
+  const rows = new Map(
+    inSearch.map(({ g, check }) => {
+      const { row, apply } = bienRow(g, trackOf(g), check.unknown, onStatus);
+      views.set(trackingKey(g), { applyRow: apply, price: g.lastPrice });
+      return [g, row];
+    })
+  );
   list.replaceChildren(...rows.values());
-  refreshDropped();
   body.replaceChildren(list, toggle);
 
   // Sur la carte : les biens dont l'adresse a été retrouvée avec une confiance élevée.
@@ -288,7 +290,11 @@ async function loadBiens(ctx, body) {
     if (!isCurrent() || !point) continue;
     g.point = point;
     const st = trackOf(g).status || '';
-    placeListing({
+    const view = views.get(trackingKey(g));
+    const verdict = verdictButtons((value) => onStatus(trackingKey(g), value));
+    verdict.apply(st);
+    view.applyPopup = verdict.apply;
+    view.marker = placeListing({
       layer: layers.biens,
       markers,
       id: `vue:${trackingKey(g)}`,
@@ -303,10 +309,12 @@ async function loadBiens(ctx, body) {
         'div',
         { class: 'imx-pin-popup' },
         el('div', { class: 'imx-candidate-address' }, g.address),
-        el('div', { class: 'imx-meta' }, [priceLine(g), ppmText(g.lastPrice, (g.fp || {}).surface), STATUSES[st] || null].filter(Boolean).join(' · ')),
+        el('div', { class: 'imx-meta' }, [priceLine(g), ppmText(g.lastPrice, (g.fp || {}).surface)].filter(Boolean).join(' · ')),
+        verdict.node,
         el('div', { class: 'imx-actions' }, UI.linkButton(g.sightings[g.sightings.length - 1].url, 'Ouvrir l’annonce', { iconName: 'external' }))
       ),
     });
+    droppedChanged();
   }
 
   // Repère de prix : les 15 ventes de maisons les plus proches du bien placé sur la carte.

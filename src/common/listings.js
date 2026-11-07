@@ -128,12 +128,29 @@ function statusOf(g, previousVisit, now = Date.now()) {
     if (!l.removedAt && p.length >= 2 && p[p.length - 1].price < p[p.length - 2].price) drop = Math.max(drop, p[p.length - 2].price - p[p.length - 1].price);
   }
   if (drop) return { status: 'baisse', drop };
-  // Un bien entre dans le Fil quand le robot lit une de ses pages : « nouveau » compte depuis
-  // (readAt manque pour les pages lues avant le 04/11/2026 : leur première vue suffit).
-  const read = g.listings.filter((l) => l.detail).map((l) => l.readAt || l.firstSeen);
-  const seen = Math.min(...(read.length ? read : g.listings.map((l) => l.firstSeen)));
+  const seen = robotSeenAt(g);
   if (previousVisit ? seen > previousVisit : now - seen < FRESH_MS) return { status: 'nouveau' };
   return { status: null };
+}
+
+// Un bien entre dans le Fil quand le robot lit une de ses pages : sa date d'arrivée est cette
+// lecture (readAt manque pour les pages lues avant le 04/11/2026 : leur première vue suffit).
+function robotSeenAt(g) {
+  const read = g.listings.filter((l) => l.detail).map((l) => l.readAt || l.firstSeen);
+  return Math.min(...(read.length ? read : g.listings.map((l) => l.firstSeen)));
+}
+
+// Annonces apportées par le robot depuis cette date : en jaune tant que Nathan ne les a pas
+// ouvertes (clic sur la carte du Fil ou sur le point). Les plus anciennes ne le sont jamais.
+const UNOPENED_SINCE = Date.UTC(2026, 10, 4);
+
+// Annonce du robot pas encore ouverte : arrivée après UNOPENED_SINCE, toujours en ligne, jamais
+// cliquée (`track.opened`), ni déjà vue par Nathan sur le site de l'annonce (`seenUrls`).
+function isUnopened(g, track, { since = UNOPENED_SINCE, seenUrls = null } = {}) {
+  if (g.listings.every((l) => l.removedAt)) return false;
+  if (track && track.opened) return false;
+  if (seenUrls && g.listings.some((l) => seenUrls.has(urlKey(l.url)))) return false;
+  return robotSeenAt(g) >= since;
 }
 
 // Adresse d'annonce comparable d'un site à l'autre de l'appli : origine et chemin, sans paramètres.
@@ -197,4 +214,4 @@ function negotiationText(n) {
   return `Écart médian entre le premier prix relevé et le prix signé : ${n.median} % (${n.count} ventes reliées${how}). Le prix affiché comprend souvent les honoraires d’agence, que le prix de l’acte n’inclut pas.`;
 }
 
-export { LISTINGS_ENDPOINT, SOURCE_LABELS, addressKey, placeOf, needsPlace, urlKey, trackingKeyOf, saleOf, negotiation, negotiationText, shortPrice, fetchListings, groupListings, listingFacts, statusOf, sameProperty };
+export { LISTINGS_ENDPOINT, SOURCE_LABELS, UNOPENED_SINCE, addressKey, placeOf, needsPlace, urlKey, trackingKeyOf, saleOf, negotiation, negotiationText, shortPrice, fetchListings, groupListings, listingFacts, statusOf, robotSeenAt, isUnopened, sameProperty };

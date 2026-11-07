@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { groupListings, statusOf, listingFacts, trackingKeyOf, negotiation, negotiationText, saleOf, shortPrice, placeOf, needsPlace } from '../src/common/listings.js';
+import { groupListings, statusOf, listingFacts, trackingKeyOf, negotiation, negotiationText, saleOf, shortPrice, placeOf, needsPlace, isUnopened, robotSeenAt, UNOPENED_SINCE } from '../src/common/listings.js';
 import { handleListings } from '../api/listings.js';
 import { fakeRedis } from './helpers/fake-redis.mjs';
 
@@ -40,6 +40,29 @@ test('statut : retiré, prix baissé (avec l’écart), nouveau depuis la derni�
   assert.deepEqual(statusOf(fresh, null, NOW), { status: 'nouveau' });
   const [old] = groupListings([base({ id: 'x:/o', source: 'orpi', url: 'https://www.orpi.com/o' })]);
   assert.deepEqual(statusOf(old, NOW - 3 * DAY, NOW), { status: null });
+});
+
+test('annonce jaune : arrivée par le robot depuis le 4 novembre, jamais ouverte, toujours en ligne', () => {
+  const since = Date.parse('2026-11-04T00:00:00Z');
+  assert.equal(UNOPENED_SINCE, since);
+  const [fresh] = groupListings([base({ id: 'x:/j', source: 'orpi', url: 'https://www.orpi.com/j?ref=1', firstSeen: NOW - 5 * DAY, readAt: NOW - DAY })]);
+  // Vue sur la liste le 31 octobre, page lue (arrivée dans le Fil) le 4 novembre : c'est la lecture qui compte.
+  assert.equal(robotSeenAt(fresh), NOW - DAY);
+  assert.equal(isUnopened(fresh, undefined), true);
+  assert.equal(isUnopened(fresh, { status: 'favori' }), true);
+  // Un clic suffit, sur n'importe quel appareil (suivi synchronisé).
+  assert.equal(isUnopened(fresh, { opened: NOW }), false);
+  // Déjà ouverte sur le site de l'agence (annonce vue dans le navigateur) : pas jaune.
+  assert.equal(isUnopened(fresh, {}, { seenUrls: new Set(['https://www.orpi.com/j']) }), false);
+  // Arrivée avant la date de départ : jamais jaune.
+  const [old] = groupListings([base({ id: 'x:/v', source: 'orpi', url: 'https://www.orpi.com/v' })]);
+  assert.equal(isUnopened(old, {}), false);
+  // Page lue avant l'heure de lecture (readAt absent) : sa première vue tient lieu d'arrivée.
+  const [noRead] = groupListings([base({ id: 'x:/w', source: 'orpi', url: 'https://www.orpi.com/w', firstSeen: NOW - DAY })]);
+  assert.equal(isUnopened(noRead, {}), true);
+  // Annonce retirée de partout : rien à ouvrir.
+  const [gone] = groupListings([base({ id: 'x:/g', source: 'orpi', url: 'https://www.orpi.com/g', firstSeen: NOW - DAY, removedAt: NOW })]);
+  assert.equal(isUnopened(gone, {}), false);
 });
 
 test('annonces servies par commune avec l’état des sources', async () => {

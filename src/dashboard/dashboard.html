@@ -59,6 +59,12 @@
       .imx-zoom-low .imx-price-pin:not(.is-hover):not(.is-selected):not(.is-legend) { width: 14px; height: 14px; padding: 0; border: 2px solid #fff; background: #7c3aed; font-size: 0; }
       .imx-zoom-low .imx-price-pin.is-favori:not(.is-hover):not(.is-selected):not(.is-legend) { background: #e11d48; }
       .imx-zoom-low .imx-price-pin.is-ecarte:not(.is-hover):not(.is-selected):not(.is-legend) { background: #94a3b8; }
+      /* Annonce du robot pas encore ouverte : jaune, en pastille comme en petit point. */
+      .imx-price-pin.is-fresh { background: #fde047; border-color: #a16207; color: #0f172a; }
+      .imx-zoom-low .imx-price-pin.is-fresh:not(.is-hover):not(.is-selected):not(.is-legend) { background: #facc15; box-shadow: 0 0 0 1.5px #a16207, 0 1px 4px rgba(15, 23, 42, 0.35); }
+      /* Biens écartés cachés sur la carte, sauf « Voir les écartées » (verdict.js) ou bulle ouverte. */
+      body:not(.imx-show-ecarte) .imx-price-pin.is-ecarte:not(.is-legend):not(.is-selected) { display: none; }
+      .imx-map-dropped { box-shadow: 0 1px 5px rgba(15, 23, 42, 0.3); }
       .imx-price-pin.is-legend { position: static; display: inline-block; transform: none; margin-right: 6px; padding: 1px 6px; font-size: 11px; cursor: default; }
       .imx-map-legend { max-width: 250px; padding: 6px 9px; border-radius: 8px; background: rgba(255, 255, 255, 0.95); box-shadow: 0 1px 5px rgba(15, 23, 42, 0.3); font: 11.5px/1.5 var(--imx-font); color: var(--imx-text-2); }
       .imx-map-legend summary { cursor: pointer; font-weight: 600; color: var(--imx-text); }
@@ -78,7 +84,8 @@
       .imx-views button { flex: 1; height: 30px; font-size: 13px; }
       body:not(.view-fil) .imx-view-fil, body:not(.view-carte) .imx-view-carte, body:not(.view-ventes) .imx-view-ventes { display: none; }
       .imx-view { display: grid; gap: 14px; }
-      .imx-bien-list.hide-ecarte .imx-bien.is-ecarte { display: none; }
+      /* Biens écartés : sortis des listes du Fil, sauf « Afficher les écartées » (verdict.js). */
+      body:not(.imx-show-ecarte) .imx-bien-list .imx-row.is-ecarte { display: none; }
       .imx-unknown { color: var(--imx-mid); }
       /* Annonces en vente (robot) : photo, étiquettes, annonces retirées atténuées. */
       .imx-annonce-photo { width: 72px; height: 54px; object-fit: cover; border-radius: 6px; flex: none; background: var(--imx-bg-muted); }
@@ -87,8 +94,24 @@
       .imx-tag.is-drop { background: #ecfdf3; color: #067647; border: 1px solid #abefc6; }
       .imx-tag.is-gone { background: var(--imx-bg-muted); color: var(--imx-text-3); border: 1px solid var(--imx-border); }
       .imx-annonce.is-gone { opacity: 0.6; }
-      .imx-bien-list.hide-ecarte .imx-annonce.is-ecarte { display: none; }
       .imx-btn.is-active { border-color: var(--imx-accent); color: var(--imx-accent); }
+      /* Garder (rose, comme le point d'un bien gardé) et Écarter (gris) ; au doigt, deux grands
+         boutons côte à côte, dans la carte du Fil comme dans la bulle du point. */
+      .imx-verdict .imx-verdict-keep.is-active { border-color: #e11d48; background: #fff1f2; color: #be123c; }
+      .imx-verdict .imx-verdict-drop.is-active { border-color: #64748b; background: #f1f5f9; color: #334155; }
+      @media (pointer: coarse), (max-width: 600px) {
+        .imx-verdict { flex-wrap: nowrap; }
+        .imx-verdict .imx-btn { flex: 1; justify-content: center; height: 40px; font-size: 14px; }
+        .imx-verdict .imx-btn-ghost:not(.is-active) { border-color: var(--imx-border-strong); }
+        .imx-fresh-bar { flex-wrap: wrap; }
+      }
+      /* Annonce du robot pas encore ouverte : carte jaune et étiquette « Nouveau » jaune. */
+      .imx-tag.is-fresh { background: #fef08a; color: #713f12; border: 1px solid #facc15; }
+      .imx-annonce.is-fresh:not(.is-selected) { background: #fefce8; box-shadow: inset 3px 0 0 #eab308; }
+      .imx-annonce.is-fresh { margin: 0 -8px; padding-left: 8px; padding-right: 8px; border-radius: 6px; }
+      .imx-fresh-bar { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; padding: 7px 10px; border: 1px solid #facc15; border-radius: 8px; background: #fefce8; font-size: 12.5px; color: #713f12; }
+      .imx-fresh-bar > div { flex: 1; }
+      .imx-fresh-bar .imx-btn { flex: none; }
       /* Biens sans point : alerte et filtre « Les placer », pistes d'adresse à vérifier (leads.js). */
       .imx-to-place { align-items: center; }
       .imx-to-place > div { flex: 1; }

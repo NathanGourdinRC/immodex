@@ -405,6 +405,11 @@ test('fil : annonces scannées, nouveautés, baisses et retraits, Garder', async
   assert.equal(await page.locator('.imx-annonce').count(), 3);
   const text = await page.textContent('.imx-view-fil');
   assert.match(text, /Nouveau/);
+  // Annonce apportée par le robot, jamais ouverte : carte et point jaunes, bandeau des nouveautés.
+  assert.match(await page.locator('.imx-annonce').first().getAttribute('class'), /is-fresh/);
+  await page.waitForSelector('.imx-price-pin.is-fresh:not(.is-legend)', { timeout: 30000 });
+  assert.match(await page.textContent('.imx-fresh-bar'), /en jaune jusqu’à ce que tu l/);
+  const freshBefore = await page.locator('.imx-annonce.is-fresh').count();
   assert.match(text, /Prix baissé de 20\s000\s€/);
   assert.match(text, /Retiré/);
   // Annonce retirée reliée à sa vente DVF : prix signé et écart au premier prix relevé.
@@ -425,6 +430,23 @@ test('fil : annonces scannées, nouveautés, baisses et retraits, Garder', async
   assert.doesNotMatch(await page.getAttribute('#map', 'class'), /imx-zoom-low/);
   assert.ok((await page.locator('.imx-price-pin.is-selected').boundingBox()).width > 40);
   assert.match(await page.locator('.imx-annonce').first().getAttribute('class'), /is-selected/);
+  // Ouverte d'un clic : plus jaune, ni sa carte ni son point (le clic est gardé avec le suivi).
+  await page.waitForFunction(() => !document.querySelector('.imx-annonce').classList.contains('is-fresh'));
+  assert.equal(await page.locator('.imx-price-pin.is-fresh:not(.is-legend)').count(), 0);
+  assert.equal(await page.locator('.imx-annonce.is-fresh').count(), freshBefore - 1);
+  // Écarter depuis la bulle du point (au doigt, sur la vue Carte) : la carte du Fil suit, le point
+  // se cache une fois la bulle fermée, le bouton de la carte le remontre en gris.
+  await page.locator('.leaflet-popup-content button:has-text("Écarter")').click();
+  await page.locator('.leaflet-popup-content button:has-text("Écarté")').waitFor();
+  assert.match(await page.locator('.imx-annonce').first().getAttribute('class'), /is-ecarte/);
+  await page.locator('.leaflet-popup-close-button').click();
+  assert.equal(await page.locator('.imx-price-pin.is-ecarte:not(.is-legend):visible').count(), 0);
+  await page.click('.imx-map-dropped:has-text("Voir les écartées (1)")');
+  assert.equal(await page.locator('.imx-price-pin.is-ecarte:not(.is-legend):visible').count(), 1);
+  await page.click('.imx-map-dropped:has-text("Cacher les écartées")');
+  await page.click('button:has-text("Afficher les écartées (1)")');
+  await page.locator('.imx-annonce').first().locator('button:has-text("Écarté")').click();
+  await page.click('button:has-text("Masquer les écartées")');
   // Bien sans adresse retrouvée : pas de point, et sa carte le dit.
   assert.match(await page.locator('.imx-annonce').filter({ hasText: /280\s000/ }).textContent(), /adresse non retrouvée/);
   // Légende des points de la carte.
