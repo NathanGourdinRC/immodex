@@ -184,7 +184,8 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
           if (start - (m.lastRun || 0) < RESULTS_EVERY) return;
           if (m.paused && start - (m.lastRun || 0) < RETRY_PAUSED) return;
           const urls = [...new Set(types.flatMap((t) => source.listUrls(commune, t)))];
-          const budget = { pages: MAX_PAGES };
+          // Liste d'agence longue triée du plus récent au plus ancien : sa propre limite (`maxPages`).
+          const budget = { pages: source.maxPages || MAX_PAGES };
           const reads = [];
           for (const listUrl of urls) {
             const r = await readList({ fetchPage, source, listUrl, commune, budget, deadline: resultsDeadline });

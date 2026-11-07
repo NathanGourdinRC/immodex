@@ -352,6 +352,23 @@ test('au plus 5 pages de résultats par source et par commune, même pour maison
   assert.ok(n <= 5, `${n} pages de résultats`);
 });
 
+test('source à longue liste d’agence (`maxPages`) : plus de 5 pages lues, jamais au-delà de sa limite', async () => {
+  const redis = fakeRedis();
+  const src = { ...paged('alpha', 1), maxPages: 8 };
+  const w = world({});
+  const base = w.fetcher.get;
+  let n = 0;
+  w.fetcher.get = async (url, opts) => {
+    const r = await base(url, opts);
+    if (url.includes('/annonce/')) return r;
+    n++;
+    return { ok: true, status: 200, html: listPage('alpha', [[`p${n}`, '300 000 €']]), blocked: false, disallowed: false };
+  };
+  await withSearch(redis, w.now());
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: [src], readListingImpl });
+  assert.equal(n, 8);
+});
+
 test('deux appels simultanés : un seul passage', async () => {
   const redis = fakeRedis();
   const w = world({ 'https://alpha.test/vente/59636': results('alpha', [['a1', '300 000 €']]), 'https://beta.test/vente/59636': results('beta', []) });
