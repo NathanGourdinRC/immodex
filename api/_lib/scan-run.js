@@ -14,9 +14,11 @@ import { matchSale } from './sale-link.js';
 const defaultLoadSales = async (insee, type, options = {}) => (await (await import('../dvf.js')).handleDvf({ insee, type, withEnergy: false, ...options })).sales;
 
 const HOUR = 3600 * 1000;
-// Verrou d'un passage : empêche deux robots simultanés (un passage dure moins de 5 min).
-// Les pages de résultats restent espacées de 46 h par site quel que soit le nombre de passages.
-const LOCK_MS = 6 * HOUR;
+// Verrou d'un passage : empêche deux robots simultanés (Vercel coupe un passage à 5 min) et
+// impose 20 min entre deux départs, quel que soit l'appelant. Plusieurs passages par nuit
+// (voir vercel.json) vident plus vite la file des pages d'annonce ; les pages de résultats
+// restent espacées de 46 h par site quel que soit le nombre de passages.
+const LOCK_MS = 20 * 60 * 1000;
 const RESULTS_EVERY = 46 * HOUR; // pages de résultats d'une source relues tous les 2 jours
 const RETRY_PAUSED = 7 * 24 * HOUR; // source en pause : nouvel essai une semaine plus tard
 const MAX_PAGES = 5; // par source et par commune, toutes adresses de liste confondues

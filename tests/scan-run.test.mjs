@@ -129,16 +129,20 @@ test('temps écoulé : la file des pages d’annonce reprend au passage suivant,
   assert.equal(new Set(read).size, 12);
 });
 
-test('un seul passage par 6 heures, quel que soit l’appelant', async () => {
+test('un seul passage par 20 minutes, quel que soit l’appelant', async () => {
   const redis = fakeRedis();
   const w = world({ 'https://alpha.test/vente/59636': results('alpha', []), 'https://beta.test/vente/59636': results('beta', []) });
   await withSearch(redis, w.now());
   await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl });
   const asked = w.asked.length;
-  w.advance(5 * HOUR);
+  w.advance(19 * 60 * 1000);
   const again = await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl });
   assert.equal(again.skipped, 'recent');
   assert.equal(w.asked.length, asked);
+  // 20 minutes plus tard, un nouveau passage part (la nuit en compte plusieurs).
+  w.advance(2 * 60 * 1000);
+  const third = await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl });
+  assert.equal(third.skipped, undefined);
 });
 
 test('source bloquée deux passages de suite : mise en pause et signalée', async () => {

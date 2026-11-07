@@ -1,7 +1,8 @@
-// Tâche planifiée du scan (Vercel, chaque nuit, voir vercel.json) : lit les pages de
-// résultats des sources pour les communes des recherches actives, puis les nouvelles
-// annonces. Un appel extérieur ne déclenche rien de plus : un passage à la fois (verrou de
-// 6 h), et les pages de résultats d'un site ne sont relues que tous les 2 jours.
+// Tâche planifiée du scan (Vercel, cinq passages par nuit entre 1 h et 5 h UTC, voir
+// vercel.json) : lit les pages de résultats des sources pour les communes des recherches
+// actives, puis les nouvelles annonces. Un appel extérieur ne déclenche rien de plus : un
+// passage à la fois, 20 min au moins entre deux départs, et les pages de résultats d'un site
+// ne sont relues que tous les 2 jours.
 import { upstashConfig, upstash } from './sync.js';
 import { createPoliteFetcher } from './_lib/polite.js';
 import { runScan } from './_lib/scan-run.js';
