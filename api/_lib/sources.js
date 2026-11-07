@@ -93,14 +93,15 @@ const SOURCES = [
   {
     // Cinq agences (Wambrechies, Wasquehal, Neuville, Roncq, Mouvaux) sur une seule liste de
     // 500 biens environ (43 pages de 12, 07/11/2026), du plus récent au plus ancien. La recherche
-    // du site passe par un formulaire (POST) : les 20 premières pages (240 biens les plus récents)
-    // tiennent dans le temps d'un passage. Au-delà, ParuVendu et Lesiteimmo, où l'agence publie.
+    // du site passe par un formulaire (POST) que le robot n'emploie pas : la liste entière est
+    // lue en plusieurs passages, 20 pages par passage (`resumable`), soit une nuit pour un tour.
     id: 'deleu',
     label: 'Deleu Immobilier',
     host: 'deleuimmobilier.com',
     departments: ['59'],
     pageSize: 12,
     maxPages: 20,
+    resumable: true,
     listUrls: () => ['https://deleuimmobilier.com/fr/ventes'],
     pageUrl: withParam('page'),
     isListing: (u) => /^\/fr\/propriete\/vente\+/.test(u.pathname),

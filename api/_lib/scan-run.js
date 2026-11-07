@@ -48,16 +48,20 @@ const withTimeout = (promise, ms) => Promise.race([promise, new Promise((resolve
 // (une page d'agence peut ne contenir aucune annonce de la commune et en annoncer d'autres).
 // `complete` : toute la liste a été lue, sans erreur ni doute ; seulement alors les absences
 // comptent. `aborted` : temps écoulé, rien n'est enregistré, la source reste à faire.
-async function readList({ fetchPage, source, listUrl, commune, budget, deadline }) {
+// `startPage` : lecture reprise en cours de liste (source `resumable`) ; `nextPage` : page où
+// reprendre quand la limite de pages est atteinte avant la fin de la liste.
+async function readList({ fetchPage, source, listUrl, commune, budget, deadline, startPage = 1 }) {
   const cards = new Map();
   const allSeen = new Set();
   let complete = true;
   let blocked = false;
-  for (let n = 1; ; n++) {
+  let nextPage = null;
+  for (let n = startPage; ; n++) {
     const url = n === 1 ? listUrl : source.pageUrl(listUrl, n);
     if (!url) break;
     if (budget.pages <= 0) {
       complete = false;
+      nextPage = n;
       break;
     }
     budget.pages--;
@@ -79,14 +83,14 @@ async function readList({ fetchPage, source, listUrl, commune, budget, deadline 
     const before = allSeen.size;
     for (const u of found.all) allSeen.add(u);
     for (const c of found.cards) if (!cards.has(c.url)) cards.set(c.url, c);
-    if (n > 1 && found.all.length && allSeen.size === before) {
+    if (n > startPage && found.all.length && allSeen.size === before) {
       // Page identique à une précédente : le site ignore sans doute le numéro de page.
       complete = false;
       break;
     }
     if (!found.full || !found.all.length) break;
   }
-  return { cards: [...cards.values()], complete, blocked, links: allSeen.size };
+  return { cards: [...cards.values()], complete, blocked, links: allSeen.size, nextPage };
 }
 
 async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sources = SOURCES, readListingImpl = readListing, lookup = null, loadSales = defaultLoadSales }) {
@@ -181,14 +185,19 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
         sources.map(async (source) => {
           if (source.departments && !source.departments.some((d) => commune.code.startsWith(d))) return;
           const m = meta[source.id] || { lastRun: 0, failures: 0, paused: false };
-          if (start - (m.lastRun || 0) < RESULTS_EVERY) return;
+          // Source `resumable` (une seule longue liste d'agence, plus récent en tête) : lue
+          // `maxPages` pages par passage, en reprenant à la page notée (`cursor`) jusqu'au bout
+          // de la liste. Un tour commencé se poursuit au passage suivant, sans attendre 46 h.
+          const resumable = !!source.resumable;
+          const midCycle = resumable && (m.cursor || 1) > 1;
+          if (!midCycle && start - (m.lastRun || 0) < RESULTS_EVERY) return;
           if (m.paused && start - (m.lastRun || 0) < RETRY_PAUSED) return;
           const urls = [...new Set(types.flatMap((t) => source.listUrls(commune, t)))];
           // Liste d'agence longue triée du plus récent au plus ancien : sa propre limite (`maxPages`).
           const budget = { pages: source.maxPages || MAX_PAGES };
           const reads = [];
           for (const listUrl of urls) {
-            const r = await readList({ fetchPage, source, listUrl, commune, budget, deadline: resultsDeadline });
+            const r = await readList({ fetchPage, source, listUrl, commune, budget, deadline: resultsDeadline, startPage: midCycle ? m.cursor : 1 });
             // Temps écoulé : rien n'est enregistré pour cette source, elle reste à faire.
             if (r.aborted) return;
             reads.push(r);
@@ -197,7 +206,22 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
           const known = [...listings.values()].some((l) => l.source === source.id && !l.removedAt);
           // Page servie sans aucune annonce alors qu'on en connaît (maintenance, consentement,
           // refonte du site) : pas de conclusion sur les absences.
-          const complete = reads.every((r) => r.complete) && !(known && reads.every((r) => r.links === 0));
+          let complete = reads.every((r) => r.complete) && !(known && reads.every((r) => r.links === 0));
+          // Tour d'une source `resumable` : il s'achève à la dernière page de la liste, ou à la
+          // première erreur (le tour suivant repart de la page 1, 46 h plus tard). Les absences
+          // ne comptent que pour un tour lu en entier sans erreur ; les annonces vues pendant les
+          // passages précédents du tour (`cycleSeen`) y comptent comme vues.
+          let cycle = null;
+          if (resumable) {
+            const r = reads[0];
+            const prior = midCycle ? m.cycleSeen || [] : [];
+            const ok = (midCycle ? m.cycleOk !== false : true) && (r.complete || !!r.nextPage);
+            const links = (midCycle ? m.cycleLinks || 0 : 0) + r.links;
+            // Erreur pendant ce passage : le tour s'arrête là.
+            const nextPage = r.complete || r.nextPage ? r.nextPage : null;
+            cycle = { prior, ok, links, nextPage };
+            complete = !nextPage && ok && !(known && links === 0);
+          }
           const t = now();
           const seen = new Set();
           for (const card of reads.flatMap((r) => r.cards)) {
@@ -224,8 +248,9 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
             }
           }
           if (complete) {
+            const seenInCycle = cycle ? new Set([...cycle.prior, ...seen]) : seen;
             for (const l of listings.values()) {
-              if (l.source !== source.id || l.removedAt || seen.has(l.id)) continue;
+              if (l.source !== source.id || l.removedAt || seenInCycle.has(l.id)) continue;
               l.missed = (l.missed || 0) + 1;
               if (l.missed >= 2) {
                 l.removedAt = t;
@@ -234,7 +259,10 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
             }
           }
           const failures = blocked ? (m.failures || 0) + 1 : 0;
-          meta[source.id] = { lastRun: t, failures, paused: failures >= 2, complete };
+          if (cycle && cycle.nextPage) {
+            // Tour en cours : la page où reprendre et les annonces déjà vues de la commune.
+            meta[source.id] = { lastRun: m.lastRun || 0, failures, paused: failures >= 2, complete: false, cursor: cycle.nextPage, cycleSeen: [...new Set([...cycle.prior, ...seen])], cycleOk: cycle.ok, cycleLinks: cycle.links };
+          } else meta[source.id] = { lastRun: t, failures, paused: failures >= 2, complete };
           if (failures >= 2) summary.paused.push(source.id);
         })
       );

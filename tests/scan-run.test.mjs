@@ -568,3 +568,97 @@ test('ventes du robot chargées sans le registre des DPE (inutile pour relier un
   assert.deepEqual(sales, []);
   assert.ok(calls.length > 0 && calls.every((u) => !u.startsWith('https://data.ademe.fr/')));
 });
+
+// ─── Liste d'agence lue en plusieurs passages (`resumable`) ───
+
+// Liste de 12 pages de 2 annonces (la dernière n'en a qu'une), la plus récente en tête ;
+// `skip` : annonces absentes de la liste (vendues entre deux tours).
+function longList(skip = []) {
+  const ids = [];
+  for (let i = 1; i <= 23; i++) if (!skip.includes(`d${i}`)) ids.push(`d${i}`);
+  const pages = {};
+  for (let p = 0; p * 2 < ids.length; p++) {
+    const url = p === 0 ? 'https://alpha.test/vente/59636' : `https://alpha.test/vente/59636?page=${p + 1}`;
+    pages[url] = listPage('alpha', ids.slice(p * 2, p * 2 + 2).map((id) => [id, '300 000 €']));
+  }
+  return pages;
+}
+const resumableSource = () => ({ ...paged('alpha', 2), maxPages: 5, resumable: true });
+
+test('liste lue en plusieurs passages : reprise à la page notée, toutes les annonces vues en un tour', async () => {
+  const redis = fakeRedis();
+  const w = world(longList());
+  await withSearch(redis, w.now());
+  const src = resumableSource();
+  const listAsked = () => w.asked.filter((u) => u.startsWith('https://alpha.test/vente/'));
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: [src], readListingImpl });
+  assert.equal(listAsked().length, 5);
+  assert.equal((await sourceMetaOf(redis, '59636')).alpha.cursor, 6);
+  w.advance(25 * 60 * 1000);
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: [src], readListingImpl });
+  assert.equal(listAsked().length, 10);
+  assert.ok(listAsked().includes('https://alpha.test/vente/59636?page=6'));
+  w.advance(25 * 60 * 1000);
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: [src], readListingImpl });
+  assert.equal(listAsked().length, 12);
+  const meta = (await sourceMetaOf(redis, '59636')).alpha;
+  assert.equal(meta.cursor, undefined);
+  assert.equal(meta.complete, true);
+  assert.equal((await listingsOf(redis, '59636')).size, 23);
+  // Tour fini : la liste n'est relue que 46 h plus tard.
+  w.advance(25 * 60 * 1000);
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: [src], readListingImpl });
+  assert.equal(listAsked().length, 12);
+});
+
+test('liste lue en plusieurs passages : une annonce n’est retirée qu’après deux tours complets sans elle', async () => {
+  const redis = fakeRedis();
+  const w = world(longList());
+  await withSearch(redis, w.now());
+  const src = resumableSource();
+  const tour = async () => {
+    for (let i = 0; i < 3; i++) {
+      await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: [src], readListingImpl });
+      w.advance(25 * 60 * 1000);
+    }
+  };
+  await tour();
+  // d1 (page 1) vendu : les tours suivants ne la voient plus.
+  const sold = longList(['d1']);
+  const base = w.fetcher.get;
+  w.fetcher.get = async (url, opts) => (url.startsWith('https://alpha.test/vente/') ? base(url, opts).then((r) => (r.ok ? { ...r, html: sold[url] ?? '' } : r)) : base(url, opts));
+  w.advance(46 * HOUR);
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: [src], readListingImpl });
+  // Tour pas fini : aucune absence comptée, même pour d1.
+  let d1 = (await listingsOf(redis, '59636')).get('alpha:/annonce/d1');
+  assert.equal(d1.missed, 0);
+  // Fin du tour : d1 compte une absence ; d3, vu au premier passage du tour, aucune.
+  w.advance(25 * 60 * 1000);
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: [src], readListingImpl });
+  w.advance(25 * 60 * 1000);
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: [src], readListingImpl });
+  const after = await listingsOf(redis, '59636');
+  assert.equal(after.get('alpha:/annonce/d1').missed, 1);
+  assert.equal(after.get('alpha:/annonce/d3').missed, 0);
+  assert.equal(after.get('alpha:/annonce/d1').removedAt, null);
+  w.advance(46 * HOUR);
+  await tour();
+  assert.ok((await listingsOf(redis, '59636')).get('alpha:/annonce/d1').removedAt);
+});
+
+test('liste lue en plusieurs passages : une erreur arrête le tour, sans conclusion sur les absences', async () => {
+  const redis = fakeRedis();
+  const pages = longList();
+  delete pages['https://alpha.test/vente/59636?page=7'];
+  const w = world(pages);
+  await withSearch(redis, w.now());
+  const src = resumableSource();
+  await saveListings(redis, '59636', [{ id: 'alpha:/annonce/ancienne', source: 'alpha', url: 'https://alpha.test/annonce/ancienne', insee: '59636', type: 'maison', title: 'x', price: 1, prices: [], firstSeen: 1, lastSeen: 1, missed: 1, removedAt: null, detail: true, readerVersion: 99 }]);
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: [src], readListingImpl });
+  w.advance(25 * 60 * 1000);
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: [src], readListingImpl });
+  const meta = (await sourceMetaOf(redis, '59636')).alpha;
+  assert.equal(meta.cursor, undefined);
+  assert.equal(meta.complete, false);
+  assert.equal((await listingsOf(redis, '59636')).get('alpha:/annonce/ancienne').removedAt, null);
+});
