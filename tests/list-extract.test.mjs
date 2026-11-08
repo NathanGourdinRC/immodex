@@ -52,13 +52,16 @@ test('Leboncoin : le bloc de données de la page donne tout', () => {
 });
 
 test('Leboncoin : page suivante ouverte sans recharger, les cartes affichées font foi', () => {
-  const box = `<article data-test-id="ad"><a href="/ad/ventes_immobilieres/999"><img src="https://img.leboncoin.fr/9.jpg"><p>312 000 €</p><p>Maison · 88m²</p><p>Située à Marcq-en-Baroeul 59700.</p></a></article>`;
+  // Texte relevé sur une vraie page le 08/11/2026 : feuille de style dans la carte, pièces, terrain.
+  const box = `<div data-qa-id="aditem_container"><a href="/ad/ventes_immobilieres/999?x=1"><style>.adcard { margin: 16px 0 } .b::after { content: "1 €" }</style><img src="https://img.leboncoin.fr/9.jpg"><p>312\u00a0000\u00a0€</p><p>Prix: 312\u00a0000\u00a0€.</p><p>3\u00a0545\u00a0€ par m²</p><p>Maison · 4 pièces · 88m²</p><p>Terrain : 120 m²</p><p>Marcq-en-Baroeul 59700 Mairie</p><p>Située à Marcq-en-Baroeul 59700 Mairie.</p></a></div>`;
   const r = read(`<html><body>${lbcData([lbcAd])}${box}</body></html>`, 'https://www.leboncoin.fr/recherche?category=9&page=2');
   assert.equal(r.cards.length, 1);
   assert.equal(r.cards[0].url, 'https://www.leboncoin.fr/ad/ventes_immobilieres/999');
   assert.equal(r.cards[0].price, 312000);
   assert.equal(r.cards[0].detail.city, 'Marcq-en-Baroeul');
   assert.equal(r.cards[0].detail.surface, 88);
+  assert.equal(r.cards[0].detail.pieces, 4);
+  assert.equal(r.cards[0].detail.terrain, 120);
 });
 
 test('Bien’ici : carte « Maison 5 pièces 100 m² 59700 Marcq-en-Barœul 495 000 € 4 800 €/m² »', () => {
@@ -73,6 +76,17 @@ test('Bien’ici : carte « Maison 5 pièces 100 m² 59700 Marcq-en-Barœul 495 
   assert.equal(cards[0].detail.city, 'Marcq-en-Barœul');
 });
 
+test('Bien’ici : texte réel, le prix collé à la ville, quartier entre parenthèses', () => {
+  const box = (id, place) => `<article class="ad-overview"><a href="/annonce/vente/marcq-en-baroeul/maison/4pieces/${id}">ABRINOR - MARCQ6 Maison 4 pièces 110 m² 59700 ${place}510\u00a0000\u00a0€4\u00a0455\u00a0€/m²maison 4 pièces</a></article>`;
+  const { cards } = read(`<html><body>${box('a', 'Marcq-en-Barœul (Croisé Laroche - Rouges Barres)')}${box('b', 'Marcq-en-Barœul')}</body></html>`, 'https://www.bienici.com/recherche/achat/x');
+  for (const c of cards) {
+    assert.equal(c.detail.city, 'Marcq-en-Barœul');
+    assert.equal(c.detail.postal, '59700');
+    assert.equal(c.price, 510000);
+    assert.equal(c.detail.surface, 110);
+  }
+});
+
 test('PAP : ville à part du « à 3 km de », blocs publicitaires ignorés', () => {
   const html = `<div class="search-list-item-alt"><a href="https://ads.example/x">pub</a></div>
     <div class="search-list-item-alt"><a href="/annonces/maison-pussay-91740-r464002040"><img src="https://cdn.pap.fr/1.jpg"></a>
@@ -84,6 +98,15 @@ test('PAP : ville à part du « à 3 km de », blocs publicitaires ignorés', ()
   assert.equal(cards[0].url, 'https://www.pap.fr/annonces/maison-pussay-91740-r464002040');
   assert.equal(cards[0].price, 340000);
   assert.deepEqual([cards[0].detail.city, cards[0].detail.postal, cards[0].detail.surface, cards[0].detail.pieces, cards[0].detail.chambres], ['Pussay', '91740', 185, 9, 5]);
+});
+
+test('PAP : bien d’une commune voisine, ville sans code postal, badge laissé de côté', () => {
+  const html = `<div class="search-list-item-alt"><a href="/annonces/maison-mereville-r462804059"></a>
+    <div class="item-title"><span class="item-price">220.000 €</span><span>Moins cher sur PAP</span>Méréville <small>à 5km de Monnerville</small><ul><li>6 pièces</li><li>104 m²</li></ul></div></div>`;
+  const { cards } = read(`<html><body>${html}</body></html>`, 'https://www.pap.fr/annonce/x');
+  assert.equal(cards[0].detail.city, 'Méréville');
+  assert.equal(cards[0].detail.postal, null);
+  assert.equal(cards[0].price, 220000);
 });
 
 test('SeLoger : bloc de données, annonces publiées seulement', () => {
@@ -122,7 +145,7 @@ test('ce que lit l’extension passe le contrôle du serveur, pour les 4 sites',
   await redis.command(['HSET', `imx:${space}:items`, 'zone:1', JSON.stringify({ data: zone, deleted: false })]);
   const lbc = read(`<html><body>${lbcData([lbcAd])}</body></html>`, 'https://www.leboncoin.fr/recherche');
   const bi = read(`<html><body><article class="ad-overview"><a href="/annonce/vente/marcq-en-baroeul/maison/5pieces/ag-1">Maison 5 pièces 100 m² 59700 Marcq-en-Barœul 495 000 €</a></article></body></html>`, 'https://www.bienici.com/recherche/achat');
-  const pap = read(`<html><body><div class="search-list-item-alt"><a href="/annonces/maison-marcq-en-baroeul-59700-r1"></a><span class="item-price">300.000 €</span><div class="item-title">Marcq-en-Barœul (59700) 100 m²</div></div></body></html>`, 'https://www.pap.fr/annonce/x');
+  const pap = read(`<html><body><div class="search-list-item-alt"><a href="/annonces/maison-marcq-en-baroeul-59700-r1"></a><span class="item-price">300.000 €</span><div class="item-title">Marcq-en-Barœul (59700)<ul><li>100 m²</li></ul></div></div></body></html>`, 'https://www.pap.fr/annonce/x');
   for (const list of [lbc, bi, pap]) {
     const r = await handleIngest({ syncKey: KEY, redis, now: NOW, body: { source: list.source, cards: list.cards } });
     assert.deepEqual(r, { seen: 1, added: 1, ignored: 0 }, list.source);

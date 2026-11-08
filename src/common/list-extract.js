@@ -46,24 +46,35 @@
     }
     return cards;
   }
-  // Carte dessinée : « 742 000 € … Maison · 167m² … Située à Marcq-en-Baroeul 59700 ».
+  // Carte dessinée : « 439 500 € … Maison · 6 pièces · 93m² Terrain : 120 m² … Située à Marcq-en-Baroeul
+  // 59700 Mairie. » La carte contient aussi sa feuille de style : retirée avant de lire le texte.
   function leboncoinFromPage(doc) {
     const cards = [];
     for (const box of doc.querySelectorAll('article[data-test-id="ad"], [data-qa-id="aditem_container"]')) {
       const link = box.querySelector('a[href*="/ad/ventes_immobilieres/"]') || box.closest('a[href*="/ad/ventes_immobilieres/"]');
       if (!link) continue;
-      const text = norm(box.textContent);
-      const kind = text.match(/\b(Maison|Appartement|Terrain)\s*·\s*(\d+)\s*m²/i);
+      const copy = box.cloneNode(true);
+      copy.querySelectorAll('style,script').forEach((el) => el.remove());
+      const text = norm(copy.textContent);
+      const kind = text.match(/\b(Maison|Appartement|Terrain)\s*·\s*(?:(\d+)\s*pièces?\s*·\s*)?(\d+)\s*m²/i);
       const place = text.match(/Située? à (.+?) (\d{5})\b/);
       if (!kind || !place) continue;
       const type = kind[1].toLowerCase();
-      const surface = num(kind[2]);
+      const surface = num(kind[3]);
       cards.push({
         url: new URL(link.getAttribute('href'), doc.location.href).href.split('?')[0],
         price: num((text.match(/(\d[\d\s]*)\s*€/) || [])[1]),
         title: titleOf(kind[1], surface, place[1]),
         type,
-        detail: { surface, photo: box.querySelector('img')?.src || null, postal: place[2], city: place[1] },
+        detail: {
+          surface,
+          pieces: num(kind[2]),
+          terrain: num((text.match(/Terrain\s*:\s*(\d[\d\s]*)\s*m²/) || [])[1]),
+          photo: box.querySelector('img')?.src || null,
+          postal: place[2],
+          city: place[1],
+          energyClass: letter((text.match(/Classe énergie ([A-G])\b/i) || [])[1]),
+        },
       });
     }
     return cards;
@@ -82,7 +93,7 @@
     return current || !ads.length ? fromPage : leboncoinFromData(ads);
   }
 
-  // ─── Bien'ici : « Maison 5 pièces 100 m² 59700 Marcq-en-Barœul 495 000 € 4 800 €/m² » ───
+  // ─── Bien'ici : « Maison 4 pièces 110 m² 59700 Marcq-en-Barœul (Croisé Laroche)510 000 €4 455 €/m² » ───
   function bienici(doc) {
     const cards = [];
     for (const box of doc.querySelectorAll('article.ad-overview')) {
@@ -92,7 +103,7 @@
       const type = (path.pathname.match(/\/annonce\/vente\/[^/]+\/(maison|appartement|terrain)\//) || [])[1];
       if (!type) continue;
       const text = norm(box.textContent);
-      const place = text.match(/\b(\d{5}) (\D+?)(?= \d| Prix|$)/);
+      const place = text.match(/\b(\d{5}) ([^\d(]+?)\s*(?:\(|\d|$)/);
       const surface = num((text.match(/(\d+(?:,\d+)?) m²/) || [])[1]);
       cards.push({
         url: `${path.origin}${path.pathname}`,
@@ -121,9 +132,13 @@
       const type = (path.pathname.match(/^\/annonces\/(maison|appartement|terrain)-/) || [])[1];
       if (!type) continue;
       const title = box.querySelector('.item-title') || box;
-      let place = null;
       const walker = doc.createTreeWalker(title, 4);
-      for (let node = walker.nextNode(); node && !place; node = walker.nextNode()) place = norm(node.nodeValue).match(/^(.+?) \((\d{5})\)/);
+      const pieces = [];
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) pieces.push(norm(node.nodeValue));
+      // « Pussay (91740) », ou seulement « Méréville » : le premier morceau de texte qui n'est ni
+      // le prix, ni un badge, ni une caractéristique, ni la distance (« à 5km de Monnerville »).
+      const name = pieces.find((p) => p && !/€|\bPAP\b|pièces?|chambres?|m²|^à /.test(p)) || '';
+      const place = name.match(/^(.+?)(?: \((\d{5})\))?$/);
       const text = norm(title.textContent);
       const surface = num((text.match(/(\d+) m²/) || [])[1]);
       const price = (box.querySelector('.item-price')?.textContent || '').replace(/[^\d]/g, '');
@@ -137,7 +152,7 @@
           pieces: num((text.match(/(\d+) pièces?/) || [])[1]),
           chambres: num((text.match(/(\d+) chambres?/) || [])[1]),
           photo: box.querySelector('img')?.src || null,
-          postal: place ? place[2] : null,
+          postal: (place && place[2]) || null,
           city: place ? place[1] : null,
         },
       });
