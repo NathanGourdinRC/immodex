@@ -41,7 +41,10 @@ const LOOKUP_VERSION = 3;
 const needsLookup = (l) => !l.removedAt && l.detail && (!l.address || !/^\d/.test(l.address)) && (l.lookupVersion || 1) < LOOKUP_VERSION;
 const LOOKUP_TRIES = 3; // registre muet (délai, panne) trois passages de suite : abandon
 
-const idOf = (source, url) => `${source.id}:${new URL(url).pathname}`;
+const idOf = (source, url) => {
+  const u = new URL(url);
+  return `${source.id}:${u.pathname}${source.keepSearch ? u.search : ''}`;
+};
 
 const withTimeout = (promise, ms) => Promise.race([promise, new Promise((resolve) => setTimeout(() => resolve(null), ms))]);
 

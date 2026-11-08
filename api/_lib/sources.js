@@ -189,7 +189,211 @@ function selogerCards(html) {
   return { items, full: false };
 }
 
+// Agences dont la liste n'a pas de pagination lisible (ou interdite par robots.txt) : la liste n'est
+// peut-être pas entière, une annonce absente n'est retirée qu'après 3 semaines sans être revue.
+const THREE_WEEKS = 21 * 24 * 3600 * 1000;
+// Type lu dans le chemin de l'adresse : le premier mot compte (« /vente/maison/avec-studio-et-terrain »
+// reste une maison), sinon « studio », « t3 », « type-2 » sont des appartements.
+function typeFromUrl(url) {
+  const path = new URL(url).pathname;
+  const word = path.match(/maison|appartement|terrain|immeuble/i);
+  if (word) return word[0].toLowerCase();
+  return /studio|(^|[-/])(t|f|type-)[1-6]([-/]|$)/i.test(path) ? 'appartement' : 'maison';
+}
+// Annonces qui ne sont pas des logements, dans une liste mêlée.
+const notHousing = (url) => /garage|parking|\bbox\b|local-commercial|bureau|fonds-de-commerce/i.test(url);
+
+// Sites 3Clics à fiches « detail.php?item=413 » (Métropol'Immo, Hem Immobilier, De Rycker) : le
+// bien n'est reconnu que par le paramètre `item` (`keepSearch`), « Sous compromis » est un attribut
+// du bloc de la carte (`data-ribbon`), la commune est dans le texte de la carte.
+function detailPhp({ id, label, host, list, pageSize = null }) {
+  return {
+    id,
+    label,
+    host,
+    departments: ['59'],
+    pageSize,
+    keepSearch: true,
+    listUrls: () => [`https://${host}${list}`],
+    pageUrl: pageSize ? withParam('paged') : () => null,
+    isListing: (u) => u.pathname === '/detail.php' && /^\?item=\d+$/.test(u.search),
+    flagOf: (a) => {
+      const box = a.closest('[data-ribbon]');
+      return box ? box.getAttribute('data-ribbon') : '';
+    },
+    typeOf: (url, text) => guessType(text),
+  };
+}
+
+// Sites Pilotim (Audrey, Choquet, Impact) : toutes les ventes sur `/vente.php?Page=N`, la commune
+// et le type dans l'adresse de la fiche (« /fiche-maison-a-vendre-loos-ref-5335.php »).
+function pilotim({ id, label, host, pageSize = 8 }) {
+  return {
+    id,
+    label,
+    host,
+    departments: ['59'],
+    pageSize,
+    // Longue liste : lue en plusieurs passages, pour qu'une annonce retirée soit bien repérée.
+    resumable: true,
+    maxPages: 4,
+    communeInUrl: true,
+    listUrls: () => [`https://${host}/vente.php`],
+    pageUrl: withParam('Page'),
+    isListing: (u) => /^\/fiche-[a-z0-9-]+-ref-[a-z0-9-]+\.php$/i.test(u.pathname),
+    wanted: (url) => !notHousing(url),
+    typeOf: typeFromUrl,
+  };
+}
+
+// Sites Spot My Place (Logéhome, Vendôme) : première page de chaque type. La suite (`?numpage=`)
+// est interdite par robots.txt chez Logéhome. La commune est dans le texte de la carte.
+function spotMyPlace({ id, label, host }) {
+  return {
+    id,
+    label,
+    host,
+    departments: ['59'],
+    pageSize: null,
+    staleAfter: THREE_WEEKS,
+    listUrls: (c, type) => typesOf(type).map((t) => `https://${host}/achat,${t}s`),
+    pageUrl: () => null,
+    isListing: (u) => /^\/achat,(maison|appartement|terrain)-[^,/]+,[A-Za-z0-9-]+$/.test(u.pathname),
+    typeOf: (url) => (/^[^,]*\/achat,appartement/.test(url) ? 'appartement' : /\/achat,terrain/.test(url) ? 'terrain' : 'maison'),
+  };
+}
+
 const SOURCES = [
+  {
+    // Superimmo : portail qui reprend les annonces de nombreuses agences (Junot, La Lilloise...).
+    // Une liste par commune et par type, lue de proche en proche par ses liens « /p/N ».
+    id: 'superimmo',
+    label: 'Superimmo',
+    host: 'www.superimmo.com',
+    departments: ['59'],
+    pageSize: null,
+    resumable: true,
+    crawl: true,
+    maxPages: 4,
+    staleAfter: THREE_WEEKS,
+    communeInUrl: true,
+    listUrls: (c, type) => typesOf(type).flatMap((t) => c.codesPostaux.map((cp) => `https://www.superimmo.com/achat/${t}/nord-pas-de-calais/nord/${slugOf(c.nom)}-${cp}`)),
+    pageUrl: () => null,
+    moreLists: (html, pageUrl) => {
+      const base = new URL(pageUrl).pathname.replace(/\/p\/\d+$/, '');
+      const out = new Set();
+      for (const m of String(html).matchAll(/href="([^"]+\/p\/\d+)"/g)) if (m[1].replace(/\/p\/\d+$/, '') === base) out.add(`https://www.superimmo.com${m[1]}`);
+      return [...out];
+    },
+    isListing: (u) => /^\/annonces\/achat-(maison|appartement|terrain|immeuble)[a-z0-9-]*-[a-z0-9]+$/.test(u.pathname),
+    typeOf: typeFromUrl,
+  },
+  {
+    // Miss Immo (Marcq-en-Barœul) : une page par type, la commune et le type dans l'adresse.
+    id: 'missimmo',
+    label: 'Miss Immo',
+    host: 'www.miss-immo.fr',
+    departments: ['59'],
+    pageSize: null,
+    communeInUrl: true,
+    listUrls: () => ['https://www.miss-immo.fr/vente-maisons', 'https://www.miss-immo.fr/vente-appartements'],
+    pageUrl: () => null,
+    isListing: (u) => /^\/vente\/(maison|appartement|terrain|immeuble)\/[a-z0-9-]+\/\d+$/.test(u.pathname),
+    typeOf: typeFromUrl,
+  },
+  {
+    // MAV Immobilier (Marcq-en-Barœul) : une page par type et par commune.
+    id: 'mav',
+    label: 'MAV Immobilier',
+    host: 'www.mavimmobilier.fr',
+    departments: ['59'],
+    pageSize: null,
+    communeInUrl: true,
+    listUrls: (c, type) => typesOf(type).map((t) => `https://www.mavimmobilier.fr/annonces/vente/${t}/${slugOf(c.nom)}/`),
+    pageUrl: () => null,
+    isListing: (u) => /^\/annonces\/vente\/(maison|appartement|terrain|immeuble)\/[a-z0-9-]+\/[A-Z0-9]+$/.test(u.pathname),
+    typeOf: typeFromUrl,
+  },
+  {
+    // Le 12 Immobilier / Pierres du Nord (Marcq-en-Barœul) : tous les biens sur une page.
+    id: 'pierresdunord',
+    label: 'Le 12 Immobilier',
+    host: 'www.pierresdunordimmobilier.fr',
+    departments: ['59'],
+    pageSize: null,
+    listUrls: () => ['https://www.pierresdunordimmobilier.fr/biens-a-vendre/'],
+    pageUrl: () => null,
+    isListing: (u) => /^\/bien\/[^/]+\/$/.test(u.pathname),
+    typeOf: (url, text) => guessType(`${url} ${text}`),
+  },
+  {
+    // Le Lion Immobilier : même gabarit que Brique Rouge, tirets bas dans le nom de la commune.
+    id: 'lelion',
+    label: 'Le Lion Immobilier',
+    host: 'www.le-lion-immobilier.fr',
+    departments: ['59'],
+    pageSize: null,
+    listUrls: (c) => [`https://www.le-lion-immobilier.fr/acheter/logement/${slugOf(c.nom).replace(/-/g, '_')}/tous_quartiers/toutes_chambres/0-0`],
+    pageUrl: () => null,
+    isListing: (u) => /^\/vente\/(maison|appartement|terrain)\/[^/]+_\d+$/.test(u.pathname),
+    // La page est celle de la commune : seul le filtre « vendu » reste à faire sur la carte.
+    pageIsCommune: true,
+    typeOf: typeFromUrl,
+  },
+  // Croix Immobilier : montre tout le stock du groupe Forest, comme Immobilière de Wasquehal,
+  // Agence de la Forêt et Immobilière de Linselles. Une seule source suffit pour ces quatre sites.
+  netty({ id: 'croiximmo', label: 'Croix Immobilier', host: 'www.croix-immobilier.fr' }),
+  {
+    // Norestim (Lille, Lambersart) : toutes les ventes, dix par page, la commune dans l'adresse.
+    id: 'norestim',
+    label: 'Norestim',
+    host: 'www.norestim.fr',
+    departments: ['59'],
+    pageSize: 10,
+    resumable: true,
+    maxPages: 4,
+    communeInUrl: true,
+    listUrls: () => ['https://www.norestim.fr/statut/vente/'],
+    pageUrl: (url, n) => `https://www.norestim.fr/statut/vente/page/${n}/`,
+    isListing: (u) => /^\/annonces-immobilieres\/[a-z0-9-]+\/$/.test(u.pathname),
+    wanted: (url) => !notHousing(url),
+    typeOf: typeFromUrl,
+  },
+  {
+    // City Immo (Quesnoy-sur-Deûle) : tous ses biens sur une page, la commune dans l'adresse.
+    id: 'cityimmo',
+    label: 'City Immo',
+    host: 'www.city-immo.fr',
+    departments: ['59'],
+    pageSize: null,
+    communeInUrl: true,
+    listUrls: () => ['https://www.city-immo.fr/nos-biens-immobiliers.php'],
+    pageUrl: () => null,
+    isListing: (u) => /^\/vente-(maison|appartement|terrain|immeuble)[a-z-]*-\d+$/.test(u.pathname),
+    typeOf: typeFromUrl,
+  },
+  {
+    // Immocarré (Lille) : ses derniers biens en page d'accueil, sa page de liste n'en montre aucun.
+    id: 'immocarre',
+    label: 'Immocarré',
+    host: 'www.immocarre.com',
+    departments: ['59'],
+    pageSize: null,
+    staleAfter: THREE_WEEKS,
+    communeInUrl: true,
+    listUrls: () => ['https://www.immocarre.com/'],
+    pageUrl: () => null,
+    isListing: (u) => /^\/(maison|appartement|terrain)-a-vendre-[a-z0-9-]+-\d+\.html$/.test(u.pathname),
+    typeOf: typeFromUrl,
+  },
+  spotMyPlace({ id: 'logehome', label: 'Logéhome', host: 'www.logehome.fr' }),
+  spotMyPlace({ id: 'vendome', label: 'Vendôme Immobilier', host: 'www.vendome-immobilier.fr' }),
+  detailPhp({ id: 'metropolimmo', label: 'Métropol’Immo', host: 'www.metropolimmo.fr', list: '/ventes-de-biens-immobiliers' }),
+  detailPhp({ id: 'hemimmo', label: 'Hem Immobilier', host: 'www.hem-immobilier.fr', list: '/vente' }),
+  detailPhp({ id: 'drtimmo', label: 'De Rycker Transaction', host: 'drtimmo.com', list: '/vente' }),
+  pilotim({ id: 'choquet', label: 'Cabinet Choquet', host: 'www.cabinet-choquet.com', pageSize: 12 }),
+  pilotim({ id: 'audrey', label: 'Audrey Immobilier', host: 'www.audrey-immobilier.fr', pageSize: 8 }),
+  pilotim({ id: 'impact', label: 'Impact Immobilier', host: 'www.impact-immobilier.fr', pageSize: 12 }),
   {
     // SeLoger : robots.txt interdit sa pagination (« ?page= », « ?LISTING-LISTpg »), pas ses pages
     // de commune, de quartier et de nombre de pièces, reliées entre elles. Le robot lit ces pages-là
@@ -812,7 +1016,8 @@ function listingUrl(href, base, source) {
   try {
     const u = new URL(href, base);
     if (u.hostname !== source.host || !source.isListing(u)) return null;
-    return `${u.origin}${u.pathname}`;
+    // Bien reconnu par un paramètre (« detail.php?item=413 ») : il reste dans l'adresse.
+    return `${u.origin}${u.pathname}${source.keepSearch ? u.search : ''}`;
   } catch {
     return null;
   }
@@ -827,6 +1032,8 @@ function keeps(url, text, source, commune, code = null) {
   // Annonce vue mais d'une autre sorte (location dans une liste mêlée, `wanted`) : écartée.
   if (source.wanted && !source.wanted(url)) return false;
   if (UNAVAILABLE.test(text) || NEARBY.test(text)) return false;
+  // Page propre à la commune, dont les cartes ne la citent pas toujours : rien de plus à vérifier.
+  if (source.pageIsCommune) return true;
   if (code && commune.code) return code === commune.code;
   // Source qui sait où lire la commune d'une annonce (`placeOf`) : ce seul morceau, en entier.
   if (source.placeOf) {
@@ -885,6 +1092,8 @@ function readResults(html, pageUrl, source, commune) {
     const text = norm(card.textContent);
     // Mention « vendu » portée par une image (texte de remplacement « Maison - VENDU »).
     const alts = [...card.querySelectorAll('img[alt]')].map((img) => img.getAttribute('alt')).join(' ');
+    // Mention portée par un attribut du bloc de la carte (`flagOf`, « Sous compromis ! »).
+    if (source.flagOf && UNAVAILABLE.test(source.flagOf(a) || '')) continue;
     if (UNAVAILABLE.test(alts) || !keeps(url, text, source, commune, source.codeOf ? source.codeOf(a, card) : null)) continue;
     cards.push({ url, price, title: text.slice(0, 160), type: source.typeOf(url, text) });
   }

@@ -31,7 +31,7 @@ const CASES = {
 };
 
 test('les sources : 5 de la première version, 2 agences de Saint-Jorioz, 5 de Lambersart, Marquette et Saint-André, 5 réseaux, puis Marcq, Villeneuve-d’Ascq, Wasquehal et La Madeleine', () => {
-  assert.deepEqual(SOURCES.map((s) => s.id), ['seloger', 'orpi', 'paruvendu', 'lesiteimmo', 'maes', 'deleu', 'compimmo', 'proprietesdulac', 'leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo', 'century21', 'laforet', 'iad', 'safti', 'nestenn', 'fnaim', 'citya', 'imko', 'immomarcq', 'heron', 'alerteimmo', 'cestpourtonbien', 'bhimmo', 'vastimmo', 'immotram', 'avenueimmo', 'brice', 'actionimmo', 'pepites', 'kw', 'duquesnoy', 'estime', 'duparque', 'rdimmo', 'clefs', 'immonot', 'vacossin', 'lekieffre', 'arthurimmo', 'barnes', 'bonte', 'drhouse', 'immosens', 'demarez', 'abrinor', 'pulp', 'agencelamadeleine', 'lecoutre', 'ericfranques', 'immoclef', 'saintmaur', 'grimonprez']);
+  assert.deepEqual(SOURCES.map((s) => s.id), ['superimmo', 'missimmo', 'mav', 'pierresdunord', 'lelion', 'croiximmo', 'norestim', 'cityimmo', 'immocarre', 'logehome', 'vendome', 'metropolimmo', 'hemimmo', 'drtimmo', 'choquet', 'audrey', 'impact', 'seloger', 'orpi', 'paruvendu', 'lesiteimmo', 'maes', 'deleu', 'compimmo', 'proprietesdulac', 'leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo', 'century21', 'laforet', 'iad', 'safti', 'nestenn', 'fnaim', 'citya', 'imko', 'immomarcq', 'heron', 'alerteimmo', 'cestpourtonbien', 'bhimmo', 'vastimmo', 'immotram', 'avenueimmo', 'brice', 'actionimmo', 'pepites', 'kw', 'duquesnoy', 'estime', 'duparque', 'rdimmo', 'clefs', 'immonot', 'vacossin', 'lekieffre', 'arthurimmo', 'barnes', 'bonte', 'drhouse', 'immosens', 'demarez', 'abrinor', 'pulp', 'agencelamadeleine', 'lecoutre', 'ericfranques', 'immoclef', 'saintmaur', 'grimonprez']);
   for (const id of ['century21', 'laforet', 'iad', 'safti', 'nestenn']) assert.equal(sourceById(id).departments, null, id);
   for (const id of ['leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo']) assert.deepEqual(sourceById(id).departments, ['59'], id);
   assert.deepEqual(sourceById('maes').departments, ['59']);
@@ -538,6 +538,41 @@ test('SeLoger : ne suit que les quartiers et nombres de pièces de la commune, j
   const url = src.listUrls(MARCQ, 'maison')[0];
   const links = ['/recherche/achat/maison/marcq-en-baroeul-59700/mairie-59700/nbh2fr4474', '/recherche/achat/maison/piece-3/hauts-de-france/marcq-en-baroeul-59700/ad08fr23643', '/recherche/achat/appartement/marcq-en-baroeul-59700/mairie-59700/nbh2fr4474', '/recherche/achat/maison/lille-59000/centre-59000/nbh2fr1', '/immobilier/achat/immo-marcq-en-baroeul-59/bien-maison/?page=2', '/recherche/achat/maison/marcq-en-baroeul-59700/mairie-59700/nbh2fr4474?page=2'].map((h) => `<a href="${h}">x</a>`).join('');
   assert.deepEqual(src.moreLists(selogerPage([], links), url, MARCQ), ['https://www.seloger.com/recherche/achat/maison/marcq-en-baroeul-59700/mairie-59700/nbh2fr4474', 'https://www.seloger.com/recherche/achat/maison/piece-3/hauts-de-france/marcq-en-baroeul-59700/ad08fr23643']);
+});
+
+test('sites « detail.php?item= » : le bien reconnu par son paramètre, « Sous compromis » lu sur le bloc', () => {
+  const VDA = { code: '59009', nom: "Villeneuve-d'Ascq", codesPostaux: ['59650'] };
+  const box = (item, ribbon) => `<div class="annonce" data-ribbon="${ribbon}"><a href="./detail.php?item=${item}">En savoir +</a><p>Villeneuve-d'Ascq</p><span>231 000 €</span><p>Appartement T3</p></div>`;
+  const src = sourceById('metropolimmo');
+  const { cards, all } = readResults(page([box(281, ''), box(413, 'SOUS COMPROMIS !')]), 'https://www.metropolimmo.fr/ventes-de-biens-immobiliers', src, VDA);
+  assert.deepEqual(cards.map((c) => [c.url, c.price, c.type]), [['https://www.metropolimmo.fr/detail.php?item=281', 231000, 'appartement']]);
+  assert.equal(all.length, 2);
+});
+
+test('type lu dans l’adresse : le premier mot compte, « type-2 » et « studio » sont des appartements', () => {
+  const type = (id, url) => sourceById(id).typeOf(url, '');
+  assert.equal(type('lelion', 'https://www.le-lion-immobilier.fr/vente/maison/maison-bourgeoise-jardin-studio-garage_33265'), 'maison');
+  assert.equal(type('choquet', 'https://www.cabinet-choquet.com/fiche-type-2-a-vendre-st-andre-lez-lille-ref-1683.php'), 'appartement');
+  assert.equal(type('norestim', 'https://www.norestim.fr/annonces-immobilieres/a-vendre-2-studios-ronchin-3/'), 'appartement');
+  assert.equal(type('missimmo', 'https://www.miss-immo.fr/vente/appartement/marcq-en-baroeul/9407581'), 'appartement');
+  assert.equal(type('superimmo', 'https://www.superimmo.com/annonces/achat-maison-88m-marcq-en-baroeul-59700-x123l8o'), 'maison');
+});
+
+test('Superimmo : une liste par commune et par type, ne suit que ses propres pages', () => {
+  const src = sourceById('superimmo');
+  const list = 'https://www.superimmo.com/achat/maison/nord-pas-de-calais/nord/marcq-en-baroeul-59700';
+  assert.equal(src.listUrls(MARCQ, 'maison')[0], list);
+  const html = '<a href="/achat/maison/nord-pas-de-calais/nord/marcq-en-baroeul-59700/p/2">2</a><a href="/achat/appartement/nord-pas-de-calais/nord/marcq-en-baroeul-59700/p/2">x</a>';
+  assert.deepEqual(src.moreLists(html, list), [`${list}/p/2`]);
+  assert.deepEqual(src.moreLists(html, `${list}/p/2`), [`${list}/p/2`]);
+});
+
+test('Le Lion : la page de la commune suffit, seuls les biens vendus sont écartés', () => {
+  const src = sourceById('lelion');
+  const list = src.listUrls(LILLE_2, null)[0];
+  assert.ok(list.includes('/acheter/logement/lille/'));
+  const html = page([card('/vente/maison/belle-maison_33', '500 000 €'), '<article><a href="/vente/maison/jolie-maison_34">Vendu</a></article>']);
+  assert.deepEqual(readResults(html, list, src, LILLE_2).cards.map((c) => c.url), ['https://www.le-lion-immobilier.fr/vente/maison/belle-maison_33']);
 });
 
 test('chaque source du robot a son nom dans le Fil (lien vers l’annonce)', async () => {
