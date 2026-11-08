@@ -6,7 +6,6 @@
 import { upstashConfig, upstash } from './sync.js';
 import { createPoliteFetcher } from './_lib/polite.js';
 import { runScan } from './_lib/scan-run.js';
-import { SLOW_HOSTS } from './_lib/sources.js';
 import { addressLookup } from './_lib/address.js';
 
 const json = (status, data) =>
@@ -19,7 +18,7 @@ export async function GET() {
   const config = upstashConfig();
   if (!config) return json(503, { ok: false, error: 'not-configured' });
   try {
-    const result = await runScan({ redis: upstash(config), fetcher: createPoliteFetcher({ hostDelays: SLOW_HOSTS }), lookup: addressLookup });
+    const result = await runScan({ redis: upstash(config), fetcher: createPoliteFetcher(), lookup: addressLookup });
     return json(200, { ok: true, ...result });
   } catch (err) {
     console.error('[scan]', err);

@@ -287,7 +287,9 @@ const SOURCES = [
     },
     isListing: (u) => /^\/annonces\/achat-(maison|appartement|terrain|immeuble)[a-z0-9-]*-[a-z0-9]+$/.test(u.pathname),
     typeOf: typeFromUrl,
-    // Le site répond 429 à 5 s d'intervalle, et accepte une page toutes les 45 s (mesuré le 08/11/2026).
+    // Le site refuse le serveur Vercel (`local`, robot local). Depuis un PC, il répond 429 à 5 s
+    // d'intervalle et accepte une page toutes les 45 s (mesuré le 08/11/2026).
+    local: true,
     delayMs: 45000,
     // À ce rythme les fiches ne sont pas demandées : l'adresse donne surface et code postal, la carte
     // son prix et sa photo. Le titre de la carte commence par le texte des favoris : remplacé.

@@ -1,5 +1,5 @@
 // Robot local : lit depuis ce PC les sources qui refusent le serveur Vercel mais répondent à une
-// connexion ordinaire (SeLoger, Héron, Alerte Immobilier), avec les mêmes règles que le
+// connexion ordinaire (SeLoger, Superimmo, Héron, Alerte Immobilier), avec les mêmes règles que le
 // robot : nom honnête, robots.txt respecté, pages espacées, arrêt au premier refus du site.
 // Les annonces partent ensuite dans le Fil par /api/ingest.
 //
@@ -77,7 +77,8 @@ async function readSource(source, communes, fetcher, known) {
     const cards = [];
     for (const card of reads.flatMap((r) => r.cards)) {
       const full = await withDetail(card, source, commune, fetcher, known);
-      if (full) cards.push(full);
+      // Titre propre donné par la source (Superimmo : le texte de sa carte commence par les favoris).
+      if (full) cards.push({ ...full, title: (full.detail && full.detail.title) || full.title });
     }
     let seen = 0;
     let added = 0;
