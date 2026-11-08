@@ -686,3 +686,77 @@ test('liste lue en plusieurs passages : une erreur arrête le tour, sans conclus
   assert.equal(meta.complete, false);
   assert.equal((await listingsOf(redis, '59636')).get('alpha:/annonce/ancienne').removedAt, null);
 });
+
+// ─── Source lue de proche en proche (`crawl`, SeLoger) ───
+
+const crawlPage = (ids, more = []) => `<html><body>${more.map((u) => `<a href="${u}">x</a>`).join('')}<div data-ids="${ids.join(',')}"></div></body></html>`;
+const crawlSource = () => ({
+  ...makeSource('alpha'),
+  pageSize: null,
+  resumable: true,
+  crawl: true,
+  maxPages: 2,
+  staleAfter: 21 * DAY,
+  communeInUrl: true,
+  listUrls: () => ['https://alpha.test/liste'],
+  moreLists: (html) => [...html.matchAll(/href="([^"]+)"/g)].map((m) => m[1]),
+  cardsFrom: (html) => ({
+    full: false,
+    items: (html.match(/data-ids="([^"]*)"/)[1] || '').split(',').filter(Boolean).map((id) => ({ href: `https://alpha.test/annonce/wambrechies/${id}`, price: 300000, text: `Maison ${id}`, detail: { surface: 90, postal: '59118', city: 'Wambrechies' } })),
+  }),
+});
+const crawlPages = () => ({
+  'https://alpha.test/liste': crawlPage(['a', 'b'], ['https://alpha.test/q1', 'https://alpha.test/q2', 'https://alpha.test/q3']),
+  'https://alpha.test/q1': crawlPage(['b', 'c'], ['https://alpha.test/liste']),
+  'https://alpha.test/q2': crawlPage(['d']),
+  'https://alpha.test/q3': crawlPage(['e']),
+});
+
+test('crawl : pages découvertes lues sur plusieurs passages, chacune une fois, sans demander les fiches', async () => {
+  const redis = fakeRedis();
+  const w = world(crawlPages());
+  await withSearch(redis, w.now());
+  const src = crawlSource();
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: [src], readListingImpl });
+  assert.deepEqual(w.asked, ['https://alpha.test/liste', 'https://alpha.test/q1']);
+  assert.deepEqual((await sourceMetaOf(redis, '59636')).alpha.pending, ['https://alpha.test/q2', 'https://alpha.test/q3']);
+  w.advance(25 * 60 * 1000);
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: [src], readListingImpl });
+  assert.deepEqual(w.asked.slice(2), ['https://alpha.test/q2', 'https://alpha.test/q3']);
+  const meta = (await sourceMetaOf(redis, '59636')).alpha;
+  assert.equal(meta.cursor, undefined);
+  assert.equal(meta.pending, undefined);
+  const listings = await listingsOf(redis, '59636');
+  assert.equal(listings.size, 5);
+  const a = listings.get('alpha:/annonce/wambrechies/a');
+  assert.equal(a.detail, true);
+  assert.equal(a.surface, 90);
+  assert.equal(a.postal, '59118');
+  // Tour fini : relu 46 h plus tard seulement.
+  w.advance(25 * 60 * 1000);
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: [src], readListingImpl });
+  assert.equal(w.asked.length, 4);
+});
+
+test('crawl : une annonce absente part après 3 semaines sans être revue, jamais sur un refus du site', async () => {
+  const redis = fakeRedis();
+  const pages = { 'https://alpha.test/liste': crawlPage(['a', 'b']) };
+  const w = world(pages);
+  await withSearch(redis, w.now());
+  const src = crawlSource();
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: [src], readListingImpl });
+  // Le site refuse pendant 22 jours : les annonces restent.
+  pages['https://alpha.test/liste'] = 'BLOCK';
+  w.advance(22 * DAY);
+  await withSearch(redis, w.now());
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: [src], readListingImpl });
+  assert.equal((await listingsOf(redis, '59636')).get('alpha:/annonce/wambrechies/a').removedAt, null);
+  // De nouveau lisible, `b` a disparu de la liste et `a` y est encore.
+  pages['https://alpha.test/liste'] = crawlPage(['a']);
+  w.advance(8 * DAY);
+  await withSearch(redis, w.now());
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: [src], readListingImpl });
+  const listings = await listingsOf(redis, '59636');
+  assert.equal(listings.get('alpha:/annonce/wambrechies/a').removedAt, null);
+  assert.ok(listings.get('alpha:/annonce/wambrechies/b').removedAt);
+});

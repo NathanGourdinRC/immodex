@@ -24,7 +24,9 @@ function slugOf(s) {
 
 const withoutAccents = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '');
 
-const UNAVAILABLE = /\bvendue?s?\b|sous[- ]compromis|plus disponible/i;
+// Bien plus à vendre : « Vendu », « Maison vendue », « Sous compromis ». Une description peut dire
+// « sera vendu avec un garage » ou « vendu occupé » d'un bien à vendre : ces tournures ne comptent pas.
+const UNAVAILABLE = /(?<!\b(?:sera|seront|[êe]tre)\s)\bvendue?s?\b(?!\s*\(e\)|\s+(?:occup|lou[ée]|libre|meubl|avec|sans|en\s|par\s|tel\b|telle\b|dans|[ée]quip|cl[ée]|[àa]\s|au\s|aux\s|comme|ou\s))|sous[- ]compromis|plus disponible/i;
 // (« \b » ne marche pas devant « à » : JavaScript ne connaît que les lettres sans accent.)
 const NEARBY = /(?:^|\s)à\s+[\d.,]+\s*k?m\s+de\s+\d{5}\b/i;
 
@@ -138,7 +140,88 @@ function troisClics({ id, label, host, pageSize = null }) {
   };
 }
 
+// SeLoger : les données de la page sont dans un bloc JSON (`__UFRN_FETCHER__`) qui donne, pour chaque
+// annonce, tout ce que le robot chercherait sur sa fiche : aucune fiche n'est donc demandée.
+const SELOGER_TYPES = { HOUSE: 'Maison', APARTMENT: 'Appartement', LAND: 'Terrain' };
+function selogerAds(html) {
+  const m = String(html).match(/window\["__UFRN_FETCHER__"\]=JSON\.parse\("((?:[^"\\]|\\.)*)"\)/);
+  // Page d'une autre forme : erreur, le robot tient alors la liste pour non confirmée.
+  if (!m) throw new Error('page SeLoger sans données');
+  const ads = [];
+  const walk = (o) => {
+    if (!o || typeof o !== 'object') return;
+    if (Array.isArray(o)) return o.forEach(walk);
+    if (o.hardFacts && o.url) ads.push(o);
+    Object.values(o).forEach(walk);
+  };
+  walk(JSON.parse(JSON.parse(`"${m[1]}"`)));
+  return ads;
+}
+function selogerCards(html) {
+  const items = [];
+  for (const ad of selogerAds(html)) {
+    const kind = SELOGER_TYPES[ad.rawData && ad.rawData.propertyType];
+    if (!kind || ad.status !== 'Published') continue;
+    const fact = (type) => {
+      const f = (ad.hardFacts.facts || []).find((x) => x.type === type);
+      const n = f ? Math.round(Number(String(f.splitValue).replace(/\s/g, '').replace(',', '.'))) : NaN;
+      return Number.isFinite(n) ? n : null;
+    };
+    const place = (ad.location && ad.location.address) || {};
+    const images = (ad.gallery && ad.gallery.images) || [];
+    const surface = fact('livingSpace');
+    items.push({
+      href: ad.url,
+      price: Number(ad.rawData.price) || null,
+      text: `${kind} ${surface ? `${surface} m²` : ''} ${place.city || ''} ${place.zipCode || ''}`,
+      detail: {
+        surface,
+        pieces: fact('numberOfRooms'),
+        chambres: fact('numberOfBedrooms'),
+        terrain: fact('plotSpace'),
+        photo: images[0] ? images[0].url : null,
+        postal: place.zipCode || null,
+        city: place.city || null,
+        energyClass: typeof ad.energyClass === 'string' ? ad.energyClass : null,
+      },
+    });
+  }
+  return { items, full: false };
+}
+
 const SOURCES = [
+  {
+    // SeLoger : robots.txt interdit sa pagination (« ?page= », « ?LISTING-LISTpg »), pas ses pages
+    // de commune, de quartier et de nombre de pièces, reliées entre elles. Le robot lit ces pages-là
+    // (une trentaine d'annonces chacune), sans jamais demander une page interdite. Il n'est pas sûr
+    // de voir toute la commune : une annonce est retirée après 3 semaines sans être revue (`staleAfter`).
+    id: 'seloger',
+    label: 'SeLoger',
+    host: 'www.seloger.com',
+    departments: null,
+    pageSize: null,
+    resumable: true,
+    crawl: true,
+    maxPages: 4,
+    staleAfter: 21 * 24 * 3600 * 1000,
+    communeInUrl: true,
+    listUrls: (c, type) => typesOf(type).map((t) => `https://www.seloger.com/immobilier/achat/immo-${slugOf(c.nom)}-${String(c.code).slice(0, 2)}/bien-${t}/`),
+    pageUrl: () => null,
+    cardsFrom: selogerCards,
+    moreLists: (html, pageUrl, c) => {
+      const slug = slugOf(c.nom);
+      const type = /(?:bien-|\/achat\/)appartement/.test(pageUrl) ? 'appartement' : 'maison';
+      const out = new Set();
+      for (const m of String(html).matchAll(/href="(?:https:\/\/www\.seloger\.com)?(\/recherche\/achat\/[^"?#]+)"/g)) {
+        const quartier = new RegExp(`^/recherche/achat/${type}/${slug}-\\d{5}/[a-z0-9-]+/nbh[0-9a-z]+$`).test(m[1]);
+        const pieces = new RegExp(`^/recherche/achat/${type}/piece-\\d+/[a-z-]+/${slug}-\\d{5}/ad[0-9a-z]+$`).test(m[1]);
+        if (quartier || pieces) out.add(`https://www.seloger.com${m[1]}`);
+      }
+      return [...out];
+    },
+    isListing: (u) => /^\/annonce\/achat\/[a-z-]+\/[a-z0-9-]+\/[a-z0-9-]+\/[A-Z0-9]+$/.test(u.pathname),
+    typeOf: (url, text) => (/^Appartement/.test(text) ? 'appartement' : /^Terrain/.test(text) ? 'terrain' : 'maison'),
+  },
   {
     id: 'orpi',
     label: 'Orpi',
@@ -767,13 +850,15 @@ function readResults(html, pageUrl, source, commune) {
       seen.add(url);
       const text = norm(it.text);
       if (!keeps(url, text, source, commune)) continue;
-      cards.push({ url, price: it.price || null, title: text.slice(0, 160), type: source.typeOf(url, text) });
+      cards.push({ url, price: it.price || null, title: text.slice(0, 160), type: source.typeOf(url, text), ...(it.detail ? { detail: it.detail } : {}) });
     }
     return { cards, all: [...seen], full };
   }
   // Source qui répond en JSON (Abrinor) : elle en extrait le HTML de ses cartes.
   const doc = parseHtml(source.htmlOf ? source.htmlOf(html) : html, pageUrl);
-  const keyOf = (a) => listingUrl(a.getAttribute('href'), pageUrl, source);
+  // `doc.baseURI` et non `pageUrl` : une page peut déclarer `<base href="/">` (Nestenn), ses liens
+  // relatifs partent alors de la racine du site et non de l'adresse de la page.
+  const keyOf = (a) => listingUrl(a.getAttribute('href'), doc.baseURI, source);
   const cards = [];
   // `seen` : toutes les annonces de la page, avant les filtres (commune, biens vendus).
   const seen = new Set();

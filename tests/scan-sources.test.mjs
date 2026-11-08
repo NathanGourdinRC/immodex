@@ -31,7 +31,7 @@ const CASES = {
 };
 
 test('les sources : 5 de la première version, 2 agences de Saint-Jorioz, 5 de Lambersart, Marquette et Saint-André, 5 réseaux, puis Marcq, Villeneuve-d’Ascq, Wasquehal et La Madeleine', () => {
-  assert.deepEqual(SOURCES.map((s) => s.id), ['orpi', 'paruvendu', 'lesiteimmo', 'maes', 'deleu', 'compimmo', 'proprietesdulac', 'leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo', 'century21', 'laforet', 'iad', 'safti', 'nestenn', 'fnaim', 'citya', 'imko', 'immomarcq', 'heron', 'alerteimmo', 'cestpourtonbien', 'bhimmo', 'vastimmo', 'immotram', 'avenueimmo', 'brice', 'actionimmo', 'pepites', 'kw', 'duquesnoy', 'estime', 'duparque', 'rdimmo', 'clefs', 'immonot', 'vacossin', 'lekieffre', 'arthurimmo', 'barnes', 'bonte', 'drhouse', 'immosens', 'demarez', 'abrinor', 'pulp', 'agencelamadeleine', 'lecoutre', 'ericfranques', 'immoclef', 'saintmaur', 'grimonprez']);
+  assert.deepEqual(SOURCES.map((s) => s.id), ['seloger', 'orpi', 'paruvendu', 'lesiteimmo', 'maes', 'deleu', 'compimmo', 'proprietesdulac', 'leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo', 'century21', 'laforet', 'iad', 'safti', 'nestenn', 'fnaim', 'citya', 'imko', 'immomarcq', 'heron', 'alerteimmo', 'cestpourtonbien', 'bhimmo', 'vastimmo', 'immotram', 'avenueimmo', 'brice', 'actionimmo', 'pepites', 'kw', 'duquesnoy', 'estime', 'duparque', 'rdimmo', 'clefs', 'immonot', 'vacossin', 'lekieffre', 'arthurimmo', 'barnes', 'bonte', 'drhouse', 'immosens', 'demarez', 'abrinor', 'pulp', 'agencelamadeleine', 'lecoutre', 'ericfranques', 'immoclef', 'saintmaur', 'grimonprez']);
   for (const id of ['century21', 'laforet', 'iad', 'safti', 'nestenn']) assert.equal(sourceById(id).departments, null, id);
   for (const id of ['leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo']) assert.deepEqual(sourceById(id).departments, ['59'], id);
   assert.deepEqual(sourceById('maes').departments, ['59']);
@@ -486,6 +486,58 @@ test('Pulp : annonces lues dans le plan du site (interface interdite par robots.
     ['https://www.pulp-immobilier.fr/annonces-vente/appartement-la-madeleine-lam16950.htm', null, 'appartement'],
   ]);
   assert.equal(r.full, false);
+});
+
+test('Nestenn : `<base href="/">`, les liens relatifs partent de la racine du site', () => {
+  const LAMB = { code: '59328', nom: 'Lambersart', codesPostaux: ['59130'] };
+  const list = 'https://nestenn.com/vente/maison/lambersart-59130';
+  const html = page([`<div><a href="lambersart-maison-4-chambres-ref-39657233"></a> <p>59130 LAMBERSART</p> <p>Maison à vendre</p> <p>435 000 €</p></div>`]).replace('<html>', '<html><head><base href="/"></head>');
+  assert.deepEqual(readResults(html, list, sourceById('nestenn'), LAMB).cards.map((c) => c.url), ['https://nestenn.com/lambersart-maison-4-chambres-ref-39657233']);
+});
+
+test('« vendu » : les biens vendus sont écartés, pas ceux qui « seront vendus avec un garage »', () => {
+  const LAMB = { code: '59328', nom: 'Lambersart', codesPostaux: ['59130'] };
+  const list = 'https://www.grimmelpont.fr/acheter-biens-immobiliers';
+  const hrefOf = (i) => `/immobilier/vente-maison-lambersart/ref-VM47${i}-GRIMMELPONT`;
+  const cardWith = (i, text) => `<article><a href="${hrefOf(i)}">Maison ${text} Lambersart</a><p>299 000 €</p></article>`;
+  const kept = (texts) => readResults(page(texts.map((t, i) => cardWith(i, t))), list, sourceById('grimmelpont'), LAMB).cards.length;
+  for (const text of ['sera vendu avec un garage', 'vendu occupé', 'vendue meublée', 'à vendre']) assert.equal(kept([text]), 1, text);
+  for (const text of ['Vendu', 'vendue', 'sous compromis', 'plus disponible']) assert.equal(kept([text]), 0, text);
+});
+
+// Une page SeLoger : le bloc de données que le site place dans sa page, encodé comme lui.
+const selogerAd = (id, over = {}) => ({
+  url: `https://www.seloger.com/annonce/achat/hauts-de-france/nord-59/marcq-en-baroeul-59700/${id}`,
+  status: 'Published',
+  location: { address: { city: 'Marcq-en-Barœul', zipCode: '59700' } },
+  hardFacts: { title: 'Maison à vendre', facts: [{ type: 'numberOfRooms', splitValue: '6' }, { type: 'numberOfBedrooms', splitValue: '4' }, { type: 'livingSpace', splitValue: '140,5' }, { type: 'plotSpace', splitValue: '1 200' }] },
+  rawData: { price: 490000, propertyType: 'HOUSE' },
+  energyClass: 'C',
+  gallery: { images: [{ url: 'https://photo.test/1.jpg' }] },
+  ...over,
+});
+const selogerPage = (ads, links = '') => `<html><body>${links}<script>window["__UFRN_FETCHER__"]=JSON.parse(${JSON.stringify(JSON.stringify({ data: { classifieds: ads } }))});</script></body></html>`;
+
+test('SeLoger : les annonces et leurs détails viennent du bloc de données de la page', () => {
+  const src = sourceById('seloger');
+  const url = src.listUrls(MARCQ, 'maison')[0];
+  assert.equal(url, 'https://www.seloger.com/immobilier/achat/immo-marcq-en-baroeul-59/bien-maison/');
+  const html = selogerPage([selogerAd('AAA111'), selogerAd('BBB222', { url: 'https://www.bellesdemeures.com/annonces/achat/BBB222' }), selogerAd('CCC333', { status: 'Sold' })]);
+  const { cards } = readResults(html, url, src, MARCQ);
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].url, 'https://www.seloger.com/annonce/achat/hauts-de-france/nord-59/marcq-en-baroeul-59700/AAA111');
+  assert.equal(cards[0].price, 490000);
+  assert.equal(cards[0].type, 'maison');
+  assert.deepEqual(cards[0].detail, { surface: 141, pieces: 6, chambres: 4, terrain: 1200, photo: 'https://photo.test/1.jpg', postal: '59700', city: 'Marcq-en-Barœul', energyClass: 'C' });
+  // Page d'une autre forme : une erreur, pour ne rien conclure sur les absences.
+  assert.throws(() => readResults('<html><body>Maintenance</body></html>', url, src, MARCQ));
+});
+
+test('SeLoger : ne suit que les quartiers et nombres de pièces de la commune, jamais sa pagination', () => {
+  const src = sourceById('seloger');
+  const url = src.listUrls(MARCQ, 'maison')[0];
+  const links = ['/recherche/achat/maison/marcq-en-baroeul-59700/mairie-59700/nbh2fr4474', '/recherche/achat/maison/piece-3/hauts-de-france/marcq-en-baroeul-59700/ad08fr23643', '/recherche/achat/appartement/marcq-en-baroeul-59700/mairie-59700/nbh2fr4474', '/recherche/achat/maison/lille-59000/centre-59000/nbh2fr1', '/immobilier/achat/immo-marcq-en-baroeul-59/bien-maison/?page=2', '/recherche/achat/maison/marcq-en-baroeul-59700/mairie-59700/nbh2fr4474?page=2'].map((h) => `<a href="${h}">x</a>`).join('');
+  assert.deepEqual(src.moreLists(selogerPage([], links), url, MARCQ), ['https://www.seloger.com/recherche/achat/maison/marcq-en-baroeul-59700/mairie-59700/nbh2fr4474', 'https://www.seloger.com/recherche/achat/maison/piece-3/hauts-de-france/marcq-en-baroeul-59700/ad08fr23643']);
 });
 
 test('chaque source du robot a son nom dans le Fil (lien vers l’annonce)', async () => {

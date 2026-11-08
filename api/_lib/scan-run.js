@@ -95,6 +95,45 @@ async function readList({ fetchPage, source, listUrl, commune, budget, deadline,
   return { cards: [...cards.values()], complete, blocked, links: allSeen.size, nextPage };
 }
 
+// Source `crawl` : plusieurs pages de liste découvertes en lisant les premières (quartiers d'une
+// commune chez SeLoger, dont la pagination est interdite aux robots), `budget.pages` par passage.
+// `pending` : pages restant à lire ; `visited` : pages déjà lues pendant ce tour. Le temps écoulé
+// ne perd rien : ce qui est lu est gardé, le reste attend le passage suivant.
+async function readCrawl({ fetchPage, source, commune, pending, visited, budget, deadline }) {
+  const cards = new Map();
+  const allSeen = new Set();
+  const seen = new Set(visited);
+  const todo = [...pending];
+  let failed = false;
+  let blocked = false;
+  while (todo.length && budget.pages > 0) {
+    budget.pages--;
+    const url = todo[0];
+    const res = await fetchPage(url, deadline);
+    if (res.late) break;
+    todo.shift();
+    seen.add(url);
+    if (!res.ok) {
+      failed = true;
+      blocked = !!res.blocked;
+      if (blocked) break;
+      continue;
+    }
+    try {
+      const found = readResults(res.html, url, source, commune);
+      for (const u of found.all) allSeen.add(u);
+      for (const c of found.cards) if (!cards.has(c.url)) cards.set(c.url, c);
+      for (const more of source.moreLists(res.html, url, commune)) if (!seen.has(more) && !todo.includes(more)) todo.push(more);
+    } catch (err) {
+      console.error('[scan] page de résultats illisible', url, err && err.message);
+      failed = true;
+    }
+  }
+  // Refus : le tour s'arrête là. Sinon il reprend au passage suivant s'il reste des pages.
+  const nextPage = !blocked && todo.length ? 2 : null;
+  return { cards: [...cards.values()], complete: !failed && !todo.length, failed, blocked, links: allSeen.size, nextPage, pending: blocked ? [] : todo, visited: [...seen] };
+}
+
 async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sources = SOURCES, readListingImpl = readListing, lookup = null, loadSales = defaultLoadSales }) {
   const start = now();
   // Verrou atomique : deux appels simultanés ne lancent jamais deux robots.
@@ -198,11 +237,15 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
           // Liste d'agence longue triée du plus récent au plus ancien : sa propre limite (`maxPages`).
           const budget = { pages: source.maxPages || MAX_PAGES };
           const reads = [];
-          for (const listUrl of urls) {
-            const r = await readList({ fetchPage, source, listUrl, commune, budget, deadline: resultsDeadline, startPage: midCycle ? m.cursor : 1 });
-            // Temps écoulé : rien n'est enregistré pour cette source, elle reste à faire.
-            if (r.aborted) return;
-            reads.push(r);
+          if (source.crawl) {
+            reads.push(await readCrawl({ fetchPage, source, commune, pending: midCycle ? m.pending || urls : urls, visited: midCycle ? m.visited || [] : [], budget, deadline: resultsDeadline }));
+          } else {
+            for (const listUrl of urls) {
+              const r = await readList({ fetchPage, source, listUrl, commune, budget, deadline: resultsDeadline, startPage: midCycle ? m.cursor : 1 });
+              // Temps écoulé : rien n'est enregistré pour cette source, elle reste à faire.
+              if (r.aborted) return;
+              reads.push(r);
+            }
           }
           const blocked = reads.some((r) => r.blocked);
           const known = [...listings.values()].some((l) => l.source === source.id && !l.removedAt);
@@ -217,7 +260,7 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
           if (resumable) {
             const r = reads[0];
             const prior = midCycle ? m.cycleSeen || [] : [];
-            const ok = (midCycle ? m.cycleOk !== false : true) && (r.complete || !!r.nextPage);
+            const ok = (midCycle ? m.cycleOk !== false : true) && (r.complete || !!r.nextPage) && !r.failed;
             const links = (midCycle ? m.cycleLinks || 0 : 0) + r.links;
             // Erreur pendant ce passage : le tour s'arrête là.
             const nextPage = r.complete || r.nextPage ? r.nextPage : null;
@@ -241,15 +284,27 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
                 l.price = card.price;
               }
             } else {
-              listings.set(id, { id, source: source.id, url: card.url, insee: commune.code, type: card.type, title: card.title, price: card.price, prices: card.price ? [{ at: t, price: card.price }] : [], firstSeen: t, lastSeen: t, missed: 0, removedAt: null, detail: false });
-              if (!queued.has(id)) {
+              const entry = { id, source: source.id, url: card.url, insee: commune.code, type: card.type, title: card.title, price: card.price, prices: card.price ? [{ at: t, price: card.price }] : [], firstSeen: t, lastSeen: t, missed: 0, removedAt: null, detail: false };
+              listings.set(id, entry);
+              // Carte qui donne déjà tout (`detail`, SeLoger) : la page de l'annonce n'est pas demandée.
+              if (card.detail) Object.assign(entry, card.detail, { detail: true, readAt: t, readerVersion: READER_VERSION });
+              else if (!queued.has(id)) {
                 queue.push({ insee: commune.code, id, url: card.url });
                 queued.add(id);
               }
               summary.added++;
             }
           }
-          if (complete) {
+          if (source.staleAfter) {
+            // Source lue par échantillons (`crawl` sans liste complète) : une annonce absente d'un
+            // tour n'est pas forcément retirée ; elle l'est après `staleAfter` sans être revue.
+            // Un refus du site ne dit rien des annonces : aucun retrait ce jour-là.
+            for (const l of blocked ? [] : listings.values()) {
+              if (l.source !== source.id || l.removedAt || t - l.lastSeen < source.staleAfter) continue;
+              l.removedAt = t;
+              summary.removed++;
+            }
+          } else if (complete) {
             const seenInCycle = cycle ? new Set([...cycle.prior, ...seen]) : seen;
             for (const l of listings.values()) {
               if (l.source !== source.id || l.removedAt || seenInCycle.has(l.id)) continue;
@@ -263,7 +318,7 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
           const failures = blocked ? (m.failures || 0) + 1 : 0;
           if (cycle && cycle.nextPage) {
             // Tour en cours : la page où reprendre et les annonces déjà vues de la commune.
-            meta[source.id] = { lastRun: m.lastRun || 0, failures, paused: failures >= 2, complete: false, cursor: cycle.nextPage, cycleSeen: [...new Set([...cycle.prior, ...seen])], cycleOk: cycle.ok, cycleLinks: cycle.links };
+            meta[source.id] = { lastRun: m.lastRun || 0, failures, paused: failures >= 2, complete: false, cursor: cycle.nextPage, cycleSeen: [...new Set([...cycle.prior, ...seen])], cycleOk: cycle.ok, cycleLinks: cycle.links, ...(source.crawl ? { pending: reads[0].pending, visited: reads[0].visited } : {}) };
           } else meta[source.id] = { lastRun: t, failures, paused: failures >= 2, complete };
           if (failures >= 2) summary.paused.push(source.id);
         })
