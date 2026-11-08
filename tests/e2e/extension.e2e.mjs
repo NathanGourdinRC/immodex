@@ -474,8 +474,10 @@ test('fil : biens sans point, pistes vérifiées sur Street View, adresse choisi
   const lead = (address, lat, score) => ({ address, lat, lon: 3.04, score, count: 1, surface: 89, date: '2026-09-23', diffs: ['surface 88.5 m² (annonce : 90)'] });
   const listings = [
     l({ id: 'orpi:/annonce-vente-maison-pistes-e2e/', source: 'orpi', url: 'https://www.orpi.com/annonce-vente-maison-pistes-e2e/', price: 389000, prices: [], surface: 120, address: '12 Rue de Quesnoy 59118 Wambrechies', lat: 50.6862, lon: 3.0489 }),
-    l({ id: 'deleu:/vente/pistes-e2e', source: 'deleu', url: 'https://www.deleu-immobilier.fr/vente/pistes-e2e', price: 312000, prices: [], surface: 90, energyConsumption: 211, gesEmission: 40, leads: [lead('17 Rue Victor Hugo 59118 Wambrechies', 50.6864, 85), lead('19 Rue Rubens 59118 Wambrechies', 50.6871, 85)] }),
-    l({ id: 'maes:/bien-immobilier/pistes-e2e/', source: 'maes', url: 'https://www.maesimmobilier.fr/bien-immobilier/pistes-e2e/', price: 450000, prices: [], surface: 170, city: 'Jardin Sud-Est' }),
+    l({ id: 'deleu:/vente/pistes-e2e', source: 'deleu', url: 'https://www.deleu-immobilier.fr/vente/pistes-e2e', price: 312000, prices: [], surface: 90, pieces: 4, energyConsumption: 211, gesEmission: 40, leads: [lead('17 Rue Victor Hugo 59118 Wambrechies', 50.6864, 85), lead('19 Rue Rubens 59118 Wambrechies', 50.6871, 85)] }),
+    l({ id: 'maes:/bien-immobilier/pistes-e2e/', source: 'maes', url: 'https://www.maesimmobilier.fr/bien-immobilier/pistes-e2e/', price: 450000, prices: [], surface: 170, pieces: 6, city: 'Jardin Sud-Est' }),
+    // Sans adresse et sans le nombre de pièces que demande la recherche : masquée.
+    l({ id: 'maes:/bien-immobilier/incomplet-e2e/', source: 'maes', url: 'https://www.maesimmobilier.fr/bien-immobilier/incomplet-e2e/', price: 295000, prices: [], surface: 110 }),
     // Page pas encore lue par le robot (commune ajoutée la veille) : surface inconnue.
     l({ id: 'paruvendu:/immobilier/vente/maison/non-lue-e2e', source: 'paruvendu', url: 'https://www.paruvendu.fr/immobilier/vente/maison/non-lue-e2e', price: 277000, prices: [], detail: false, firstSeen: now - DAY }),
   ];
@@ -496,12 +498,37 @@ test('fil : biens sans point, pistes vérifiées sur Street View, adresse choisi
     await page.waitForSelector('.imx-annonce', { timeout: 30000 });
   };
   const pins = () => page.locator('.imx-price-pin:not(.is-legend)').count();
+  // La recherche demande un nombre de pièces : une annonce sans adresse qui ne le dit pas est masquée.
+  await page.goto(`chrome-extension://${extId}/src/dashboard/dashboard.html`);
+  await page.click('#zone-tabs button:has-text("Wambrechies")');
+  await page.click('button:has-text("Modifier")');
+  await page.fill('input[name="piecesMin"]', '2');
+  await page.click('button:has-text("Enregistrer")');
+  await page.locator('#subtitle').filter({ hasNotText: 'Modifier' }).waitFor({ timeout: 5000 });
   await openFil();
   const alert = page.locator('.imx-to-place');
   await alert.filter({ hasText: /2 annonces sans point sur la carte/ }).waitFor({ timeout: 10000 });
   // Page pas encore lue : comptée dans la ligne du robot, ni carte ni bien à placer.
   assert.match(await page.locator('.imx-meta').filter({ hasText: /Dernier passage du robot/ }).textContent(), /1 autre annonce attend qu’il lise sa page/);
   assert.equal(await page.locator('.imx-annonce').filter({ hasText: /277\s000/ }).count(), 0);
+  // Sans adresse, nombre de pièces inconnu : masquée, comptée, et ni à placer ni en nouveauté.
+  const incomplete = page.locator('.imx-annonce').filter({ hasText: /295\s000/ });
+  const bar = page.locator('.imx-incomplete-bar');
+  assert.ok(await incomplete.isHidden());
+  assert.match(await bar.textContent(), /1 annonce sans adresse masquée : il lui manque une information demandée par ta recherche/);
+  // Le bouton la montre avec ce qui lui manque ; elle rejoint les biens à placer.
+  await bar.locator('button:has-text("Afficher")').click();
+  assert.ok(await incomplete.isVisible());
+  assert.match(await incomplete.textContent(), /pièces non précisées/);
+  await alert.filter({ hasText: /3 annonces sans point sur la carte/ }).waitFor({ timeout: 5000 });
+  // Gardée, elle ne fait plus partie des masquées ; le second appui l'y remet.
+  await incomplete.locator('button:has-text("Garder")').click();
+  await bar.waitFor({ state: 'hidden', timeout: 5000 });
+  await incomplete.locator('button:has-text("Gardé")').click();
+  await bar.waitFor({ state: 'visible', timeout: 5000 });
+  await bar.locator('button:has-text("Masquer")').click();
+  assert.ok(await incomplete.isHidden());
+  await alert.filter({ hasText: /2 annonces sans point sur la carte/ }).waitFor({ timeout: 5000 });
   // Ville mal lue sur la page (Maes) : la carte montre la commune de l'annonce.
   assert.match(await page.locator('.imx-annonce').filter({ hasText: /450\s000/ }).textContent(), /Wambrechies · adresse non retrouvée/);
   const deleuCard = page.locator('.imx-annonce').filter({ hasText: /312\s000/ });

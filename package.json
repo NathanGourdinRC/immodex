@@ -1,6 +1,6 @@
 {
   "name": "immodex-plus",
-  "version": "0.25.0",
+  "version": "0.26.0",
   "private": true,
   "description": "Outils de développement d'Immodex+ (tests) et dépendance du scan côté serveur (jsdom). L'extension elle-même n'a aucune dépendance.",
   "type": "module",

@@ -120,6 +120,14 @@ function needsPlace(f, track, st) {
   return !placeOf(f, track);
 }
 
+// Bien sans adresse à qui il manque un critère demandé par la recherche (`unknown` de
+// checkCriteria) : masqué du Fil, un bouton le remontre. Rien n'est effacé, et un bien que
+// Nathan a gardé ou annoté reste à sa place ; écarté, il suit le bouton des écartées.
+function isIncomplete(f, track, unknown) {
+  if (!unknown.length || placeOf(f, track)) return false;
+  return !(track && (track.status || track.note));
+}
+
 function statusOf(g, previousVisit, now = Date.now()) {
   if (g.listings.every((l) => l.removedAt)) return { status: 'retire' };
   let drop = 0;
@@ -215,4 +223,4 @@ function negotiationText(n) {
   return `Écart médian entre le premier prix relevé et le prix signé : ${n.median} % (${n.count} ventes reliées${how}). Le prix affiché comprend souvent les honoraires d’agence, que le prix de l’acte n’inclut pas.`;
 }
 
-export { LISTINGS_ENDPOINT, SOURCE_LABELS, UNOPENED_SINCE, addressKey, placeOf, needsPlace, urlKey, trackingKeyOf, saleOf, negotiation, negotiationText, shortPrice, fetchListings, groupListings, listingFacts, statusOf, robotSeenAt, isUnopened, sameProperty };
+export { LISTINGS_ENDPOINT, SOURCE_LABELS, UNOPENED_SINCE, addressKey, placeOf, needsPlace, isIncomplete, urlKey, trackingKeyOf, saleOf, negotiation, negotiationText, shortPrice, fetchListings, groupListings, listingFacts, statusOf, robotSeenAt, isUnopened, sameProperty };

@@ -84,7 +84,8 @@ Une recherche, c'est :
 - **Filtrage d'une annonce par une recherche** :
   - lieu, type, budget : stricts ;
   - surface habitable : marge de 3 m² (déjà la règle de `fpInZone`) ;
-  - une information absente de l'annonce (terrain, chambres, souvent absents) n'exclut pas l'annonce ; elle passe avec la mention « terrain non précisé » ou « chambres non précisées » (choix de Claude).
+  - une information absente de l'annonce (terrain, chambres, souvent absents) n'exclut pas l'annonce ; elle passe avec la mention « terrain non précisé » ou « chambres non précisées » (choix de Claude) ;
+  - exception décidée par Nathan le 8 novembre 2026 : dans le Fil, une annonce **sans adresse** à qui il manque un critère demandé est masquée. Une ligne dit combien sont masquées et un bouton les remontre. Une annonce gardée ou annotée n'est jamais masquée, et une annonce écartée reste gérée par le bouton des écartées.
 
 ## 6. Le scan et le fil (décidé, sauf mention)
 
@@ -230,7 +231,7 @@ Conclusion partagée avec Nathan : à Wambrechies, l'emplacement change peu le p
 
 ## 10. Choix de Claude (non validés explicitement par Nathan)
 1. Les zones deviennent des recherches automatiquement, en étendant la collection `zone`.
-2. Une annonce sans terrain ou sans chambres précisés n'est pas exclue ; elle porte une mention.
+2. Une annonce sans terrain ou sans chambres précisés n'est pas exclue ; elle porte une mention. Depuis le 8 novembre 2026, cela ne vaut plus que pour les annonces avec adresse (décision de Nathan, §5).
 3. Budget strict ; marge de 3 m² sur la surface habitable.
 4. « Retiré » après deux passages sans l'annonce.
 5. Pas de notification sur le téléphone dans cette version.

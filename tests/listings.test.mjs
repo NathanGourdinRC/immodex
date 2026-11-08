@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { groupListings, statusOf, listingFacts, trackingKeyOf, negotiation, negotiationText, saleOf, shortPrice, placeOf, needsPlace, isUnopened, robotSeenAt, UNOPENED_SINCE } from '../src/common/listings.js';
+import { groupListings, statusOf, listingFacts, trackingKeyOf, negotiation, negotiationText, saleOf, shortPrice, placeOf, needsPlace, isIncomplete, isUnopened, robotSeenAt, UNOPENED_SINCE } from '../src/common/listings.js';
 import { handleListings } from '../api/listings.js';
 import { fakeRedis } from './helpers/fake-redis.mjs';
 
@@ -155,6 +155,24 @@ test('point d’un bien : adresse du registre, sinon celle choisie à la main ; 
   assert.equal(needsPlace(f, { status: 'ecarte' }, { status: null }), false);
   assert.equal(needsPlace(f, {}, { status: 'retire' }), false);
   assert.equal(needsPlace({ lat: 50.68, lon: 3.04 }, {}, { status: null }), false);
+});
+
+test('annonce sans adresse à qui il manque un critère demandé : masquée, sauf si Nathan y a touché', () => {
+  const sans = { lat: null, lon: null, address: null };
+  const manque = ['terrain non précisé'];
+  assert.equal(isIncomplete(sans, {}, manque), true);
+  assert.equal(isIncomplete(sans, undefined, manque), true);
+  // Rien ne manque, ou la recherche ne demande pas ce qui manque : l'annonce reste.
+  assert.equal(isIncomplete(sans, {}, []), false);
+  // Adresse du robot ou adresse choisie : la règle ne s'applique qu'aux annonces sans adresse.
+  assert.equal(isIncomplete({ lat: 50.68, lon: 3.04, address: '12 Rue de Quesnoy' }, {}, manque), false);
+  assert.equal(isIncomplete(sans, { place: { address: '19 Rue Rubens', lat: 50.687, lon: 3.04, by: 'piste' } }, manque), false);
+  // Gardée ou annotée : elle ne disparaît pas. Écartée : elle suit le bouton des écartées.
+  assert.equal(isIncomplete(sans, { status: 'favori' }, manque), false);
+  assert.equal(isIncomplete(sans, { note: 'à visiter' }, manque), false);
+  assert.equal(isIncomplete(sans, { status: 'ecarte' }, manque), false);
+  // « Introuvable » ne donne pas d'adresse : la règle s'applique toujours.
+  assert.equal(isIncomplete(sans, { place: { none: true } }, manque), true);
 });
 
 test('page d’annonce pas encore lue par le robot : signalée ; « nouveau » compté depuis sa lecture', () => {

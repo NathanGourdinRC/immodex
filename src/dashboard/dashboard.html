@@ -117,6 +117,11 @@
       .imx-to-place > div { flex: 1; }
       .imx-to-place .imx-btn { flex: none; }
       .imx-bien-list.only-to-place .imx-annonce:not(.is-to-place):not(.is-just-placed) { display: none; }
+      /* Biens sans adresse à qui il manque un critère : cachés, sauf bouton « Afficher » (annonces.js). */
+      .imx-bien-list:not(.show-incomplete) .imx-annonce.is-incomplete { display: none; }
+      .imx-incomplete-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 12.5px; color: var(--imx-mid); }
+      .imx-incomplete-bar > div { flex: 1; min-width: 200px; }
+      .imx-incomplete-bar .imx-btn { flex: none; }
       .imx-leads { padding: 7px 10px; border: 1px solid var(--imx-accent-line); border-radius: 8px; background: var(--imx-accent-soft); }
       .imx-leads > * + * { margin-top: 8px; }
       .imx-leads summary { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--imx-accent-text); }

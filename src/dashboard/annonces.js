@@ -4,8 +4,9 @@
 // bulle du point (verdict.js). Une annonce apportée par le robot reste jaune (carte et point)
 // jusqu'au premier clic dessus ; ce clic est rangé avec le suivi, donc synchronisé.
 // Un bien sans adresse retrouvée montre ses pistes d'adresse, que Nathan vérifie (leads.js).
+// S'il lui manque un critère demandé par la recherche, il est masqué : un bouton le remontre.
 import { checkCriteria, trackingKey } from '../common/zones.js';
-import { groupListings, listingFacts, statusOf, isUnopened, trackingKeyOf, urlKey, saleOf, negotiation, negotiationText, placeOf, needsPlace, SOURCE_LABELS } from '../common/listings.js';
+import { groupListings, listingFacts, statusOf, isUnopened, trackingKeyOf, urlKey, saleOf, negotiation, negotiationText, placeOf, needsPlace, isIncomplete, SOURCE_LABELS } from '../common/listings.js';
 import { nearestSales, isComparable } from '../common/sectors.js';
 import { loadSearchSales } from './sector-layer.js';
 import { classLine } from '../common/energy-text.js';
@@ -141,6 +142,12 @@ async function loadAnnonces(ctx, body) {
   const trackOf = (key) => tracking[key] || {};
   // Jaune : annonce du robot jamais ouverte, ni sur ce tableau de bord, ni sur le site d'origine.
   const isFresh = (x) => isUnopened(x.g, trackOf(x.key), { seenUrls: seenByUrl });
+  // Biens sans adresse à qui il manque un critère : cachés tant que le bouton ne les montre pas
+  // (choix non gardé, comme pour les écartées). Cachés, ils ne comptent ni comme nouveautés ni
+  // comme biens à placer.
+  let showIncomplete = false;
+  const masked = (x) => isIncomplete(x.f, trackOf(x.key), x.check.unknown);
+  const onScreen = () => groups.filter((x) => showIncomplete || !masked(x));
   // Les jaunes d'abord, puis baisses de prix, le reste, les retirées ; les plus récentes en tête.
   groups.sort((a, b) => Number(isFresh(b)) - Number(isFresh(a)) || ORDER[a.st.status] - ORDER[b.st.status] || b.f.firstSeen - a.f.firstSeen);
 
@@ -156,6 +163,7 @@ async function loadAnnonces(ctx, body) {
     const status = trackOf(x.key).status || null;
     const fresh = isFresh(x);
     x.row.classList.toggle('is-ecarte', status === 'ecarte');
+    x.row.classList.toggle('is-incomplete', masked(x));
     x.row.classList.toggle('is-fresh', fresh);
     x.applyRow(status);
     x.row.querySelector('.imx-tags').replaceChildren(...tagsOf(x.st, fresh), ...(x.g.probable ? [el('span', { class: 'imx-tag' }, 'même bien probable')] : []));
@@ -168,7 +176,7 @@ async function loadAnnonces(ctx, body) {
   // Bandeau des nouveautés : combien d'annonces jaunes, et les marquer toutes comme vues.
   const freshBar = el('div', { class: 'imx-fresh-bar imx-hidden' });
   const refreshFresh = () => {
-    const todo = groups.filter(isFresh);
+    const todo = onScreen().filter(isFresh);
     freshBar.classList.toggle('imx-hidden', !todo.length);
     if (!todo.length) return;
     const all = el('button', { type: 'button', class: 'imx-btn imx-btn-sm' }, 'Tout marquer comme vu');
@@ -194,7 +202,13 @@ async function loadAnnonces(ctx, body) {
 
   const onStatus = async (key, status, note) => {
     keep(key, await store.setTracking(key, note === undefined ? { status } : { note }));
-    if (note !== undefined || !isCurrent()) return;
+    if (!isCurrent()) return;
+    // Une note ou un verdict fait entrer le bien dans ceux que Nathan a touchés (ou l'en sort).
+    if (note !== undefined) {
+      for (const x of groups) if (x.key === key) refresh(x);
+      refreshIncomplete();
+      return;
+    }
     for (const x of groups) {
       if (x.key !== key) continue;
       // Bien écarté puis gardé (ou l'inverse) : sa carte gagne ou perd le bloc des pistes.
@@ -202,9 +216,9 @@ async function loadAnnonces(ctx, body) {
       else refresh(x);
     }
     droppedChanged();
-    refreshToPlace();
+    refreshIncomplete();
   };
-  const communeOf = (x) => (search.communes.find((c) => c.code === x.g.listings[0].insee) || {}).nom || x.f.city || '';
+  const communeOf =(x) => (search.communes.find((c) => c.code === x.g.listings[0].insee) || {}).nom || x.f.city || '';
   const placeFor = (x) => placeOf(x.f, trackOf(x.key));
   let sales = null; // ventes DVF de la recherche, une fois chargées (repères de prix)
 
@@ -287,7 +301,7 @@ async function loadAnnonces(ctx, body) {
   let onlyToPlace = false;
   const alertBox = el('div', { class: 'imx-notice imx-to-place imx-hidden' });
   const refreshToPlace = () => {
-    const todo = groups.filter((x) => needsPlace(x.f, trackOf(x.key), x.st));
+    const todo = onScreen().filter((x) => needsPlace(x.f, trackOf(x.key), x.st));
     for (const x of groups) x.row.classList.toggle('is-to-place', todo.includes(x));
     if (!todo.length) {
       onlyToPlace = false;
@@ -313,6 +327,25 @@ async function loadAnnonces(ctx, body) {
     );
   };
 
+  // Ligne des biens masqués : combien, et le bouton qui les montre ou les cache. Le nombre change
+  // avec le suivi (Garder, note, adresse choisie), et avec lui les nouveautés et les biens à placer.
+  const incompleteBar = el('div', { class: 'imx-incomplete-bar imx-hidden' });
+  const refreshIncomplete = () => {
+    const n = groups.filter(masked).length;
+    list.classList.toggle('show-incomplete', showIncomplete);
+    incompleteBar.classList.toggle('imx-hidden', !n);
+    refreshToPlace();
+    refreshFresh();
+    if (!n) return;
+    const button = el('button', { type: 'button', class: 'imx-btn imx-btn-sm imx-btn-ghost' }, showIncomplete ? 'Masquer' : 'Afficher');
+    button.addEventListener('click', () => {
+      showIncomplete = !showIncomplete;
+      refreshIncomplete();
+    });
+    const what = n > 1 ? `${n} annonces sans adresse ${showIncomplete ? 'affichées' : 'masquées'} : il leur manque` : `1 annonce sans adresse ${showIncomplete ? 'affichée' : 'masquée'} : il lui manque`;
+    incompleteBar.replaceChildren(el('div', null, `${what} une information demandée par ta recherche.`), button);
+  };
+
   // Carte du Fil reconstruite et point replacé (choix d'adresse, bien écarté puis gardé).
   const redraw = (x) => {
     const old = x.row;
@@ -330,15 +363,14 @@ async function loadAnnonces(ctx, body) {
     if (!isCurrent()) return;
     redraw(x);
     droppedChanged();
-    refreshToPlace();
+    refreshIncomplete();
   };
 
   for (const x of groups) build(x);
   list.replaceChildren(...groups.map((x) => x.row));
   for (const x of groups) refresh(x);
-  refreshToPlace();
-  refreshFresh();
-  body.replaceChildren(robotLine(data, groups.map((x) => x.g), unread), freshBar, alertBox, list, toggle);
+  refreshIncomplete();
+  body.replaceChildren(robotLine(data, groups.map((x) => x.g), unread), freshBar, alertBox, incompleteBar, list, toggle);
   for (const x of groups) pin(x);
   droppedChanged();
 
