@@ -31,7 +31,7 @@ const CASES = {
 };
 
 test('les sources : 5 de la première version, 2 agences de Saint-Jorioz, 5 de Lambersart, Marquette et Saint-André, 5 réseaux, puis Marcq, Villeneuve-d’Ascq, Wasquehal et La Madeleine', () => {
-  assert.deepEqual(SOURCES.map((s) => s.id), ['superimmo', 'missimmo', 'mav', 'pierresdunord', 'lelion', 'croiximmo', 'norestim', 'cityimmo', 'immocarre', 'logehome', 'vendome', 'metropolimmo', 'hemimmo', 'drtimmo', 'choquet', 'audrey', 'impact', 'leboncoin', 'pap', 'bienici', 'seloger', 'orpi', 'paruvendu', 'lesiteimmo', 'maes', 'deleu', 'compimmo', 'proprietesdulac', 'leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo', 'century21', 'laforet', 'iad', 'safti', 'nestenn', 'fnaim', 'citya', 'imko', 'immomarcq', 'heron', 'alerteimmo', 'cestpourtonbien', 'bhimmo', 'vastimmo', 'immotram', 'avenueimmo', 'brice', 'actionimmo', 'pepites', 'kw', 'duquesnoy', 'estime', 'duparque', 'rdimmo', 'clefs', 'immonot', 'vacossin', 'lekieffre', 'arthurimmo', 'barnes', 'bonte', 'drhouse', 'immosens', 'demarez', 'abrinor', 'pulp', 'agencelamadeleine', 'lecoutre', 'ericfranques', 'immoclef', 'saintmaur', 'grimonprez']);
+  assert.deepEqual(SOURCES.map((s) => s.id), ['superimmo', 'missimmo', 'mav', 'pierresdunord', 'lelion', 'croiximmo', 'norestim', 'cityimmo', 'immocarre', 'logehome', 'vendome', 'metropolimmo', 'hemimmo', 'drtimmo', 'choquet', 'audrey', 'impact', 'leboncoin', 'pap', 'bienici', 'seloger', 'orpi', 'paruvendu', 'lesiteimmo', 'maes', 'deleu', 'compimmo', 'proprietesdulac', 'leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo', 'century21', 'laforet', 'iad', 'safti', 'nestenn', 'fnaim', 'citya', 'imko', 'immomarcq', 'heron', 'alerteimmo', 'cestpourtonbien', 'bhimmo', 'vastimmo', 'immotram', 'avenueimmo', 'brice', 'actionimmo', 'pepites', 'kw', 'duquesnoy', 'estime', 'duparque', 'rdimmo', 'clefs', 'immonot', 'vacossin', 'lekieffre', 'arthurimmo', 'barnes', 'bonte', 'drhouse', 'immosens', 'demarez', 'abrinor', 'pulp', 'agencelamadeleine', 'lecoutre', 'ericfranques', 'immoclef', 'saintmaur', 'grimonprez', 'cledunord', 'hoste', 'agencedecroix', 'sothebys', 'espacesatypiques']);
   for (const id of ['century21', 'laforet', 'iad', 'safti', 'nestenn']) assert.equal(sourceById(id).departments, null, id);
   for (const id of ['leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo']) assert.deepEqual(sourceById(id).departments, ['59'], id);
   assert.deepEqual(sourceById('maes').departments, ['59']);
@@ -591,4 +591,72 @@ test('superimmo : surface, code postal et photo lus sans demander la fiche, titr
   assert.deepEqual(cards[0].detail, { surface: 88, postal: '59700', city: 'Marcq-en-Barœul', photo: 'https://photo.superneuf.com/abc', title: 'Maison 88 m² Marcq-en-Barœul' });
   assert.equal(cards[1].detail.surface, null);
   assert.equal(cards[1].detail.postal, '59700');
+});
+
+const ROUBAIX = { code: '59512', nom: 'Roubaix', codesPostaux: ['59100'] };
+const VASCQ = { code: '59009', nom: 'Villeneuve-d’Ascq', codesPostaux: ['59491', '59650'] };
+const LAMBERSART = { code: '59328', nom: 'Lambersart', codesPostaux: ['59130'] };
+
+test('Clé du Nord : prix, type et commune de la fiche, sans suivre de page suivante', () => {
+  const s = sourceById('cledunord');
+  const box = (href, text) => `<div class="ficheBien"><a href="${href}">Voir</a><p>${text}</p></div>`;
+  const html = `<html><body>${box('/vente-maison-468000-roubaix,380', 'Maison à vendre Roubaix RÉF. 380 150 m² <b>468 000 €</b> HAI')}${box('/location-appartement-870-tourcoing,390', 'Appartement à louer <b>870 €</b>')}${box('/vente-maison-249000-mouvaux,244', 'Maison à vendre Mouvaux, proche Roubaix <b>249 000 €</b>')}</body></html>`;
+  const { cards } = readResults(html, 'https://www.cledunord.com/vente', s, ROUBAIX);
+  assert.deepEqual(cards.map((c) => [c.url, c.price, c.type]), [['https://www.cledunord.com/vente-maison-468000-roubaix,380', 468000, 'maison']]);
+  assert.equal(s.pageUrl('x', 2), null);
+  assert.ok(s.staleAfter, 'une absence de cette liste partielle ne prouve rien');
+});
+
+test('Hoste : le numéro de page sort de l’adresse, un bien qui change de page reste le même', () => {
+  const s = sourceById('hoste');
+  const box = (page) => `<html><body><div class="ui-property"><a href="/fr/vente/${page}/1981391-maison-roubaix-59100">Maison ROUBAIX (59100) 4 pièce(s) 78 m² <b>183 000 €</b></a></div></body></html>`;
+  const p1 = readResults(box(1), 'https://www.hoste-immobilier.fr/fr/vente/1/', s, ROUBAIX).cards;
+  const p2 = readResults(box(2), 'https://www.hoste-immobilier.fr/fr/vente/2/', s, ROUBAIX).cards;
+  assert.equal(p1[0].url, 'https://www.hoste-immobilier.fr/fr/vente/1/1981391-maison-roubaix-59100');
+  assert.equal(p2[0].url, p1[0].url);
+  assert.equal(p1[0].price, 183000);
+  assert.equal(s.pageUrl('x', 3), 'https://www.hoste-immobilier.fr/fr/vente/3/');
+});
+
+test('L’Agence de Croix : commune du bloc à part, locations, fonds de commerce et modèle vide écartés', () => {
+  const s = sourceById('agencedecroix');
+  const box = (slug, title, place, body) => `<div class="tableProperty"><a href="/fr/${slug}" class="immoListPhotoLink"><img class="immoListPhotoImage" src="/media/images/immo/603/m1.jpg"></a><h2><a href="/fr/${slug}" class="immoListTitleLink">${title}</a></h2><a href="${slug}" class="immoListLocationLink">${place}</a><div>${body}</div></div>`;
+  const html = `<html><body>
+    ${box('maison-2-chambres-un-exterieur', 'MAISON 2 CHAMBRES UN EXTÉRIEUR', '59100 Roubaix', 'ROUBAIX : maison de +- 62 m2, proche de Villeneuve-d’Ascq <b>97 000 €</b>')}
+    ${box('croix-garage-en-location', 'Croix Garage en location', '59100 Roubaix', 'loue garage <b>75 € CC par mois</b>')}
+    ${box('a-vendre---fonds-de-commerce-de-friterie', 'A VENDRE - FONDS DE COMMERCE DE FRITERIE', '59491 Villeneuve-d’Ascq', '<b>50 000 €</b>')}
+    ${box('-property-url-', '-property-title-', '-property-location-', '')}
+  </body></html>`;
+  const { cards } = readResults(html, 'https://www.agence-de-croix.com/fr/', s, ROUBAIX);
+  assert.equal(cards.length, 1);
+  const [c] = cards;
+  assert.equal(c.url, 'https://www.agence-de-croix.com/fr/maison-2-chambres-un-exterieur');
+  assert.equal(c.price, 97000);
+  assert.equal(c.type, 'maison');
+  assert.deepEqual(c.detail, { surface: 62, chambres: 2, photo: 'https://www.agence-de-croix.com/media/images/immo/603/m1.jpg', postal: '59100', city: 'Roubaix' });
+  // La commune citée dans le texte ne suffit pas.
+  assert.equal(readResults(html, 'https://www.agence-de-croix.com/fr/', s, VASCQ).cards.length, 0);
+});
+
+test('Sotheby’s : plan du site, commune et type dans l’adresse, locations écartées', () => {
+  const s = sourceById('sothebys');
+  const base = 'https://www.nathalieforest-sothebysrealty.com/fr/nos-biens';
+  const xml = `<urlset><url><loc>${base}/ref-nf1-4889/vente-maison-de-luxe-marcq-en-baroeul-8-pieces-5-chambres-59700/</loc></url><url><loc>${base}/ref-nf1-4389/vente-appartement-de-luxe-marcq-en-baroeul-5-pieces-4-chambres-59700/</loc></url><url><loc>${base}/ref-nf1-1800/vente-maison-de-luxe-lille-10-pieces-59000/</loc></url><url><loc>${base}/ref-nf1-1/location-maison-marcq-en-baroeul-59700/</loc></url></urlset>`;
+  const { cards } = readResults(xml, s.listUrls()[0], s, MARCQ);
+  assert.deepEqual(cards.map((c) => c.type), ['maison', 'appartement']);
+  assert.equal(cards[0].price, null);
+});
+
+test('Espaces Atypiques : la commune de la carte compte, pas celle citée par la description', () => {
+  const s = sourceById('espacesatypiques');
+  const box = (slug, text) => `<div class="slide"><a href="https://www.espaces-atypiques.com/ventes/${slug}/">Voir</a><p>Agence Lille ${text}</p></div>`;
+  const html = `<html><body>
+    ${box('59130-lambersart-un-grain-dhistoire-18108', 'Un grain d’histoire LAMBERSART 59130 <b>250 M2</b> <b>890 000 €</b>')}
+    ${box('59260-lezennes-une-ferme-aux-portes-de-lambersart-16908', 'Une ferme aux portes de Lambersart LEZENNES 59260 429 M2 <b>1 110 000 €</b>')}
+    ${box('59120-loos-loft-avec-toit-terrasse-19367', 'Loft avec toit-terrasse LOOS 59120 <b>480 000 €</b>')}
+    <div class="slide"><a href="https://www.espaces-atypiques.com/la-vie-du-reseau/soiree/">Nous recrutons</a></div>
+  </body></html>`;
+  const { cards } = readResults(html, 'https://www.espaces-atypiques.com/lille/', s, LAMBERSART);
+  assert.deepEqual(cards.map((c) => [c.url, c.price]), [['https://www.espaces-atypiques.com/ventes/59130-lambersart-un-grain-dhistoire-18108/', 890000]]);
+  assert.equal(readResults(html, 'https://www.espaces-atypiques.com/lille/', s, { code: '59360', nom: 'Loos', codesPostaux: ['59120'] }).cards[0].type, 'appartement');
 });

@@ -1030,6 +1030,116 @@ const SOURCES = [
   // L'Agence Saint Maur (Groupe Forest, La Madeleine), même gabarit Netty que l'Immobilière de Marcq.
   netty({ id: 'saintmaur', label: 'L’Agence Saint Maur', host: 'www.agencesaintmaur.fr' }),
   boiteImmo({ id: 'grimonprez', label: 'Grimonprez Immo', host: 'www.grimonprez.immo', cities: { 'la-madeleine': 588 } }),
+  {
+    // Clé du Nord (3Clics, Mouvaux) : les pages suivantes de sa liste répondent « File not found »,
+    // dans un navigateur aussi (constaté le 08/11/2026). Seules les annonces de `/vente` et de
+    // l'accueil se lisent : une absence ne prouve rien, d'où le retrait à l'ancienneté (`staleAfter`).
+    id: 'cledunord',
+    label: 'Clé du Nord',
+    host: 'www.cledunord.com',
+    departments: ['59'],
+    pageSize: null,
+    staleAfter: THREE_WEEKS,
+    communeInUrl: true,
+    listUrls: () => ['https://www.cledunord.com/vente', 'https://www.cledunord.com/'],
+    pageUrl: () => null,
+    isListing: (u) => /^\/vente-[a-z]+-\d+-[a-z0-9-]+,\d+$/.test(u.pathname),
+    wanted: (url) => !notHousing(url),
+    typeOf: typeFromUrl,
+  },
+  {
+    // Hoste Immobilier (Tourcoing) : toutes ses ventes, 5 par page (« /fr/vente/2/ »). Le numéro de
+    // page fait partie de l'adresse des fiches : ramené à 1 pour qu'un bien qui change de page reste
+    // la même annonce (la fiche répond à cette adresse).
+    id: 'hoste',
+    label: 'Hoste Immobilier',
+    host: 'www.hoste-immobilier.fr',
+    departments: ['59'],
+    pageSize: 5,
+    communeInUrl: true,
+    listUrls: () => ['https://www.hoste-immobilier.fr/fr/vente/1/'],
+    pageUrl: (url, n) => `https://www.hoste-immobilier.fr/fr/vente/${n}/`,
+    isListing: (u) => /^\/fr\/vente\/\d+\/\d+-[a-z0-9-]+$/.test(u.pathname),
+    canonicalPath: (path) => path.replace(/^\/fr\/vente\/\d+\//, '/fr/vente/1/'),
+    wanted: (url) => !notHousing(url),
+    typeOf: typeFromUrl,
+  },
+  {
+    // L'Agence de Croix (Proximedia) : sa page de ventes se remplit par une interface qui renvoie
+    // des fiches de 2022, pas les annonces affichées. Seules les cartes récentes de l'accueil sont
+    // fiables : une absence ne prouve rien (`staleAfter`). Ses fiches donnent le logo comme photo :
+    // tout est pris sur la carte. La commune est dans un bloc à part (« 59100 Roubaix »).
+    id: 'agencedecroix',
+    label: 'L’Agence de Croix',
+    host: 'www.agence-de-croix.com',
+    departments: ['59'],
+    pageSize: null,
+    staleAfter: THREE_WEEKS,
+    listUrls: () => ['https://www.agence-de-croix.com/fr/'],
+    pageUrl: () => null,
+    cardsFrom: (html, pageUrl) => {
+      const items = [];
+      for (const box of parseHtml(html, pageUrl).querySelectorAll('.tableProperty')) {
+        const link = box.querySelector('a.immoListTitleLink');
+        const place = norm(box.querySelector('.immoListLocationLink')?.textContent).match(/^(\d{5}) (.+)$/);
+        const text = norm(box.textContent);
+        // Le modèle vide de la page n'a pas de commune ; locations et fonds de commerce écartés.
+        if (!link || !place || /par mois|en location|fonds de commerce|garage en/i.test(text)) continue;
+        const priced = [...box.querySelectorAll('*')].filter((el) => priceOf(el.textContent));
+        const deepest = priced.find((el) => !priced.some((other) => other !== el && el.contains(other)));
+        const photo = box.querySelector('img.immoListPhotoImage')?.getAttribute('src');
+        items.push({
+          href: link.getAttribute('href'),
+          text: `${place[2]} · ${norm(link.textContent)} · ${text}`,
+          price: deepest ? priceOf(deepest.textContent) : null,
+          detail: {
+            surface: Number((text.match(/\+-\s*(\d+)\s*m2/i) || [])[1]) || null,
+            chambres: Number((text.match(/\b(\d+) chambres?\b/i) || [])[1]) || null,
+            photo: photo ? new URL(photo, pageUrl).href : null,
+            postal: place[1],
+            city: place[2],
+          },
+        });
+      }
+      return { items, full: false };
+    },
+    isListing: (u) => /^\/fr\/[a-z0-9-]+$/.test(u.pathname),
+    placeOf: (url, text) => text.split(' · ')[0],
+    typeOf: (url, text) => guessType(text.split(' · ')[1] || text),
+  },
+  {
+    // Nathalie Forest Sotheby's (Lille) : ses listes ne changent pas de page et ne montrent que
+    // 10 biens. Son plan du site des fiches (permis) les donne tous, sans les biens vendus (10
+    // vérifiés le 08/11/2026) ; il n'a pas de prix : le robot le lit sur la fiche.
+    id: 'sothebys',
+    label: 'Nathalie Forest Sotheby’s',
+    host: 'www.nathalieforest-sothebysrealty.com',
+    departments: ['59', '62'],
+    pageSize: null,
+    communeInUrl: true,
+    listUrls: () => ['https://www.nathalieforest-sothebysrealty.com/sitemap_1_fr.xml'],
+    pageUrl: () => null,
+    cardsFrom: (xml) => ({ items: [...String(xml).matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)].map((m) => ({ href: m[1], text: '', price: null })), full: false }),
+    isListing: (u) => /^\/fr\/nos-biens\/ref-[a-z0-9-]+\/vente-[a-z0-9-]+\/$/.test(u.pathname),
+    typeOf: (url) => (/\/vente-appartement-/.test(url) ? 'appartement' : /\/vente-immeuble-/.test(url) ? 'immeuble' : /\/vente-terrain-/.test(url) ? 'terrain' : 'maison'),
+  },
+  {
+    // Espaces Atypiques Lille : sa page d'agence et sa page « acheter à Lille » montrent des biens
+    // différents, sans page suivante (« /lille/page/2/ » redonne la même) : une absence ne prouve
+    // rien (`staleAfter`). La fin de l'adresse décrit le bien et cite parfois une autre commune :
+    // seule compte celle de la carte, en capitales avant le code postal (« LAMBERSART 59130 »).
+    id: 'espacesatypiques',
+    label: 'Espaces Atypiques Lille',
+    host: 'www.espaces-atypiques.com',
+    departments: ['59', '62'],
+    pageSize: null,
+    staleAfter: THREE_WEEKS,
+    listUrls: () => ['https://www.espaces-atypiques.com/lille/', 'https://www.espaces-atypiques.com/immobilier/acheter-un-bien-immobilier-a-lille/'],
+    pageUrl: () => null,
+    isListing: (u) => /^\/ventes\/\d{5}-[a-z0-9-]+\/$/.test(u.pathname),
+    placeOf: (url, text) => (text.match(/([A-ZÀ-ÖØ-ÝŒ][A-ZÀ-ÖØ-ÝŒ'’ -]+) \d{5}\b/) || [])[1],
+    typeOf: (url, text) => (/appartement|loft|duplex|triplex|studio/i.test(text) ? 'appartement' : /terrain/i.test(text) && !/maison/i.test(text) ? 'terrain' : 'maison'),
+  },
 ];
 
 const sourceById = (id) => SOURCES.find((s) => s.id === id) || null;
@@ -1040,7 +1150,9 @@ function listingUrl(href, base, source) {
     const u = new URL(href, base);
     if (u.hostname !== source.host || !source.isListing(u)) return null;
     // Bien reconnu par un paramètre (« detail.php?item=413 ») : il reste dans l'adresse.
-    return `${u.origin}${u.pathname}${source.keepSearch ? u.search : ''}`;
+    // Adresse qui contient autre chose que le bien (numéro de page chez Hoste) : `canonicalPath`.
+    const path = source.canonicalPath ? source.canonicalPath(u.pathname) : u.pathname;
+    return `${u.origin}${path}${source.keepSearch ? u.search : ''}`;
   } catch {
     return null;
   }
