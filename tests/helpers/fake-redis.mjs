@@ -47,6 +47,10 @@ export function fakeRedis() {
         for (const [m, sc] of [...z(a[0])]) if (sc <= hi) n += z(a[0]).delete(m) ? 1 : 0;
         return n;
       }
+      case 'ZSCORE': {
+        const s = z(a[0]).get(a[1]);
+        return s == null ? null : String(s);
+      }
       case 'ZCARD':
         return z(a[0]).size;
       case 'RPUSH':

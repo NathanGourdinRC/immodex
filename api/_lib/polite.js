@@ -41,7 +41,7 @@ function robotsAllows(txt, pathAndQuery) {
   return !best || best.allow;
 }
 
-function createPoliteFetcher({ fetchImpl = fetch, now = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), delayMs = 5000, userAgent = UA, timeoutMs = 15000 } = {}) {
+function createPoliteFetcher({ fetchImpl = fetch, now = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), delayMs = 5000, hostDelays = {}, userAgent = UA, timeoutMs = 15000 } = {}) {
   const hosts = new Map(); // hôte → { queue, lastAt }
   const robots = new Map(); // origine → promesse de { status, text } de robots.txt
   const refused = new Set(); // hôtes qui ont refusé le robot pendant ce passage
@@ -52,7 +52,7 @@ function createPoliteFetcher({ fetchImpl = fetch, now = Date.now, sleep = (ms) =
     hosts.set(host, h);
     const run = h.queue.then(async () => {
       if (h.lastAt != null) {
-        const wait = h.lastAt + delayMs - now();
+        const wait = h.lastAt + (hostDelays[host] || delayMs) - now();
         if (wait > 0) await sleep(wait);
       }
       try {

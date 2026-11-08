@@ -31,7 +31,7 @@ const CASES = {
 };
 
 test('les sources : 5 de la première version, 2 agences de Saint-Jorioz, 5 de Lambersart, Marquette et Saint-André, 5 réseaux, puis Marcq, Villeneuve-d’Ascq, Wasquehal et La Madeleine', () => {
-  assert.deepEqual(SOURCES.map((s) => s.id), ['superimmo', 'missimmo', 'mav', 'pierresdunord', 'lelion', 'croiximmo', 'norestim', 'cityimmo', 'immocarre', 'logehome', 'vendome', 'metropolimmo', 'hemimmo', 'drtimmo', 'choquet', 'audrey', 'impact', 'seloger', 'orpi', 'paruvendu', 'lesiteimmo', 'maes', 'deleu', 'compimmo', 'proprietesdulac', 'leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo', 'century21', 'laforet', 'iad', 'safti', 'nestenn', 'fnaim', 'citya', 'imko', 'immomarcq', 'heron', 'alerteimmo', 'cestpourtonbien', 'bhimmo', 'vastimmo', 'immotram', 'avenueimmo', 'brice', 'actionimmo', 'pepites', 'kw', 'duquesnoy', 'estime', 'duparque', 'rdimmo', 'clefs', 'immonot', 'vacossin', 'lekieffre', 'arthurimmo', 'barnes', 'bonte', 'drhouse', 'immosens', 'demarez', 'abrinor', 'pulp', 'agencelamadeleine', 'lecoutre', 'ericfranques', 'immoclef', 'saintmaur', 'grimonprez']);
+  assert.deepEqual(SOURCES.map((s) => s.id), ['superimmo', 'missimmo', 'mav', 'pierresdunord', 'lelion', 'croiximmo', 'norestim', 'cityimmo', 'immocarre', 'logehome', 'vendome', 'metropolimmo', 'hemimmo', 'drtimmo', 'choquet', 'audrey', 'impact', 'leboncoin', 'pap', 'bienici', 'seloger', 'orpi', 'paruvendu', 'lesiteimmo', 'maes', 'deleu', 'compimmo', 'proprietesdulac', 'leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo', 'century21', 'laforet', 'iad', 'safti', 'nestenn', 'fnaim', 'citya', 'imko', 'immomarcq', 'heron', 'alerteimmo', 'cestpourtonbien', 'bhimmo', 'vastimmo', 'immotram', 'avenueimmo', 'brice', 'actionimmo', 'pepites', 'kw', 'duquesnoy', 'estime', 'duparque', 'rdimmo', 'clefs', 'immonot', 'vacossin', 'lekieffre', 'arthurimmo', 'barnes', 'bonte', 'drhouse', 'immosens', 'demarez', 'abrinor', 'pulp', 'agencelamadeleine', 'lecoutre', 'ericfranques', 'immoclef', 'saintmaur', 'grimonprez']);
   for (const id of ['century21', 'laforet', 'iad', 'safti', 'nestenn']) assert.equal(sourceById(id).departments, null, id);
   for (const id of ['leduc', 'vereecke', 'briquerouge', 'grimmelpont', 'marquetteimmo']) assert.deepEqual(sourceById(id).departments, ['59'], id);
   assert.deepEqual(sourceById('maes').departments, ['59']);
@@ -578,4 +578,17 @@ test('Le Lion : la page de la commune suffit, seuls les biens vendus sont écart
 test('chaque source du robot a son nom dans le Fil (lien vers l’annonce)', async () => {
   const { SOURCE_LABELS } = await import('../src/common/listings.js');
   for (const s of SOURCES) assert.equal(SOURCE_LABELS[s.id], s.label, s.id);
+});
+
+test('superimmo : surface, code postal et photo lus sans demander la fiche, titre propre', () => {
+  const src = sourceById('superimmo');
+  const list = 'https://www.superimmo.com/achat/maison/nord-pas-de-calais/nord/marcq-en-baroeul-59700';
+  const html = `<html><body><article><a href="/annonces/achat-maison-88m-marcq-en-baroeul-59700-x123l8o"><img src="/assets/x.svg"><img src="https://photo.superneuf.com/abc"></a><p>L'annonce a bien été ajoutée à vos favoris</p><p>312 000 €</p></article>
+    <article><a href="/annonces/achat-maison-marcq-en-baroeul-59700-x999"><p>400 000 €</p></a></article></body></html>`;
+  const { cards } = readResults(html, list, src, { code: '59378', nom: 'Marcq-en-Barœul' });
+  assert.equal(cards.length, 2);
+  assert.equal(cards[0].price, 312000);
+  assert.deepEqual(cards[0].detail, { surface: 88, postal: '59700', city: 'Marcq-en-Barœul', photo: 'https://photo.superneuf.com/abc', title: 'Maison 88 m² Marcq-en-Barœul' });
+  assert.equal(cards[1].detail.surface, null);
+  assert.equal(cards[1].detail.postal, '59700');
 });

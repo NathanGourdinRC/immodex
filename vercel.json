@@ -22,6 +22,9 @@
     "api/scan.js": {
       "maxDuration": 300,
       "includeFiles": "src/common/{extract,generic-extract}.js"
+    },
+    "api/ingest.js": {
+      "includeFiles": "src/common/{extract,generic-extract}.js"
     }
   },
   "crons": [

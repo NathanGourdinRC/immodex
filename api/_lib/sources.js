@@ -287,6 +287,18 @@ const SOURCES = [
     },
     isListing: (u) => /^\/annonces\/achat-(maison|appartement|terrain|immeuble)[a-z0-9-]*-[a-z0-9]+$/.test(u.pathname),
     typeOf: typeFromUrl,
+    // Le site répond 429 à 5 s d'intervalle, et accepte une page toutes les 45 s (mesuré le 08/11/2026).
+    delayMs: 45000,
+    // À ce rythme les fiches ne sont pas demandées : l'adresse donne surface et code postal, la carte
+    // son prix et sa photo. Le titre de la carte commence par le texte des favoris : remplacé.
+    detailOf: (url, card, c) => {
+      const m = new URL(url).pathname.match(/^\/annonces\/achat-([a-z]+)(?:-(\d+)m)?-[a-z0-9-]*?-?(\d{5})-[a-z0-9]+$/);
+      if (!m) return null;
+      const surface = m[2] ? Number(m[2]) : null;
+      const kind = m[1].charAt(0).toUpperCase() + m[1].slice(1);
+      const photo = [...card.querySelectorAll('img')].map((i) => i.getAttribute('src') || '').find((s) => /^https:\/\/photo\./.test(s)) || null;
+      return { surface, postal: m[3], city: c.nom, photo, title: `${kind}${surface ? ` ${surface} m²` : ''} ${c.nom}` };
+    },
   },
   {
     // Miss Immo (Marcq-en-Barœul) : une page par type, la commune et le type dans l'adresse.
@@ -394,12 +406,20 @@ const SOURCES = [
   pilotim({ id: 'choquet', label: 'Cabinet Choquet', host: 'www.cabinet-choquet.com', pageSize: 12 }),
   pilotim({ id: 'audrey', label: 'Audrey Immobilier', host: 'www.audrey-immobilier.fr', pageSize: 8 }),
   pilotim({ id: 'impact', label: 'Impact Immobilier', host: 'www.impact-immobilier.fr', pageSize: 12 }),
+  // Sites qui refusent tout robot : leurs annonces viennent seulement des listes que Nathan ouvre
+  // dans son navigateur (src/content/list-capture.js). Une annonce reste 6 semaines sans être revue.
+  { id: 'leboncoin', label: 'Leboncoin', host: 'www.leboncoin.fr', departments: null, local: true, browserOnly: true, staleAfter: 2 * THREE_WEEKS, listUrls: () => [], isListing: (u) => /^\/ad\/ventes_immobilieres\/\d+\/?$/.test(u.pathname) },
+  { id: 'pap', label: 'PAP', host: 'www.pap.fr', departments: null, local: true, browserOnly: true, staleAfter: 2 * THREE_WEEKS, listUrls: () => [], isListing: (u) => /^\/annonces\/(maison|appartement|terrain)-[a-z0-9-]+-r\d+$/.test(u.pathname) },
+  { id: 'bienici', label: 'Bien’ici', host: 'www.bienici.com', departments: null, local: true, browserOnly: true, staleAfter: 2 * THREE_WEEKS, listUrls: () => [], isListing: (u) => /^\/annonce\/vente\/[^/]+\/(maison|appartement|terrain)\//.test(u.pathname) },
   {
     // SeLoger : robots.txt interdit sa pagination (« ?page= », « ?LISTING-LISTpg »), pas ses pages
     // de commune, de quartier et de nombre de pièces, reliées entre elles. Le robot lit ces pages-là
     // (une trentaine d'annonces chacune), sans jamais demander une page interdite. Il n'est pas sûr
     // de voir toute la commune : une annonce est retirée après 3 semaines sans être revue (`staleAfter`).
+    // Le site refuse le serveur Vercel (`local`) : cette lecture tourne sur le PC de Nathan
+    // (scripts/robot-local.mjs), et ses listes ouvertes dans le navigateur s'y ajoutent.
     id: 'seloger',
+    local: true,
     label: 'SeLoger',
     host: 'www.seloger.com',
     departments: null,
@@ -704,8 +724,9 @@ const SOURCES = [
   // partage un seul fichier de biens : immomarcq.fr suffit.
   netty({ id: 'imko', label: 'Imko', host: 'www.imko.fr' }),
   netty({ id: 'immomarcq', label: 'Immobilière de Marcq', host: 'www.immomarcq.fr', pageSize: 10 }),
-  netty({ id: 'heron', label: 'Héron Immobilier', host: 'www.heronimmobilier.fr' }),
-  netty({ id: 'alerteimmo', label: 'Alerte Immobilier', host: 'www.alerteimmobilier.fr' }),
+  // Ces deux sites répondent depuis un PC et refusent le serveur Vercel (`local`, robot local).
+  { ...netty({ id: 'heron', label: 'Héron Immobilier', host: 'www.heronimmobilier.fr' }), local: true, staleAfter: THREE_WEEKS },
+  { ...netty({ id: 'alerteimmo', label: 'Alerte Immobilier', host: 'www.alerteimmobilier.fr' }), local: true, staleAfter: THREE_WEEKS },
   netty({ id: 'cestpourtonbien', label: 'C’est pour ton bien', host: 'www.cestpourtonbien.com' }),
   netty({ id: 'bhimmo', label: 'B&H Immobilier', host: 'www.bh-immo.fr' }),
   netty({ id: 'vastimmo', label: 'Vastimmo', host: 'www.vastimmo.fr' }),
@@ -1095,9 +1116,13 @@ function readResults(html, pageUrl, source, commune) {
     // Mention portée par un attribut du bloc de la carte (`flagOf`, « Sous compromis ! »).
     if (source.flagOf && UNAVAILABLE.test(source.flagOf(a) || '')) continue;
     if (UNAVAILABLE.test(alts) || !keeps(url, text, source, commune, source.codeOf ? source.codeOf(a, card) : null)) continue;
-    cards.push({ url, price, title: text.slice(0, 160), type: source.typeOf(url, text) });
+    const detail = source.detailOf ? source.detailOf(url, card, commune) : null;
+    cards.push({ url, price, title: text.slice(0, 160), type: source.typeOf(url, text), ...(detail ? { detail } : {}) });
   }
   return { cards, all: [...seen], full: !!source.pageSize && seen.size >= source.pageSize };
 }
 
-export { SOURCES, sourceById, readResults, slugOf, listingUrl };
+// Sites à lire plus lentement que les autres (`delayMs`) : hôte → délai, pour le client poli.
+const SLOW_HOSTS = Object.fromEntries(SOURCES.filter((s) => s.delayMs).map((s) => [s.host, s.delayMs]));
+
+export { SOURCES, SLOW_HOSTS, sourceById, readResults, slugOf, placeSlug, listingUrl };

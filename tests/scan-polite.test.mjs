@@ -104,3 +104,22 @@ test('échéance dépassée pendant l’attente de son tour : la page n’est pa
   assert.equal(two.late, true);
   assert.ok(!web.calls.some((c) => c.url === 'https://a.fr/2'));
 });
+
+test('un site lent garde son propre rythme, les autres le rythme normal', async () => {
+  const waits = [];
+  let t = 0;
+  const fetcher = createPoliteFetcher({
+    fetchImpl: async () => ({ ok: true, status: 200, text: async () => '' }),
+    now: () => t,
+    sleep: async (ms) => {
+      waits.push(ms);
+      t += ms;
+    },
+    delayMs: 5000,
+    hostDelays: { 'lent.example': 45000 },
+  });
+  await fetcher.get('https://lent.example/a');
+  await fetcher.get('https://vite.example/a');
+  // Pour chaque site : robots.txt, puis la page après le délai du site.
+  assert.deepEqual(waits, [45000, 5000]);
+});

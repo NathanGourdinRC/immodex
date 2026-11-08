@@ -31,7 +31,8 @@ const DETAIL_FIELDS = ['surface', 'pieces', 'chambres', 'terrain', 'garage', 'ph
 // prenait par exemple le terrain d'un bien similaire en bas de page) est relue une fois.
 // Version 3 : DPE des pages Maes (lettre, valeurs, date) et date du DPE pour l'adresse.
 const READER_VERSION = 3;
-const needsReading = (l) => !l.removedAt && (!l.detail || (l.readerVersion || 1) < READER_VERSION);
+// (Annonce reçue de l'extension ou du robot local, `pushed` : son site refuse le robot, jamais lue.)
+const needsReading = (l) => !l.removedAt && !l.pushed && (!l.detail || (l.readerVersion || 1) < READER_VERSION);
 // Version de la recherche d'adresse : une annonce lue, sans adresse sûre, cherchée par une
 // version plus ancienne est cherchée de nouveau dans le registre des DPE, sans relire sa page.
 // Version 2 : pistes d'adresse gardées (vérifiées par Nathan) et adresse sûre par immeuble.
@@ -137,6 +138,41 @@ async function readCrawl({ fetchPage, source, commune, pending, visited, budget,
   return { cards: [...cards.values()], complete: !failed && !todo.length, failed, blocked, links: allSeen.size, nextPage, pending: blocked ? [] : todo, visited: [...seen] };
 }
 
+// Une carte de liste dans les annonces d'une commune : annonce revue (prix suivi, de nouveau en
+// ligne) ou nouvelle. Carte qui donne déjà les détails (`detail`) : sa page n'a pas à être lue.
+function mergeCard(listings, source, insee, card, t) {
+  const id = idOf(source, card.url);
+  const l = listings.get(id);
+  if (l) {
+    l.lastSeen = t;
+    l.missed = 0;
+    l.removedAt = null;
+    // De nouveau en vente : la vente qui lui avait été reliée n'était pas la sienne.
+    delete l.sale;
+    if (card.price && card.price !== l.price) {
+      l.prices.push({ at: t, price: card.price });
+      l.price = card.price;
+    }
+    return { entry: l, isNew: false };
+  }
+  const entry = { id, source: source.id, url: card.url, insee, type: card.type, title: card.title, price: card.price, prices: card.price ? [{ at: t, price: card.price }] : [], firstSeen: t, lastSeen: t, missed: 0, removedAt: null, detail: false };
+  if (card.detail) Object.assign(entry, card.detail, { detail: true, readAt: t, readerVersion: READER_VERSION });
+  listings.set(id, entry);
+  return { entry, isNew: true };
+}
+
+// Source lue par morceaux ou de l'extérieur (`staleAfter`) : une annonce absente d'un tour n'est
+// pas forcément retirée ; elle l'est après ce délai sans être revue.
+function sweepStale(listings, source, t) {
+  let removed = 0;
+  for (const l of listings.values()) {
+    if (l.source !== source.id || l.removedAt || t - l.lastSeen < source.staleAfter) continue;
+    l.removedAt = t;
+    removed++;
+  }
+  return removed;
+}
+
 async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sources = SOURCES, readListingImpl = readListing, lookup = null, loadSales = defaultLoadSales }) {
   const start = now();
   // Verrou atomique : deux appels simultanés ne lancent jamais deux robots.
@@ -228,6 +264,11 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
       await Promise.all(
         sources.map(async (source) => {
           if (source.departments && !source.departments.some((d) => commune.code.startsWith(d))) return;
+          // Source qui refuse le serveur : ses annonces arrivent par /api/ingest, seul le ménage reste.
+          if (source.local) {
+            summary.removed += sweepStale(listings, source, now());
+            return;
+          }
           const m = meta[source.id] || { lastRun: 0, failures: 0, paused: false };
           // Source `resumable` (une seule longue liste d'agence, plus récent en tête) : lue
           // `maxPages` pages par passage, en reprenant à la page notée (`cursor`) jusqu'au bout
@@ -273,40 +314,18 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
           const t = now();
           const seen = new Set();
           for (const card of reads.flatMap((r) => r.cards)) {
-            const id = idOf(source, card.url);
-            seen.add(id);
-            const l = listings.get(id);
-            if (l) {
-              l.lastSeen = t;
-              l.missed = 0;
-              l.removedAt = null;
-              // De nouveau en vente : la vente qui lui avait été reliée n'était pas la sienne.
-              delete l.sale;
-              if (card.price && card.price !== l.price) {
-                l.prices.push({ at: t, price: card.price });
-                l.price = card.price;
-              }
-            } else {
-              const entry = { id, source: source.id, url: card.url, insee: commune.code, type: card.type, title: card.title, price: card.price, prices: card.price ? [{ at: t, price: card.price }] : [], firstSeen: t, lastSeen: t, missed: 0, removedAt: null, detail: false };
-              listings.set(id, entry);
-              // Carte qui donne déjà tout (`detail`, SeLoger) : la page de l'annonce n'est pas demandée.
-              if (card.detail) Object.assign(entry, card.detail, { detail: true, readAt: t, readerVersion: READER_VERSION });
-              else if (!queued.has(id)) {
-                queue.push({ insee: commune.code, id, url: card.url });
-                queued.add(id);
-              }
-              summary.added++;
+            const { entry, isNew } = mergeCard(listings, source, commune.code, card, t);
+            seen.add(entry.id);
+            if (!isNew) continue;
+            if (!entry.detail && !queued.has(entry.id)) {
+              queue.push({ insee: commune.code, id: entry.id, url: card.url });
+              queued.add(entry.id);
             }
+            summary.added++;
           }
           if (source.staleAfter) {
-            // Source lue par échantillons (`crawl` sans liste complète) : une annonce absente d'un
-            // tour n'est pas forcément retirée ; elle l'est après `staleAfter` sans être revue.
             // Un refus du site ne dit rien des annonces : aucun retrait ce jour-là.
-            for (const l of blocked ? [] : listings.values()) {
-              if (l.source !== source.id || l.removedAt || t - l.lastSeen < source.staleAfter) continue;
-              l.removedAt = t;
-              summary.removed++;
-            }
+            if (!blocked) summary.removed += sweepStale(listings, source, t);
           } else if (complete) {
             const seenInCycle = cycle ? new Set([...cycle.prior, ...seen]) : seen;
             for (const l of listings.values()) {
@@ -477,4 +496,4 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
   return summary;
 }
 
-export { defaultLoadSales, runScan, readList, idOf };
+export { defaultLoadSales, runScan, readList, readCrawl, mergeCard, idOf };

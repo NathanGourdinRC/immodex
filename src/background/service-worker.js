@@ -303,6 +303,21 @@ function respond(promise, sendResponse) {
   return true;
 }
 
+// Annonces d'une liste ouverte dans le navigateur : envoyées au Fil avec la clé de synchro.
+async function sendListCards({ source, cards }) {
+  const stored = await chrome.storage.local.get('immodex.sync.v1');
+  const key = stored['immodex.sync.v1'] && stored['immodex.sync.v1'].key;
+  if (!key) throw new Error('synchro non activée');
+  const res = await fetch('https://immodex.vercel.app/api/ingest', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+    body: JSON.stringify({ source, cards }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error(data.error || `erreur ${res.status}`);
+  return { seen: data.seen, added: data.added };
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || typeof message !== 'object') return false;
   if (message.type === 'LOOKUP') {
@@ -322,6 +337,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       properties.record({ url: page.url, title: page.title, fp: message.fp || {}, price: message.price || null }).then((r) => r || { sighting: null, matches: [] }),
       sendResponse
     );
+  }
+  if (message.type === 'LIST_CARDS') {
+    return respond(sendListCards(message), sendResponse);
   }
   if (message.type === 'SIGHTING_GET') {
     const url = message.url || (sender.tab && sender.tab.url);
