@@ -60,9 +60,12 @@ async function withDetail(card, source, commune, fetcher, known) {
   }
 }
 
-async function readSource(source, communes, fetcher, known) {
+async function readSource(source, communes, fetcher, known, meta) {
   let refused = false;
-  for (const commune of communes) {
+  // Commune lue il y a le plus longtemps d'abord : un site qui n'accepte que quelques pages à la
+  // suite (Superimmo) voit toutes les communes au fil des lancements, pas toujours la première.
+  const lastRun = (c) => (meta[c.code] && meta[c.code][source.id] && meta[c.code][source.id].lastRun) || 0;
+  for (const commune of [...communes].sort((a, b) => lastRun(a) - lastRun(b))) {
     if (refused) break;
     if (source.departments && !source.departments.some((d) => commune.code.startsWith(d))) continue;
     const types = commune.types.includes(null) ? [null] : commune.types;
@@ -100,5 +103,5 @@ const listed = await (await fetch(`${ORIGIN}/api/listings?insee=${codes}`)).json
 const known = new Set((listed.listings || []).map((l) => l.url));
 const fetcher = createPoliteFetcher({ hostDelays: SLOW_HOSTS });
 // Un site à la fois par source, plusieurs sites en parallèle.
-await Promise.all(sources.map((s) => readSource(sourceById(s.id), communes, fetcher, known).catch((err) => console.error(`${s.label} : ${err.message}`))));
+await Promise.all(sources.map((s) => readSource(sourceById(s.id), communes, fetcher, known, listed.sources || {}).catch((err) => console.error(`${s.label} : ${err.message}`))));
 console.log('Terminé.');
