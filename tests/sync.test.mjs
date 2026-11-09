@@ -155,6 +155,34 @@ test('modification et suppression passent d’un appareil à l’autre', async (
   assert.deepEqual(phone.storage.dump()[ZONES_KEY].map((z) => z.id), ['z1']);
 });
 
+test('commune retirée d’une recherche sur l’ordinateur : le téléphone la perd aussi, sa dernière visite reste', async () => {
+  const server = fakeServer();
+  const commune = (code, nom) => ({ code, nom, codesPostaux: [], centre: null });
+  const t = clock;
+  const wide = { ...zone('z1', 'Wambrechies et alentours', t), communes: [commune('59636', 'Wambrechies'), commune('59009', 'Villeneuve-d’Ascq')] };
+  const pc = device(server, { [ZONES_KEY]: [wide] });
+  const { pairUrl: link } = await pc.sync.enable();
+  await pc.sync.sync();
+  const phone = device(server);
+  await phone.sync.enable(keyFromHash(new URL(link).hash));
+  await phone.sync.sync();
+  // Le téléphone ouvre la recherche : sa dernière visite change, pas la recherche elle-même.
+  await phone.storage.set({ [ZONES_KEY]: phone.storage.dump()[ZONES_KEY].map((z) => ({ ...z, lastVisit: tick() })) });
+  assert.equal((await phone.sync.sync()).sent, 0);
+
+  // L'ordinateur retire Villeneuve-d'Ascq.
+  await pc.storage.set({ [ZONES_KEY]: [{ ...wide, communes: [commune('59636', 'Wambrechies')], updatedAt: tick() }] });
+  assert.equal((await pc.sync.sync()).sent, 1);
+
+  const r = await phone.sync.sync();
+  assert.equal(r.applied, 1);
+  const got = phone.storage.dump()[ZONES_KEY];
+  assert.deepEqual(got[0].communes.map((c) => c.code), ['59636']);
+  assert.ok(got[0].lastVisit, 'la dernière visite du téléphone est gardée');
+  assert.equal((await phone.sync.sync()).sent, 0, 'rien à renvoyer : l’ordinateur ne reprend pas l’ancienne version');
+  assert.deepEqual((await pc.sync.sync()).applied, 0);
+});
+
 test('une même annonce vue sur les deux appareils : prix réunis, puis plus rien à envoyer', async () => {
   const server = fakeServer();
   const t = clock;
