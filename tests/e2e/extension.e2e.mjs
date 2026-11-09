@@ -543,6 +543,13 @@ test('fil : biens sans point, pistes vérifiées sur Street View, adresse choisi
   await deleuCard.locator('button:has-text("Garder")').click();
   await alert.filter({ hasText: /2 annonces sans point sur la carte/ }).waitFor({ timeout: 5000 });
   assert.equal(await deleuCard.locator('.imx-lead').count(), 2);
+  // Barre « Mon tri » : « Mes gardées » réduit le Fil aux biens gardés, « Tout le Fil » le rend.
+  const triBar = page.locator('.imx-tri-bar');
+  await triBar.locator('button:has-text("Mes gardées (1)")').click();
+  assert.equal(await page.locator('.imx-annonce:visible').count(), 1);
+  assert.ok(await deleuCard.isVisible());
+  await triBar.locator('button:has-text("Tout le Fil")').click();
+  assert.ok((await page.locator('.imx-annonce:visible').count()) > 1);
   await deleuCard.locator('button:has-text("Gardé")').click();
   await page.click('button:has-text("Masquer les écartées")');
   // « Les placer » : seuls les biens sans point restent, pistes dépliées.

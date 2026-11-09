@@ -163,6 +163,7 @@ async function loadAnnonces(ctx, body) {
     const status = trackOf(x.key).status || null;
     const fresh = isFresh(x);
     x.row.classList.toggle('is-ecarte', status === 'ecarte');
+    x.row.classList.toggle('is-kept', status === 'favori');
     x.row.classList.toggle('is-incomplete', masked(x));
     x.row.classList.toggle('is-fresh', fresh);
     x.applyRow(status);
@@ -336,6 +337,7 @@ async function loadAnnonces(ctx, body) {
     incompleteBar.classList.toggle('imx-hidden', !n);
     refreshToPlace();
     refreshFresh();
+    refreshKept();
     if (!n) return;
     const button = el('button', { type: 'button', class: 'imx-btn imx-btn-sm imx-btn-ghost' }, showIncomplete ? 'Masquer' : 'Afficher');
     button.addEventListener('click', () => {
@@ -344,6 +346,27 @@ async function loadAnnonces(ctx, body) {
     });
     const what = n > 1 ? `${n} annonces sans adresse ${showIncomplete ? 'affichées' : 'masquées'} : il leur manque` : `1 annonce sans adresse ${showIncomplete ? 'affichée' : 'masquée'} : il lui manque`;
     incompleteBar.replaceChildren(el('div', null, `${what} une information demandée par ta recherche.`), button);
+  };
+
+  // Barre « Mon tri », en haut du Fil : retrouver d'un geste les biens gardés (liste réduite à eux)
+  // et les écartés (bouton déplacé ici, il était tout en bas d'une longue liste). Les écartées
+  // sont cachées à chaque ouverture ; sans cette barre, le tri fait comme s'il avait disparu.
+  let onlyKept = false;
+  const triBar = el('div', { class: 'imx-tri-bar imx-hidden' });
+  const refreshKept = () => {
+    const n = groups.filter((x) => trackOf(x.key).status === 'favori').length;
+    if (!n) onlyKept = false;
+    list.classList.toggle('only-kept', onlyKept);
+    const kept = el('button', { type: 'button', class: 'imx-btn imx-btn-sm imx-btn-ghost' }, onlyKept ? 'Tout le Fil' : `Mes gardées (${n})`);
+    kept.classList.toggle('imx-hidden', !n);
+    kept.setAttribute('aria-pressed', String(onlyKept));
+    kept.addEventListener('click', () => {
+      onlyKept = !onlyKept;
+      refreshKept();
+    });
+    triBar.replaceChildren(el('span', { class: 'imx-meta' }, 'Mon tri'), kept, toggle);
+    // Rien de trié (ni gardée, ni écartée) : pas de barre.
+    triBar.classList.toggle('imx-hidden', !n && toggle.classList.contains('imx-hidden'));
   };
 
   // Carte du Fil reconstruite et point replacé (choix d'adresse, bien écarté puis gardé).
@@ -370,7 +393,7 @@ async function loadAnnonces(ctx, body) {
   list.replaceChildren(...groups.map((x) => x.row));
   for (const x of groups) refresh(x);
   refreshIncomplete();
-  body.replaceChildren(robotLine(data, groups.map((x) => x.g), unread), freshBar, alertBox, incompleteBar, list, toggle);
+  body.replaceChildren(robotLine(data, groups.map((x) => x.g), unread), triBar, freshBar, alertBox, incompleteBar, list);
   for (const x of groups) pin(x);
   droppedChanged();
 
