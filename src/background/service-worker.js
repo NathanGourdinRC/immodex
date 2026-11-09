@@ -4,6 +4,8 @@ import { createPropertyStore } from '../common/properties.js';
 import { salesAt } from '../common/dvf.js';
 import { createSync, SYNCED_STORAGE_KEYS } from '../common/sync.js';
 import { initLbcTour, lbcTourMessage } from './lbc-tour-runner.js';
+import { initSelogerTour, selogerTourMessage } from './seloger-tour-runner.js';
+import { sendCards } from './ingest-client.js';
 
 const history = createHistoryStore(chrome.storage.local);
 const properties = createPropertyStore(chrome.storage.local);
@@ -35,6 +37,8 @@ if (chrome.alarms) {
 runSync({ minAgeMs: 5 * 60 * 1000 });
 // Tournée quotidienne de Leboncoin (10 h) : voir lbc-tour-runner.js.
 initLbcTour();
+// Tournée quotidienne de SeLoger (11 h), pour les adresses : voir seloger-tour-runner.js.
+initSelogerTour();
 // Critères envoyés par « Modifier les champs » depuis une annonce, relus par le popup.
 const PREFILL_KEY = 'immodex.prefill.v1';
 const PREFILL_TTL_MS = 10 * 60 * 1000;
@@ -307,18 +311,8 @@ function respond(promise, sendResponse) {
 }
 
 // Annonces d'une liste ouverte dans le navigateur : envoyées au Fil avec la clé de synchro.
-async function sendListCards({ source, cards }) {
-  const stored = await chrome.storage.local.get('immodex.sync.v1');
-  const key = stored['immodex.sync.v1'] && stored['immodex.sync.v1'].key;
-  if (!key) throw new Error('synchro non activée');
-  const res = await fetch('https://immodex.vercel.app/api/ingest', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-    body: JSON.stringify({ source, cards }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.ok) throw new Error(data.error || `erreur ${res.status}`);
-  return { seen: data.seen, added: data.added };
+function sendListCards({ source, cards }) {
+  return sendCards({ source, cards }).then(({ seen, added }) => ({ seen, added }));
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -346,6 +340,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   const tour = lbcTourMessage(message);
   if (tour) return respond(tour, sendResponse);
+  const selogerTour = selogerTourMessage(message, sender);
+  if (selogerTour) return respond(selogerTour, sendResponse);
   if (message.type === 'SIGHTING_GET') {
     const url = message.url || (sender.tab && sender.tab.url);
     return respond(properties.get(url).then((r) => r || { sighting: null, matches: [] }), sendResponse);

@@ -79,6 +79,10 @@
       }
     }
 
+    // Chiffres du diagnostic (consommation, émissions) : avec eux la recherche ne garde presque
+    // toujours qu'un logement. Lus par src/common/seloger-detail.js, chargé avant ce script.
+    const figures = window.__immodexSelogerDetail ? window.__immodexSelogerDetail.energyOf(classified) : {};
+
     let buildingType = null;
     if (/maison|house/i.test(rawType) || /maison/i.test(hardTitle)) buildingType = 'maison';
     else if (/appart|flat/i.test(rawType) || /appart/i.test(hardTitle)) buildingType = 'appartement';
@@ -95,6 +99,8 @@
       surface,
       energyClass,
       gesClass,
+      energyConsumption: figures.energyConsumption ?? null,
+      gesEmission: figures.gesEmission ?? null,
       buildingType,
       dateRange,
       isNewBuild,
@@ -243,7 +249,8 @@
         runLookup(payload);
         return;
       }
-      if (!payload.dateRange) {
+      // Avec la consommation, la date du DPE n'est plus nécessaire pour retrouver le logement.
+      if (!payload.dateRange && payload.energyConsumption == null) {
         ui.showDatePrompt(payload, (updated) => {
           ui.showLoading(updated);
           runLookup(updated);

@@ -39,3 +39,20 @@ test('sites écartés (anti-robot, injoignables, hors sujet) absents du manifest
     assert.ok(!patterns.some((p) => matches(p, `https://www.${e.domaine}/annonce/1`)), e.domaine);
   }
 });
+
+test('SeLoger : les pages d’annonce « /annonce/ » et « /annonces/ » ont la lecture du diagnostic, dans le bon ordre', () => {
+  const block = manifest.content_scripts.find((c) => c.js.includes('src/content/seloger.js'));
+  for (const u of ['https://www.seloger.com/annonce/achat/hauts-de-france/nord-59/villeneuve-d-ascq-59491/26FM4ZXVBZ5H', 'https://www.seloger.com/annonces/achat/maison/lille-59/123456.htm']) {
+    assert.ok(block.matches.some((p) => matches(p, u)), u);
+  }
+  // seloger-detail.js (lecture des chiffres) avant les scripts qui s'en servent.
+  const at = (f) => block.js.indexOf(f);
+  assert.ok(at('src/common/seloger-detail.js') > -1 && at('src/common/seloger-detail.js') < at('src/content/seloger.js'));
+  assert.ok(at('src/common/seloger-detail.js') < at('src/content/seloger-detail-capture.js'));
+});
+
+test('SeLoger : les pages de résultats gardent leur lecture de liste, sans le script d’annonce', () => {
+  const list = manifest.content_scripts.find((c) => c.js.includes('src/content/list-capture.js'));
+  assert.ok(list.matches.some((p) => matches(p, 'https://www.seloger.com/recherche/achat/maison/hauts-de-france/villeneuve-d-ascq-59491/ad08fr23285')));
+  assert.ok(!list.js.includes('src/content/seloger-detail-capture.js'));
+});

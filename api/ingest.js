@@ -3,6 +3,7 @@
 //   POST /api/ingest  Authorization: Bearer <clé>  { source, insee?, cards: [...] }
 import { upstashConfig, upstash, HttpError } from './sync.js';
 import { handleIngest, handleCommunes } from './_lib/ingest.js';
+import { addressLookup } from './_lib/address.js';
 
 const MAX_BODY = 512 * 1024;
 
@@ -39,6 +40,7 @@ export function POST(request) {
     } catch {
       throw new HttpError(400, 'bad-json');
     }
-    return handleIngest({ syncKey: keyOf(request), body, redis });
+    // L'adresse d'une annonce qui arrive avec la consommation de son DPE est cherchée tout de suite.
+    return handleIngest({ syncKey: keyOf(request), body, redis, lookup: addressLookup });
   });
 }

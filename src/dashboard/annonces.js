@@ -14,6 +14,7 @@ import { placeListing, setPinState } from './pins.js';
 import { leadsBlock, placedLine } from './leads.js';
 import { verdictButtons, droppedChanged, droppedToggle } from './verdict.js';
 import { lbcTourLine } from './lbc-tour-line.js';
+import { selogerTourLine } from './seloger-tour-line.js';
 
 const UI = window.__immodexUI;
 const { el, num } = UI;
@@ -136,7 +137,7 @@ async function loadAnnonces(ctx, body) {
   const groups = passing.filter((x) => !x.f.unread);
 
   if (!groups.length) {
-    body.replaceChildren(robotLine(data, [], unread), lbcTourLine(), UI.empty('Aucune annonce en vente qui passe tes critères pour le moment.'));
+    body.replaceChildren(robotLine(data, [], unread), lbcTourLine(), selogerTourLine(), UI.empty('Aucune annonce en vente qui passe tes critères pour le moment.'));
     return;
   }
   for (const x of groups) x.key = trackingKeyOf(x.g, tracking, seenByUrl);
@@ -394,7 +395,7 @@ async function loadAnnonces(ctx, body) {
   list.replaceChildren(...groups.map((x) => x.row));
   for (const x of groups) refresh(x);
   refreshIncomplete();
-  body.replaceChildren(robotLine(data, groups.map((x) => x.g), unread), lbcTourLine(), triBar, freshBar, alertBox, incompleteBar, list);
+  body.replaceChildren(robotLine(data, groups.map((x) => x.g), unread), lbcTourLine(), selogerTourLine(), triBar, freshBar, alertBox, incompleteBar, list);
   for (const x of groups) pin(x);
   droppedChanged();
 

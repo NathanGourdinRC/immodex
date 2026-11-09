@@ -496,4 +496,4 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
   return summary;
 }
 
-export { defaultLoadSales, runScan, readList, readCrawl, mergeCard, idOf };
+export { defaultLoadSales, runScan, readList, readCrawl, mergeCard, idOf, withTimeout, LOOKUP_VERSION, LOOKUP_MS };

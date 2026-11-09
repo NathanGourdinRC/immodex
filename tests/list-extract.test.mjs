@@ -148,7 +148,7 @@ test('ce que lit l’extension passe le contrôle du serveur, pour les 4 sites',
   const pap = read(`<html><body><div class="search-list-item-alt"><a href="/annonces/maison-marcq-en-baroeul-59700-r1"></a><span class="item-price">300.000 €</span><div class="item-title">Marcq-en-Barœul (59700)<ul><li>100 m²</li></ul></div></div></body></html>`, 'https://www.pap.fr/annonce/x');
   for (const list of [lbc, bi, pap]) {
     const r = await handleIngest({ syncKey: KEY, redis, now: NOW, body: { source: list.source, cards: list.cards } });
-    assert.deepEqual(r, { seen: 1, added: 1, ignored: 0 }, list.source);
+    assert.deepEqual(r, { seen: 1, added: 1, ignored: 0, addressed: 0 }, list.source);
   }
 });
 

@@ -34,7 +34,7 @@ const card = (over = {}) => ({
 test('une carte de Leboncoin entre dans sa commune, sans fiche à lire', async () => {
   const redis = await setup();
   const r = await handleIngest({ syncKey: KEY, redis, now: NOW, body: { source: 'leboncoin', cards: [card()] } });
-  assert.deepEqual(r, { seen: 1, added: 1, ignored: 0 });
+  assert.deepEqual(r, { seen: 1, added: 1, ignored: 0, addressed: 0 });
   const [l] = [...(await listingsOf(redis, '59378')).values()];
   assert.equal(l.source, 'leboncoin');
   assert.equal(l.price, 500000);
@@ -48,7 +48,7 @@ test('revue moins chère : prix suivi, pas de doublon', async () => {
   const redis = await setup();
   await handleIngest({ syncKey: KEY, redis, now: NOW, body: { source: 'leboncoin', cards: [card()] } });
   const r = await handleIngest({ syncKey: KEY, redis, now: NOW + 1000, body: { source: 'leboncoin', cards: [card({ price: 480000 })] } });
-  assert.deepEqual(r, { seen: 1, added: 0, ignored: 0 });
+  assert.deepEqual(r, { seen: 1, added: 0, ignored: 0, addressed: 0 });
   const [l] = [...(await listingsOf(redis, '59378')).values()];
   assert.equal(l.price, 480000);
   assert.equal(l.prices.length, 2);
@@ -71,7 +71,7 @@ test('commune non suivie, autre site, autre sorte de bien : ignorés', async () 
       ],
     },
   });
-  assert.deepEqual(r, { seen: 0, added: 0, ignored: 5 });
+  assert.deepEqual(r, { seen: 0, added: 0, ignored: 5, addressed: 0 });
 });
 
 test('commune reconnue malgré son écriture, photo non https et lettre fausse écartées', async () => {
@@ -115,7 +115,7 @@ test('un appel de synchro vide fait exister l’espace du robot local', async ()
   const key = 'c'.repeat(40);
   await handleSync({ syncKey: key, body: { since: 0, items: [] }, redis, now: NOW });
   const r = await handleIngest({ syncKey: key, redis, now: NOW, body: { source: 'leboncoin', cards: [] } });
-  assert.deepEqual(r, { seen: 0, added: 0, ignored: 0 });
+  assert.deepEqual(r, { seen: 0, added: 0, ignored: 0, addressed: 0 });
 });
 
 test('le robot en ligne ne demande rien aux sources `local` et ne relit pas leurs annonces', async () => {
@@ -137,4 +137,104 @@ test('annonce locale non revue depuis 6 semaines : retirée au passage suivant',
   await runScan({ redis, fetcher: { get: async () => ({ ok: false, status: 404, html: '' }) }, now: () => later, sources: [sourceById('leboncoin')] });
   const [l] = [...(await listingsOf(redis, '59378')).values()];
   assert.equal(l.removedAt, later);
+});
+
+// ─── Consommation du diagnostic lue sur la page d'une annonce SeLoger : l'adresse sort tout de suite ───
+
+const SELOGER = 'https://www.seloger.com/annonce/achat/hauts-de-france/nord-59/villeneuve-d-ascq-59491/26FM4ZXVBZ5H';
+const selogerCard = (detail = {}) => ({ url: SELOGER, type: 'maison', price: 369000, title: 'Maison 108 m²', detail: { surface: 108, postal: '59650', city: "Villeneuve-d'Ascq", energyClass: 'D', ...detail } });
+const figures = { gesClass: 'D', energyConsumption: 226, gesEmission: 41, constructionYear: 1982 };
+const FOUND = { address: '13 Allee de la Colline 59650 Villeneuve-d’Ascq', lat: 50.63, lon: 3.15, dpeId: 'dpe-1', addressConfidence: 'haute', leads: null };
+const seen = (redis) => listingsOf(redis, '59009').then((m) => [...m.values()][0]);
+
+test('annonce connue par sa carte de liste (lettre seule) : la page apporte la consommation, l’adresse est trouvée', async () => {
+  const redis = await setup();
+  await handleIngest({ syncKey: KEY, redis, now: NOW, body: { source: 'seloger', cards: [selogerCard()] } });
+  const asked = [];
+  const lookup = async (l) => (asked.push(l), FOUND);
+  const r = await handleIngest({ syncKey: KEY, redis, now: NOW + 1000, lookup, body: { source: 'seloger', insee: '59009', cards: [selogerCard(figures)] } });
+  assert.deepEqual(r, { seen: 1, added: 0, ignored: 0, addressed: 1 });
+  const l = await seen(redis);
+  assert.equal(l.address, FOUND.address);
+  assert.equal(l.addressConfidence, 'haute');
+  assert.equal(l.energyConsumption, 226);
+  assert.equal(l.gesEmission, 41);
+  assert.equal(l.constructionYear, 1982);
+  assert.equal(l.lookupVersion, 3);
+  // La recherche part avec ce que la fiche connaît : code postal, surface, lettre et chiffres du DPE.
+  assert.equal(asked.length, 1);
+  assert.deepEqual([asked[0].postal, asked[0].surface, asked[0].energyClass, asked[0].energyConsumption, asked[0].gesEmission], ['59650', 108, 'D', 226, 41]);
+});
+
+test('annonce nouvelle qui arrive avec la consommation : adresse cherchée dès l’entrée', async () => {
+  const redis = await setup();
+  const r = await handleIngest({ syncKey: KEY, redis, now: NOW, lookup: async () => FOUND, body: { source: 'seloger', cards: [selogerCard(figures)] } });
+  assert.deepEqual(r, { seen: 1, added: 1, ignored: 0, addressed: 1 });
+  assert.equal((await seen(redis)).address, FOUND.address);
+});
+
+test('adresse déjà sûre : la recherche n’est pas relancée', async () => {
+  const redis = await setup();
+  await handleIngest({ syncKey: KEY, redis, now: NOW, body: { source: 'seloger', cards: [selogerCard()] } });
+  const [stored] = [...(await listingsOf(redis, '59009')).values()];
+  Object.assign(stored, { address: '1 Rue Sûre 59650 Villeneuve-d’Ascq', addressConfidence: 'haute' });
+  await redis.command(['HSET', 'imx:scan:59009:l', stored.id, JSON.stringify(stored)]);
+  let calls = 0;
+  const r = await handleIngest({ syncKey: KEY, redis, now: NOW + 1000, lookup: async () => (calls++, FOUND), body: { source: 'seloger', cards: [selogerCard(figures)] } });
+  assert.equal(calls, 0);
+  assert.equal(r.addressed, 0);
+  const l = await seen(redis);
+  assert.equal(l.address, '1 Rue Sûre 59650 Villeneuve-d’Ascq');
+  assert.equal(l.energyConsumption, 226);
+});
+
+test('registre injoignable : la consommation est gardée et l’annonce reste à chercher au prochain passage', async () => {
+  const redis = await setup();
+  await handleIngest({ syncKey: KEY, redis, now: NOW, body: { source: 'seloger', cards: [selogerCard()] } });
+  const r = await handleIngest({ syncKey: KEY, redis, now: NOW + 1000, lookup: async () => null, body: { source: 'seloger', cards: [selogerCard(figures)] } });
+  assert.equal(r.addressed, 0);
+  const l = await seen(redis);
+  assert.equal(l.energyConsumption, 226);
+  assert.equal(l.address, undefined);
+  assert.equal(l.lookupVersion, undefined);
+});
+
+test('recherche qui plante : l’envoi n’échoue pas', async () => {
+  const redis = await setup();
+  const lookup = async () => {
+    throw new Error('registre en panne');
+  };
+  const r = await handleIngest({ syncKey: KEY, redis, now: NOW, lookup, body: { source: 'seloger', cards: [selogerCard(figures)] } });
+  assert.equal(r.seen, 1);
+  assert.equal((await seen(redis)).energyConsumption, 226);
+});
+
+test('carte de liste revue plus tard (lettre seule) : la consommation déjà connue n’est pas effacée', async () => {
+  const redis = await setup();
+  await handleIngest({ syncKey: KEY, redis, now: NOW, lookup: async () => FOUND, body: { source: 'seloger', cards: [selogerCard(figures)] } });
+  await handleIngest({ syncKey: KEY, redis, now: NOW + 1000, lookup: async () => FOUND, body: { source: 'seloger', cards: [selogerCard()] } });
+  const l = await seen(redis);
+  assert.equal(l.energyConsumption, 226);
+  assert.equal(l.address, FOUND.address);
+});
+
+test('valeurs absurdes reçues : écartées, pas de recherche', async () => {
+  const redis = await setup();
+  let calls = 0;
+  await handleIngest({ syncKey: KEY, redis, now: NOW, lookup: async () => (calls++, FOUND), body: { source: 'seloger', cards: [selogerCard({ energyConsumption: 99999, gesEmission: -3, constructionYear: 12 })] } });
+  assert.equal(calls, 0);
+  const l = await seen(redis);
+  assert.equal(l.energyConsumption, null);
+  assert.equal(l.gesEmission, null);
+  assert.equal(l.constructionYear, null);
+});
+
+test('au plus 5 adresses cherchées par envoi, les autres attendent le robot', async () => {
+  const redis = await setup();
+  const cards = Array.from({ length: 7 }, (_, i) => ({ ...selogerCard(figures), url: `https://www.seloger.com/annonce/achat/hauts-de-france/nord-59/villeneuve-d-ascq-59491/26FM4ZXV${i}AAA` }));
+  let calls = 0;
+  const r = await handleIngest({ syncKey: KEY, redis, now: NOW, lookup: async () => (calls++, FOUND), body: { source: 'seloger', cards } });
+  assert.equal(calls, 5);
+  assert.equal(r.added, 7);
+  assert.equal(r.addressed, 5);
 });
