@@ -112,7 +112,7 @@ async function readPage(st, search, page) {
     await sleep(2000);
   }
   // Aucun script de lecture : la page n'est pas la liste attendue (défi anti-robot, page d'erreur).
-  return REFUSED;
+  return { ...REFUSED, diag: 'aucun script de lecture sur la page' };
 }
 
 async function runStep() {
@@ -148,6 +148,8 @@ async function runStep() {
       read = { hasData: true, count: 0, postalCounts: {}, error: String((e && e.message) || e) };
     }
     const next = step(tour, read, Date.now(), st.paceMs || PACE_MS);
+    // Tournée coupée faute de données : la raison dit aussi ce que la page montrait (défi ou autre).
+    if (next.status === 'stopped' && read.diag && !read.hasData) next.reason = `${next.reason} · ${read.diag}`;
     st.tour = next;
     if (next.status !== 'running') {
       st.lastDay = next.day;

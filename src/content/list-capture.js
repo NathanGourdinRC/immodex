@@ -28,6 +28,14 @@
   let last = null;
   let running = null;
 
+  // Ce que la page montre quand rien n'est lisible : sert à savoir, dans la ligne du Fil, si le site a
+  // renvoyé un défi anti-robot, une page vide ou autre chose (la tournée s'arrête dans tous les cas).
+  function diagnose() {
+    const captcha = !!document.querySelector('iframe[src*="captcha-delivery"], iframe[src*="datadome"], script[src*="captcha-delivery"]');
+    const data = !!document.getElementById('__NEXT_DATA__') || !!document.getElementById('__UFRN_FETCHER__');
+    return `page « ${String(document.title || '').slice(0, 60)} », données dans la page : ${data ? 'oui' : 'non'}, défi anti-robot : ${captcha ? 'oui' : 'non'}, fenêtre : ${document.visibilityState}`;
+  }
+
   async function read() {
     const info = reader.searchInfo ? reader.searchInfo(document) : null;
     let list = null;
@@ -35,7 +43,7 @@
       list = reader.extractList(document);
     } catch (err) {
       console.warn('[immodex liste] lecture impossible :', err);
-      return { hasData: false, count: 0, postalCounts: {}, error: 'lecture impossible' };
+      return { hasData: false, count: 0, postalCounts: {}, error: 'lecture impossible', diag: diagnose() };
     }
     const result = {
       hasData: !!(list || (info && info.hasData)),
@@ -44,6 +52,7 @@
       count: list ? list.cards.length : 0,
       postalCounts: {},
     };
+    if (!result.hasData) result.diag = diagnose();
     for (const c of list ? list.cards : []) {
       const postal = c.detail && c.detail.postal;
       if (postal) result.postalCounts[postal] = (result.postalCounts[postal] || 0) + 1;
