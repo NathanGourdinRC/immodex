@@ -4,6 +4,10 @@ import { upstashConfig, upstash, HttpError } from './sync.js';
 
 const INSEE = /^(\d{5}|2[AB]\d{3})$/;
 const MAX_CODES = 30;
+// Sources abandonnées : le robot ne les lit plus, mais leurs annonces déjà stockées resteraient
+// servies (elles ne seraient jamais retirées). Écartées ici, rien n'est effacé de la base.
+// « clefs » : Les Clefs de Chez Moi cache le prix de ~70 % de ses annonces (retirée le 09/11/2026).
+const RETIRED_SOURCES = new Set(['clefs']);
 
 const parse = (v) => {
   try {
@@ -27,9 +31,9 @@ async function handleListings({ codes, redis }) {
   list.forEach((code, i) => {
     for (const [, v] of pairs(results[2 * i])) {
       const l = parse(v);
-      if (l) listings.push(l);
+      if (l && !RETIRED_SOURCES.has(l.source)) listings.push(l);
     }
-    sources[code] = Object.fromEntries(pairs(results[2 * i + 1]).map(([s, v]) => [s, parse(v) || {}]));
+    sources[code] = Object.fromEntries(pairs(results[2 * i + 1]).filter(([s]) => !RETIRED_SOURCES.has(s)).map(([s, v]) => [s, parse(v) || {}]));
   });
   return { listings, sources, lastRun: Number(results[results.length - 1]) || null };
 }

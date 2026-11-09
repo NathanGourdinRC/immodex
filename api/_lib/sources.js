@@ -805,20 +805,6 @@ const SOURCES = [
     typeOf: (url, text) => guessType(`${url} ${text}`),
   },
   {
-    // Portail Les Clefs de Chez Moi (annonces d'agences) : une page par commune et par type,
-    // sans pagination ; elle ajoute des biens de communes voisines, écartés par l'adresse.
-    id: 'clefs',
-    label: 'Les Clefs de Chez Moi',
-    host: 'www.lesclefsdechezmoi.fr',
-    departments: ['59'],
-    pageSize: null,
-    communeInUrl: true,
-    listUrls: (c, type) => typesOf(type).map((t) => `https://www.lesclefsdechezmoi.fr/achat-immobilier/nord/${slugOf(c.nom)}/${t}s/`),
-    pageUrl: () => null,
-    isListing: (u) => /^\/achat-immobilier\/nord\/[a-z0-9-]+\/(maisons|appartements)\/[a-z0-9-]+-\d+\.html$/.test(u.pathname),
-    typeOf: (url) => (/\/appartements\//.test(url) ? 'appartement' : 'maison'),
-  },
-  {
     // Annonces des notaires (Immonot) : une liste par commune et par type, repérée par le code
     // INSEE et le code postal (« Ccom_59378_59700 ») ; la commune est dans l'adresse de la fiche.
     id: 'immonot',

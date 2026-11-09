@@ -78,6 +78,17 @@ test('annonces servies par commune avec l’état des sources', async () => {
   await assert.rejects(handleListings({ codes: '59636,abc', redis }), (e) => e.status === 400);
 });
 
+test('les annonces d’une source abandonnée (Les Clefs de Chez Moi) ne sont plus servies', async () => {
+  const redis = fakeRedis();
+  const kept = base({ id: 'orpi:/annonce-vente-maison-a/', source: 'orpi', url: 'https://www.orpi.com/annonce-vente-maison-a/' });
+  const retired = base({ id: 'clefs:/achat-immobilier/nord/lille/maisons/maison-1chambres-45m2-4595518.html', source: 'clefs', url: 'https://www.lesclefsdechezmoi.fr/achat-immobilier/nord/lille/maisons/maison-1chambres-45m2-4595518.html', price: null, prices: [] });
+  for (const l of [kept, retired]) await redis.command(['HSET', 'imx:scan:59636:l', l.id, JSON.stringify(l)]);
+  await redis.command(['HSET', 'imx:scan:59636:src', 'orpi', JSON.stringify({ lastRun: NOW }), 'clefs', JSON.stringify({ lastRun: NOW })]);
+  const r = await handleListings({ codes: '59636', redis });
+  assert.deepEqual(r.listings.map((l) => l.source), ['orpi']);
+  assert.deepEqual(Object.keys(r.sources['59636']), ['orpi']);
+});
+
 test('statut d’un bien : retrouvé sous n’importe quelle adresse de ses annonces ou des annonces vues du même bien', () => {
   const a = base({ id: 'maes:/x', source: 'maes', url: 'https://www.maesimmobilier.fr/bien-immobilier/x/', surface: 109, energyConsumption: 224, gesEmission: 32 });
   const b = base({ id: 'lesiteimmo:/1', source: 'lesiteimmo', url: 'https://www.lesiteimmo.com/acheter/maison-5pieces/wambrechies-59118/1', surface: 109, energyConsumption: 224, gesEmission: 32 });
