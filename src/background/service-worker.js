@@ -3,6 +3,7 @@ import { createHistoryStore } from '../common/history.js';
 import { createPropertyStore } from '../common/properties.js';
 import { salesAt } from '../common/dvf.js';
 import { createSync, SYNCED_STORAGE_KEYS } from '../common/sync.js';
+import { initLbcTour, lbcTourMessage } from './lbc-tour-runner.js';
 
 const history = createHistoryStore(chrome.storage.local);
 const properties = createPropertyStore(chrome.storage.local);
@@ -32,6 +33,8 @@ if (chrome.alarms) {
   });
 }
 runSync({ minAgeMs: 5 * 60 * 1000 });
+// Tournée quotidienne de Leboncoin (10 h) : voir lbc-tour-runner.js.
+initLbcTour();
 // Critères envoyés par « Modifier les champs » depuis une annonce, relus par le popup.
 const PREFILL_KEY = 'immodex.prefill.v1';
 const PREFILL_TTL_MS = 10 * 60 * 1000;
@@ -341,6 +344,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'LIST_CARDS') {
     return respond(sendListCards(message), sendResponse);
   }
+  const tour = lbcTourMessage(message);
+  if (tour) return respond(tour, sendResponse);
   if (message.type === 'SIGHTING_GET') {
     const url = message.url || (sender.tab && sender.tab.url);
     return respond(properties.get(url).then((r) => r || { sighting: null, matches: [] }), sendResponse);

@@ -151,3 +151,33 @@ test('ce que lit l’extension passe le contrôle du serveur, pour les 4 sites',
     assert.deepEqual(r, { seen: 1, added: 1, ignored: 0 }, list.source);
   }
 });
+
+// Ce que la tournée quotidienne demande à la page : la liste est-elle arrivée, et combien de pages ?
+function info(html, url) {
+  const dom = new JSDOM(html, { url, runScripts: 'outside-only', virtualConsole: new VirtualConsole() });
+  dom.window.eval(code);
+  return JSON.parse(JSON.stringify(dom.window.__immodexListExtract.searchInfo(dom.window.document)));
+}
+const lbcSearch = (searchData) => `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify({ props: { pageProps: { searchData } } })}</script>`;
+
+test('Leboncoin : informations de la recherche (total, pages) quand la liste est arrivée', () => {
+  const r = info(`<html><body>${lbcSearch({ ads: [lbcAd], total: 71, max_pages: 3 })}</body></html>`, 'https://www.leboncoin.fr/recherche?category=9');
+  assert.deepEqual(r, { hasData: true, total: 71, maxPages: 3 });
+});
+
+test('Leboncoin : liste vide mais bien arrivée = résultat vide, pas un refus', () => {
+  const r = info(`<html><body>${lbcSearch({ ads: [], total: 0 })}</body></html>`, 'https://www.leboncoin.fr/recherche?category=9');
+  assert.equal(r.hasData, true);
+  assert.equal(r.total, 0);
+});
+
+test('Leboncoin : page de défi (sans bloc de données ni carte) = pas de liste', () => {
+  const r = info('<html><body><iframe src="https://geo.captcha-delivery.com/captcha/"></iframe></body></html>', 'https://www.leboncoin.fr/recherche?category=9');
+  assert.equal(r.hasData, false);
+});
+
+test('autre site que Leboncoin : pas d’informations de recherche', () => {
+  const dom = new JSDOM('<html></html>', { url: 'https://www.pap.fr/annonce/vente-maison', runScripts: 'outside-only', virtualConsole: new VirtualConsole() });
+  dom.window.eval(code);
+  assert.equal(dom.window.__immodexListExtract.searchInfo(dom.window.document), null);
+});

@@ -79,14 +79,18 @@
     }
     return cards;
   }
+  // Bloc de données de la recherche (annonces, total, nombre de pages), ou null s'il manque.
+  function leboncoinSearchData(doc) {
+    try {
+      const data = JSON.parse(doc.getElementById('__NEXT_DATA__')?.textContent || '{}').props?.pageProps?.searchData;
+      return data && typeof data === 'object' ? data : null;
+    } catch {
+      return null;
+    }
+  }
   function leboncoin(doc) {
     const fromPage = leboncoinFromPage(doc);
-    let ads = [];
-    try {
-      ads = JSON.parse(doc.getElementById('__NEXT_DATA__')?.textContent || '{}').props?.pageProps?.searchData?.ads || [];
-    } catch {
-      ads = [];
-    }
+    const ads = leboncoinSearchData(doc)?.ads || [];
     // Page suivante ouverte sans recharger : le bloc de données est resté celui de la première.
     const idOf = (u) => (String(u).match(/(\d+)\/?$/) || [])[1];
     const current = fromPage[0] && !ads.some((a) => idOf(a.url) === idOf(fromPage[0].url));
@@ -230,5 +234,19 @@
     return cards.length ? { source: site.source, cards } : null;
   }
 
-  window.__immodexListExtract = { extractList };
+  // La liste est-elle bien arrivée, et de combien de pages ? Sert à la tournée quotidienne de
+  // Leboncoin : une page sans bloc de données ni carte est un refus (défi anti-robot), une liste
+  // vide bien arrivée est un simple résultat vide. Null pour les autres sites.
+  function searchInfo(doc) {
+    if (!/(^|\.)leboncoin\.fr$/.test(doc.location.hostname)) return null;
+    const data = leboncoinSearchData(doc);
+    const num = (v) => (Number.isFinite(Number(v)) && v != null ? Number(v) : null);
+    return {
+      hasData: !!data || leboncoinFromPage(doc).length > 0,
+      total: data ? num(data.total) : null,
+      maxPages: data ? num(data.max_pages) : null,
+    };
+  }
+
+  window.__immodexListExtract = { extractList, searchInfo };
 })();

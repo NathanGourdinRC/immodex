@@ -195,6 +195,7 @@ Toutes ces APIs sont **publiques, gratuites, sans clé**. Elles sont financées 
 - **Pas de compte, pas de login, pas de tracking**
 - **Aucune donnée n'est envoyée à des serveurs tiers** autres que les APIs publiques listées plus haut, et le serveur de synchro si tu l'actives
 - **Robot des annonces** : chaque nuit, une fonction Vercel lit les pages de résultats des 5 sources pour les communes de tes recherches (au plus tous les 2 jours par site, au plus 5 pages), puis une seule fois la page de chaque nouvelle annonce. Il se présente (`ImmodexPlus/1.0 (+https://immodex.vercel.app ; usage personnel)`), respecte robots.txt, attend au moins 5 secondes entre deux pages d'un même site et ne contourne aucune protection : un site qui le refuse est mis en pause et signalé. Les annonces lues sont des données publiques, rangées par commune (`imx:scan:*`), hors de ton espace de synchro.
+- **Lecture automatique de Leboncoin (10 h, Chrome ouvert)** : Leboncoin refuse le robot de Vercel (anti-robot DataDome). Chaque jour à 10 h, l'extension ouvre elle-même, dans une fenêtre réduite de ton Chrome, la recherche Leboncoin de chaque commune de tes recherches (une par code postal, maisons et appartements, les plus récentes d'abord), lit les annonces comme quand tu visites la page et les envoie au Fil. Une page toutes les 45 secondes, au plus 8 pages par commune et 120 par jour, aucune connexion à un compte. Au premier refus ou défi anti-robot, elle s'arrête, note la raison dans le Fil (ligne « Leboncoin », avec « Désactiver » et « Lire maintenant ») et reprend le lendemain ; elle ne résout aucun captcha. Si Chrome était fermé à 10 h, la lecture se fait à son ouverture, 3 minutes après. Elle demande une synchro activée (la clé d'appairage), et n'existe pas dans l'appli téléphone.
 - **Synchro avec le téléphone (facultative)** : zones, suivi des biens (statut, note), annonces vues et recherches des 7 derniers jours passent par `immodex.vercel.app/api/sync` (fonction Vercel, base Upstash Redis à Francfort), rangés sous l'empreinte SHA-256 d'une clé aléatoire générée par l'extension. La clé n'existe que sur tes appareils (QR code d'appairage) ; sans elle, les données sont inaccessibles
 - **Tout le code tourne dans le navigateur** (Manifest V3, service worker local)
 - **Caches locaux uniquement** : `chrome.storage.session` pour le cache court (1 h), `chrome.storage.local` pour les parcelles (24 h)
@@ -237,6 +238,7 @@ icons/                  # Icônes PNG (sources SVG conservées pour edition)
 src/
   background/
     service-worker.js   # Routeur LOOKUP, cache, concurrency
+    lbc-tour-runner.js  # Tournée Leboncoin de 10 h : alarmes, fenêtre réduite, une page par étape
   common/
     extract.js          # Helpers d'extraction (postal, surface, classes…)
     ademe.js            # Client API ADEME
@@ -248,12 +250,14 @@ src/
     dvf.js              # Ventes DVF d'une section cadastrale (Etalab)
     sales.js            # Ventes DVF d'une commune entière, prêtes pour la carte
     sectors.js          # Secteurs de 400 m en 3 niveaux, ventes les plus proches
+    lbc-tour.js         # Tournée Leboncoin : file de recherches, règles d'arrêt, texte d'état (testé sous Node)
   dashboard/
     dashboard.js        # « Mes recherches » : formulaire, vues, carte Leaflet
     feed.js             # Vue Fil (annonces vues, Bientôt en vente ?)
     pins.js             # Pastilles de prix des biens et lien avec leur carte du Fil
     sector-layer.js     # Vue Carte (secteurs) et chargement des ventes de la recherche
     sales-view.js       # Vue Ventes passées
+    lbc-tour-line.js    # Ligne « Leboncoin » du Fil : état de la tournée, Désactiver, Lire maintenant
   content/
     leboncoin.js        # Extraction depuis __NEXT_DATA__
     bienici.js          # Extraction depuis __INITIAL_STATE__
