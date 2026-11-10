@@ -53,6 +53,28 @@ test('file : une recherche par commune et par code postal, sans doublon entre re
   assert.deepEqual(q[1].postals, ['59000', '59160']);
 });
 
+test('adresse de recherche : budget, surface (marge de 3 m²) et pièces de la recherche', () => {
+  const [s] = buildQueue([{ ...zone([MARCQ]), budgetMin: 250000, budgetMax: 450000, surfaceMin: 80, surfaceMax: 140, piecesMin: 4 }]);
+  assert.match(searchUrl(s, 1), /&real_estate_type=1,2&price=250000-450000&square=77-143&rooms=4-max&sort=time/);
+  // Une borne absente : « min » ou « max » selon le côté ; sans aucun critère, aucun filtre.
+  const [open] = buildQueue([{ ...zone([MARCQ]), budgetMax: 450000 }]);
+  assert.match(searchUrl(open, 1), /&price=min-450000&sort=time/);
+  assert.doesNotMatch(searchUrl(open, 1), /square=|rooms=/);
+  const [none] = buildQueue([zone([MARCQ])]);
+  assert.doesNotMatch(searchUrl(none, 1), /price=|square=|rooms=/);
+  assert.match(searchUrl(s, 2), /&page=2$/);
+});
+
+test('file : deux recherches sur la même commune = la fourchette la plus large, sans borne si l’une n’en a pas', () => {
+  const [q] = buildQueue([
+    { ...zone([MARCQ]), budgetMin: 200000, budgetMax: 400000, surfaceMin: 60 },
+    { ...zone([MARCQ]), budgetMin: 300000, budgetMax: 500000 },
+  ]);
+  assert.deepEqual([q.crit.priceMin, q.crit.priceMax, q.crit.squareMin], [200000, 500000, null]);
+  const [open] = buildQueue([{ ...zone([MARCQ]), budgetMax: 400000 }, zone([MARCQ])]);
+  assert.deepEqual([open.crit.priceMin, open.crit.priceMax], [null, null]);
+});
+
 test('file : le type de la recherche limite la lecture, deux recherches se complètent', () => {
   assert.equal(buildQueue([zone([MARCQ], 'maison')])[0].types, '1');
   assert.equal(buildQueue([zone([MARCQ], 'appartement')])[0].types, '2');
@@ -147,6 +169,19 @@ test('journée : le lendemain repart de zéro, la même journée garde ce qui es
   // Une recherche retirée en cours de journée n’est plus comptée.
   assert.equal(summary(refreshDay(day, buildQueue([zone([LILLE])]), noon)).total, 2);
   assert.equal(summary(refreshDay(day, buildQueue([zone([LILLE])]), noon)).finished, 0);
+});
+
+test('journée : des critères modifiés en cours de journée remettent la commune dans la file', () => {
+  const noon = new Date(2026, 10, 10, 12, 0).getTime();
+  const before = buildQueue([{ ...zone([MARCQ]), budgetMax: 400000 }]);
+  let day = newDay(before, noon);
+  day = record(day, nextTarget(day), page({ maxPages: 1 }));
+  assert.equal(nextTarget(refreshDay(day, before, noon)), null);
+  // Après un passage par le stockage de Chrome, les champs sont rangés dans un autre ordre : rien ne change.
+  const stored = JSON.parse(JSON.stringify(day, (k, v) => (v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([x], [y]) => x.localeCompare(y))) : v)));
+  assert.equal(nextTarget(refreshDay(stored, before, noon)), null);
+  const changed = buildQueue([{ ...zone([MARCQ]), budgetMax: 300000 }]);
+  assert.equal(nextTarget(refreshDay(day, changed, noon)).search.key, '59378|59700');
 });
 
 test('file vide : rien à lire', () => {

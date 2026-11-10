@@ -39,7 +39,48 @@ export function searchUrl(search, page = 1) {
   // Leboncoin écrit « Marcq-en-Baroeul » : les ligatures de l'état civil (œ, æ) ne sont pas reconnues.
   const name = search.nom.replace(/œ/g, 'oe').replace(/Œ/g, 'Oe').replace(/æ/g, 'ae').replace(/Æ/g, 'Ae');
   const where = encodeURIComponent(`${name}_${search.postal}`);
-  return `https://www.leboncoin.fr/recherche?category=9&locations=${where}&real_estate_type=${search.types}&sort=time&order=desc${page > 1 ? `&page=${page}` : ''}`;
+  // Critères chiffrés de la recherche (budget, surface, pièces) : sans eux, la page montre toutes les annonces de la commune.
+  const range = (min, max) => (min || max ? `${min || 'min'}-${max || 'max'}` : '');
+  const crit = search.crit || {};
+  const filters = [
+    ['price', range(crit.priceMin, crit.priceMax)],
+    ['square', range(crit.squareMin, crit.squareMax)],
+    ['rooms', crit.roomsMin ? `${crit.roomsMin}-max` : ''],
+  ]
+    .filter(([, v]) => v)
+    .map(([k, v]) => `&${k}=${v}`)
+    .join('');
+  return `https://www.leboncoin.fr/recherche?category=9&locations=${where}&real_estate_type=${search.types}${filters}&sort=time&order=desc${page > 1 ? `&page=${page}` : ''}`;
+}
+
+// Deux recherches sur la même commune se fondent en une : la page doit contenir ce que chacune veut,
+// donc la borne la plus large (et aucune borne dès qu'une des deux n'en a pas).
+const widerMin = (a, b) => (a && b ? Math.min(a, b) : null);
+const widerMax = (a, b) => (a && b ? Math.max(a, b) : null);
+
+// Critères d'une recherche de Nathan, tels que Leboncoin les comprend. Le budget est strict ; la
+// surface garde la marge de 3 m² que l'appli applique elle-même (les annonces arrondissent).
+function critOf(z) {
+  const m = (v) => (Number(v) > 0 ? Number(v) : null);
+  const sMin = m(z.surfaceMin);
+  const sMax = m(z.surfaceMax);
+  return {
+    priceMin: m(z.budgetMin),
+    priceMax: m(z.budgetMax),
+    squareMin: sMin ? Math.max(1, Math.floor(sMin - 3)) : null,
+    squareMax: sMax ? Math.ceil(sMax + 3) : null,
+    roomsMin: m(z.piecesMin),
+  };
+}
+
+function mergeCrit(a, b) {
+  return {
+    priceMin: widerMin(a.priceMin, b.priceMin),
+    priceMax: widerMax(a.priceMax, b.priceMax),
+    squareMin: widerMin(a.squareMin, b.squareMin),
+    squareMax: widerMax(a.squareMax, b.squareMax),
+    roomsMin: widerMin(a.roomsMin, b.roomsMin),
+  };
 }
 
 // Une recherche par commune et par code postal parmi toutes les recherches de Nathan. Deux
@@ -52,7 +93,9 @@ export function buildQueue(zones) {
       if (!c || !c.code) continue;
       const postals = (c.codesPostaux || []).map(String).filter((p) => /^\d{5}$/.test(p));
       if (!postals.length) continue;
-      const known = byCommune.get(c.code) || { nom: c.nom || c.code, postals, types: new Set() };
+      const crit = critOf(z);
+      const known = byCommune.get(c.code) || { nom: c.nom || c.code, postals, types: new Set(), crit };
+      if (byCommune.has(c.code)) known.crit = mergeCrit(known.crit, crit);
       for (const t of type.split(',')) known.types.add(t);
       byCommune.set(c.code, known);
     }
@@ -61,7 +104,7 @@ export function buildQueue(zones) {
   for (const [code, c] of byCommune) {
     const types = [...c.types].sort().join(',');
     for (const postal of c.postals) {
-      queue.push({ key: `${code}|${postal}`, code, nom: c.nom, postal, postals: c.postals, types, label: `${c.nom} ${postal}` });
+      queue.push({ key: `${code}|${postal}`, code, nom: c.nom, postal, postals: c.postals, types, crit: c.crit, label: `${c.nom} ${postal}` });
     }
   }
   return queue;
@@ -74,12 +117,21 @@ export function newDay(queue, now) {
   return { day: dayKey(now), queue, done: {} };
 }
 
+// Comparaison champ par champ : le stockage de Chrome range les champs dans un autre ordre (alphabétique),
+// donc comparer du JSON ferait croire à un changement à chaque lecture.
+const CRIT_FIELDS = ['priceMin', 'priceMax', 'squareMin', 'squareMax', 'roomsMin'];
+const sameCrit = (a, b) => !!a && !!b && CRIT_FIELDS.every((f) => (a[f] || null) === (b[f] || null));
+
 // Même communes qu'avant (les recherches ont pu changer en cours de journée) : on garde ce qui est lu.
 export function refreshDay(day, queue, now) {
   if (!day || day.day !== dayKey(now)) return newDay(queue, now);
-  const keys = new Set(queue.map((s) => s.key));
+  const current = new Map(queue.map((s) => [s.key, s]));
+  const was = new Map((day.queue || []).map((s) => [s.key, s]));
   const done = {};
-  for (const [k, v] of Object.entries(day.done || {})) if (keys.has(k)) done[k] = v;
+  for (const [k, v] of Object.entries(day.done || {})) {
+    // Une recherche dont les critères ont changé (ou lue avant que les critères existent) est à relire.
+    if (current.has(k) && sameCrit((was.get(k) || {}).crit, current.get(k).crit)) done[k] = v;
+  }
   return { ...day, queue, done };
 }
 
