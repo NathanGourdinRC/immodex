@@ -96,6 +96,10 @@
   // réclame ce qui a été lu et envoyé.
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (!message || message.type !== 'LBC_TOUR_READ') return false;
+    // Une lecture ratée (page de défi, avant que Nathan passe le test) ne doit pas être renvoyée telle quelle :
+    // on relit la page. Une lecture réussie est gardée, car relire renverrait des annonces déjà envoyées
+    // (donc sans le compte des nouvelles).
+    if (message.fresh && !(last && last.hasData)) signature = '';
     capture().then((r) => sendResponse(r || { hasData: false, count: 0, postalCounts: {} }));
     return true;
   });

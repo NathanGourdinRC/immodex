@@ -80,20 +80,21 @@ async function openIn(st, url) {
 async function askRead(tabId, tries = 3) {
   for (let i = 0; i < tries; i++) {
     try {
-      const read = await chrome.tabs.sendMessage(tabId, { type: 'LBC_TOUR_READ' });
+      // fresh : relire la page telle qu'elle est maintenant, pas la lecture gardée d'avant le test anti-robot.
+      const read = await chrome.tabs.sendMessage(tabId, { type: 'LBC_TOUR_READ', fresh: true });
       if (read) return read;
     } catch {
       // le script de la page n'est pas encore là
     }
     if (i < tries - 1) await sleep(2000);
   }
-  return { hasData: false, count: 0, postalCounts: {} };
+  return { hasData: false, count: 0, postalCounts: {}, diag: 'aucun script de lecture sur la page' };
 }
 
 // Ce que le Fil affiche : avancement de la journée, prochaine commune, attente d'un test anti-robot.
 function statusOf(st, day) {
   const waiting = st.pending && day.queue.find((s) => s.key === st.pending.key);
-  return { ...summary(day), waiting: waiting ? waiting.label : null, error: st.error };
+  return { ...summary(day), waiting: waiting ? waiting.label : null, diag: waiting ? st.pending.diag || null : null, error: st.error };
 }
 
 async function status() {
@@ -152,7 +153,8 @@ async function readNext() {
     // 3. Ce qui s'affiche : rien de lisible, une erreur d'envoi, ou une page lue.
     if (!read.hasData) {
       // Défi anti-robot, page vide ou refus : l'onglet reste ouvert, au premier plan, pour que Nathan le passe lui-même.
-      st.pending = { key: target.search.key, page: target.page };
+      // diag : ce que la page montre (titre, données présentes ou non, défi détecté), affiché dans le Fil.
+      st.pending = { key: target.search.key, page: target.page, diag: read.diag || null };
       await chrome.tabs.update(tabId, { active: true }).catch(() => {});
       return finish();
     }

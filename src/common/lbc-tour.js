@@ -161,7 +161,8 @@ export function guidedText(s) {
   if (s.error) return `Leboncoin : ${s.error}`;
   if (!s.total) return 'Leboncoin : aucune commune suivie, rien à lire.';
   if (s.waiting) {
-    return `Leboncoin : ${s.waiting} attend ta vérification anti-robot dans l’onglet ouvert. Passe-la, attends que la liste s’affiche, puis clique sur « Lire la suivante ».`;
+    const seen = s.diag ? ` Ce que l’extension voit : ${s.diag}.` : '';
+    return `Leboncoin : ${s.waiting} attend ta vérification anti-robot dans l’onglet ouvert. Passe-la, attends que la liste s’affiche, puis clique sur « Relire la page ».${seen}`;
   }
   const read = `${plural(s.seen, 'annonce de tes communes lue', 'annonces de tes communes lues')}, ${plural(s.added, 'nouvelle', 'nouvelles')}`;
   if (!s.next) return `Leboncoin : toutes les communes sont lues aujourd’hui (${read}). Prochaine lecture demain.`;

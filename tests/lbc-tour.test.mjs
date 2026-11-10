@@ -179,7 +179,8 @@ test('ligne Leboncoin : tout lu', () => {
 });
 
 test('ligne Leboncoin : test anti-robot à passer, aucune commune, erreur', () => {
-  assert.match(guidedText(state({ waiting: 'Lille 59000' })), /^Leboncoin : Lille 59000 attend ta vérification anti-robot dans l’onglet ouvert\..*« Lire la suivante »\.$/);
+  assert.match(guidedText(state({ waiting: 'Lille 59000' })), /^Leboncoin : Lille 59000 attend ta vérification anti-robot dans l’onglet ouvert\..*« Relire la page »\.$/);
+  assert.match(guidedText(state({ waiting: 'Lille 59000', diag: 'page « leboncoin.fr », données dans la page : non' })), /Ce que l’extension voit : page « leboncoin\.fr », données dans la page : non\.$/);
   assert.equal(guidedText(state({ total: 0, next: null })), 'Leboncoin : aucune commune suivie, rien à lire.');
   assert.equal(guidedText(state({ error: 'lecture interrompue : envoi refusé' })), 'Leboncoin : lecture interrompue : envoi refusé');
 });
