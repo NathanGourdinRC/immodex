@@ -228,6 +228,9 @@
   async function syncNow(minAgeMs) {
     const res = await sendMessage({ type: 'SYNC_NOW', minAgeMs });
     if (res && res.ok && res.result && res.result.applied) toast("Nouvelles données de l'ordinateur.", reload);
+    // Sans clé de synchro (jamais reliée, ou stockage du téléphone effacé par iOS), la synchro se tait :
+    // on le dit à chaque retour dans l'appli (4 secondes), pour qu'une perte d'appairage ne passe pas inaperçue.
+    else if (res && res.ok && res.status && !res.status.paired) toast("Ce téléphone n'est plus relié à l'ordinateur : touche le bouton téléphone pour le relier.");
   }
 
   // Lien d'appairage (QR code de l'extension) : …/#k=<clé>. La clé est rangée puis retirée
@@ -257,6 +260,9 @@
 
   function start() {
     addBackLink();
+    // La clé de synchro vit dans IndexedDB : on demande au navigateur de ne pas l'effacer quand le
+    // téléphone manque de place (iOS le fait pour les données non « persistantes »).
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
     loadBackground()
       .then(() => pairFromHash())
       .then((paired) => paired || syncNow(15 * 1000))

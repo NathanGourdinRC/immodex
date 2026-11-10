@@ -158,6 +158,8 @@ test('appli téléphone : appairage par lien collé, puis annonce partagée lue 
   // Appli de l'écran d'accueil d'un iPhone : stockage vide, lien collé dans le champ de la synchro.
   const phone = await phonePage();
   await phone.goto(`${base}/src/popup/popup.html`);
+  // Jamais relié (ou stockage effacé) : l'appli le dit tout de suite au lieu de rester silencieuse.
+  await phone.waitForSelector('.imx-web-toast:has-text("n\'est plus relié")');
   await phone.click('#phone-btn');
   await phone.fill('#sync-view input', 'pas un lien');
   await phone.click('#sync-view button:has-text("Relier ce téléphone")');
