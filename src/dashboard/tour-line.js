@@ -5,7 +5,7 @@ const { el } = UI;
 
 // Version de l'extension qui porte les tournées : un silence du service worker veut dire qu'elle n'a
 // pas été rechargée depuis la mise à jour.
-export const EXPECTED_VERSION = '0.29.1';
+export const EXPECTED_VERSION = '0.30.0';
 
 // `site` : « Leboncoin », « SeLoger » ; `messages` : { status, set, run } (types de messages du service
 // worker) ; `tourText` : la phrase d'état, à partir de la réponse du service worker.

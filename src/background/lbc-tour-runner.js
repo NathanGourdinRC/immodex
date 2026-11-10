@@ -1,25 +1,24 @@
-// Tournée quotidienne de Leboncoin, côté navigateur : alarme à 10 h, une fenêtre réduite, une page
-// toutes les 45 secondes. La logique (quoi ouvrir, quand s'arrêter) est dans src/common/lbc-tour.js.
+// Lecture guidée de Leboncoin, côté navigateur. Leboncoin refuse la lecture automatique (défi
+// anti-robot) : rien ne tourne seul. À chaque clic sur « Lire la suivante » dans le Fil, l'onglet
+// Leboncoin de Nathan s'ouvre sur la recherche suivante, il voit la page (et passe lui-même un
+// éventuel test anti-robot), et l'extension lit ce qui est affiché puis l'envoie au Fil.
+// La logique (quelle recherche ensuite) est dans src/common/lbc-tour.js.
 //
-// Un service worker s'éteint après 30 secondes sans activité : l'état de la tournée est donc gardé
-// dans chrome.storage.local, et chaque page est une étape réveillée par une alarme.
-//
-// Garde-fous (décidés avec Nathan le 09/11/2026) : arrêt net au premier refus ou défi anti-robot,
-// aucun captcha résolu, aucune connexion à un compte, rythme fixe, une seule fenêtre.
-import { PACE_MS, dayKey, nextRunAt, missedToday, searchUrl, buildQueue, newTour, step, summary } from '../common/lbc-tour.js';
+// Garde-fous (décidés avec Nathan le 10/11/2026) : aucune page ouverte sans un clic, aucun captcha
+// résolu par l'extension, aucune connexion à un compte, un seul onglet réutilisé, onglet au premier plan.
+import { searchUrl, buildQueue, refreshDay, nextTarget, record, skip, summary } from '../common/lbc-tour.js';
 import { ZONES_KEY } from '../common/zones.js';
 
-const STATE_KEY = 'immodex.lbc-tour.v1';
+const STATE_KEY = 'immodex.lbc-guided.v1';
 const SYNC_STATE_KEY = 'immodex.sync.v1';
-const DAILY_ALARM = 'immodex-lbc-daily';
-const STEP_ALARM = 'immodex-lbc-step';
-// Chrome vient de s'ouvrir après 10 h : la tournée attend que la session soit restaurée.
-const STARTUP_DELAY_MS = 3 * 60 * 1000;
+// Anciennes clés de la tournée automatique de 10 h (version 0.28.0 à 0.29.2) : nettoyées au démarrage.
+const OLD_STATE_KEY = 'immodex.lbc-tour.v1';
+const OLD_ALARMS = ['immodex-lbc-daily', 'immodex-lbc-step'];
 const NAVIGATION_TIMEOUT_MS = 30_000;
 const SETTLE_MS = 2500;
 
-// L'appli téléphone fait tourner ce même service worker dans une page, sans fenêtres ni onglets :
-// la tournée n'y existe pas (et la ligne « Leboncoin » du Fil reste cachée).
+// L'appli téléphone fait tourner ce même service worker dans une page, sans onglets Chrome :
+// la lecture guidée n'y existe pas (et la ligne « Leboncoin » du Fil reste cachée).
 const supported = () => !!(chrome.windows && chrome.windows.create && chrome.tabs && chrome.tabs.sendMessage);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -27,7 +26,7 @@ let busy = false;
 
 async function load() {
   const stored = (await chrome.storage.local.get(STATE_KEY))[STATE_KEY];
-  return { enabled: true, lastDay: null, tour: null, window: null, ...(stored || {}) };
+  return { day: null, tabId: null, pending: null, error: null, ...(stored || {}) };
 }
 const save = (st) => chrome.storage.local.set({ [STATE_KEY]: st });
 
@@ -36,41 +35,11 @@ async function hasSyncKey() {
   return !!(stored && stored.key);
 }
 
-function scheduleDaily() {
-  if (!chrome.alarms) return;
-  chrome.alarms.create(DAILY_ALARM, { when: nextRunAt(Date.now()) });
-}
-
-// Prochaine étape : une alarme (survit à l'arrêt du service worker), doublée d'un minuteur quand
-// l'attente est courte. Une étape lancée deux fois ne fait rien la seconde fois (voir runStep).
-function scheduleStep(delayMs) {
-  const wait = Math.max(0, delayMs);
-  if (chrome.alarms) chrome.alarms.create(STEP_ALARM, { when: Date.now() + wait });
-  if (wait < 25_000) setTimeout(() => runStep().catch((e) => console.warn('[immodex tournée]', e)), wait);
-}
-
-async function closeWindow(st) {
-  const id = st.window && st.window.windowId;
-  st.window = null;
-  if (id != null) await chrome.windows.remove(id).catch(() => {});
-}
-
-// Ouvre ou réutilise la fenêtre réduite de la tournée ; renvoie l'onglet.
-async function ensureTab(st) {
-  if (st.window) {
-    const tab = await chrome.tabs.get(st.window.tabId).catch(() => null);
-    if (tab) return tab;
-    st.window = null; // fermée à la main : on en rouvre une
-  }
-  let win;
-  try {
-    win = await chrome.windows.create({ url: 'about:blank', state: 'minimized', focused: false });
-  } catch {
-    win = await chrome.windows.create({ url: 'about:blank', focused: false });
-  }
-  const tab = win.tabs[0];
-  st.window = { windowId: win.id, tabId: tab.id };
-  return tab;
+// La journée à jour : recréée si le jour a changé, adaptée si les recherches ont changé.
+async function freshDay(st) {
+  const zones = (await chrome.storage.local.get(ZONES_KEY))[ZONES_KEY] || [];
+  st.day = refreshDay(st.day, buildQueue(zones), Date.now());
+  return st.day;
 }
 
 // Navigue et attend la fin du chargement (ou le délai).
@@ -89,178 +58,136 @@ function navigate(tabId, url) {
     };
     const timer = setTimeout(done, NAVIGATION_TIMEOUT_MS);
     chrome.tabs.onUpdated.addListener(onUpdated);
-    chrome.tabs.update(tabId, { url }).catch(done);
+    chrome.tabs.update(tabId, { url, active: true }).catch(done);
   });
 }
 
-const REFUSED = { hasData: false, count: 0, postalCounts: {} };
+// Ouvre la page dans l'onglet de la lecture (créé, ou réutilisé s'il est encore ouvert) et le met au premier plan.
+async function openIn(st, url) {
+  const known = st.tabId != null ? await chrome.tabs.get(st.tabId).catch(() => null) : null;
+  if (known) {
+    await navigate(known.id, url);
+    await chrome.windows.update(known.windowId, { focused: true }).catch(() => {});
+    return known.id;
+  }
+  const tab = await chrome.tabs.create({ url, active: true });
+  st.tabId = tab.id;
+  await navigate(tab.id, url);
+  return tab.id;
+}
 
-// Ouvre la page demandée et renvoie ce que list-capture.js y a lu et envoyé au Fil.
-async function readPage(st, search, page) {
-  const tab = await ensureTab(st);
-  await navigate(tab.id, searchUrl(search, page));
-  await sleep(SETTLE_MS);
-  // Sans permission « tabs », Chrome ne donne pas l'adresse de l'onglet : une redirection vers une page
-  // de défi se voit à l'absence du script de lecture, qui ne tourne que sur les listes Leboncoin.
-  for (let i = 0; i < 3; i++) {
+// Demande au script de la page ce qu'il a lu (et envoyé au Fil). `tries` : le script peut mettre un moment à arriver.
+async function askRead(tabId, tries = 3) {
+  for (let i = 0; i < tries; i++) {
     try {
-      const read = await chrome.tabs.sendMessage(tab.id, { type: 'LBC_TOUR_READ' });
+      const read = await chrome.tabs.sendMessage(tabId, { type: 'LBC_TOUR_READ' });
       if (read) return read;
     } catch {
       // le script de la page n'est pas encore là
     }
-    await sleep(2000);
+    if (i < tries - 1) await sleep(2000);
   }
-  // Aucun script de lecture : la page n'est pas la liste attendue (défi anti-robot, page d'erreur).
-  return { ...REFUSED, diag: 'aucun script de lecture sur la page' };
+  return { hasData: false, count: 0, postalCounts: {} };
 }
 
-async function runStep() {
-  if (busy) return;
+// Ce que le Fil affiche : avancement de la journée, prochaine commune, attente d'un test anti-robot.
+function statusOf(st, day) {
+  const waiting = st.pending && day.queue.find((s) => s.key === st.pending.key);
+  return { ...summary(day), waiting: waiting ? waiting.label : null, error: st.error };
+}
+
+async function status() {
+  const st = await load();
+  const day = await freshDay(st);
+  return statusOf(st, day);
+}
+
+// Un clic sur « Lire la suivante » : relit la page en attente d'un test anti-robot, sinon ouvre la suivante.
+async function readNext() {
+  if (busy) return status();
   busy = true;
   try {
     const st = await load();
-    const tour = st.tour;
-    if (!tour || tour.status !== 'running') return;
-    const now = Date.now();
-    if (now < tour.nextAt - 500) {
-      // Réveil en double ou trop tôt : on attend l'heure prévue.
-      scheduleStep(tour.nextAt - now);
-      return;
-    }
-    if (tour.day !== dayKey(now)) {
-      // Tournée d'hier jamais finie (PC éteint en cours de route) : abandonnée, celle du jour la remplace.
-      st.tour = { ...tour, status: 'stopped', reason: 'tournée de la veille non terminée' };
-      await closeWindow(st);
+    st.error = null;
+    let day = await freshDay(st);
+    const finish = async () => {
+      st.day = day;
       await save(st);
-      return;
+      return statusOf(st, day);
+    };
+    if (!(await hasSyncKey())) {
+      st.error = 'synchro non activée, rien à envoyer au Fil. Active-la dans les réglages d’Immodex+.';
+      return finish();
     }
-    if (!st.enabled) {
-      st.tour = { ...tour, status: 'stopped', reason: 'tournée désactivée' };
-      await closeWindow(st);
-      await save(st);
-      return;
+
+    let target = null;
+    let tabId = null;
+    let read = null;
+
+    // 1. Une page attendait que Nathan passe le test anti-robot : la liste s'affiche-t-elle maintenant ?
+    const waiting = st.pending && day.queue.find((s) => s.key === st.pending.key);
+    if (waiting) {
+      tabId = st.tabId != null ? ((await chrome.tabs.get(st.tabId).catch(() => null)) || {}).id ?? null : null;
+      if (tabId == null) {
+        // Onglet fermé sans que la liste s'affiche : cette recherche est laissée, on passe à la suivante.
+        day = skip(day, waiting.key, 'non lue (test anti-robot non passé)');
+        st.pending = null;
+      } else {
+        target = { search: waiting, page: st.pending.page };
+        read = await askRead(tabId, 2);
+      }
+    } else {
+      st.pending = null;
     }
-    let read;
-    try {
-      read = await readPage(st, tour.queue[tour.idx], tour.page);
-    } catch (e) {
-      read = { hasData: true, count: 0, postalCounts: {}, error: String((e && e.message) || e) };
+
+    // 2. Sinon, ouvrir la recherche suivante dans l'onglet de la lecture, au premier plan.
+    if (!target) {
+      target = nextTarget(day);
+      if (!target) return finish();
+      tabId = await openIn(st, searchUrl(target.search, target.page));
+      await sleep(SETTLE_MS);
+      read = await askRead(tabId);
     }
-    const next = step(tour, read, Date.now(), st.paceMs || PACE_MS);
-    // Tournée coupée faute de données : la raison dit aussi ce que la page montrait (défi ou autre).
-    if (next.status === 'stopped' && read.diag && !read.hasData) next.reason = `${next.reason} · ${read.diag}`;
-    st.tour = next;
-    if (next.status !== 'running') {
-      st.lastDay = next.day;
-      await closeWindow(st);
+
+    // 3. Ce qui s'affiche : rien de lisible, une erreur d'envoi, ou une page lue.
+    if (!read.hasData) {
+      // Défi anti-robot, page vide ou refus : l'onglet reste ouvert, au premier plan, pour que Nathan le passe lui-même.
+      st.pending = { key: target.search.key, page: target.page };
+      await chrome.tabs.update(tabId, { active: true }).catch(() => {});
+      return finish();
     }
-    await save(st);
-    if (next.status === 'running') scheduleStep(next.nextAt - Date.now());
+    st.pending = null;
+    if (read.error) {
+      // La page est lisible mais l'envoi au Fil a échoué : rien n'est noté comme lu, un nouveau clic réessaie.
+      st.error = `lecture interrompue : ${read.error}`;
+      return finish();
+    }
+    day = record(day, target, read);
+    return finish();
   } finally {
     busy = false;
   }
 }
 
-// Démarre la tournée du jour (alarme de 10 h, rattrapage à l'ouverture de Chrome, ou à la demande).
-async function startTour({ force = false, delayMs = 0 } = {}) {
-  const st = await load();
-  const now = Date.now();
-  if (!force && !st.enabled) return { started: false, reason: 'désactivée' };
-  if (!force && st.lastDay === dayKey(now)) return { started: false, reason: 'déjà faite aujourd’hui' };
-  if (st.tour && st.tour.status === 'running' && st.tour.day === dayKey(now)) {
-    scheduleStep(st.tour.nextAt - now);
-    return { started: true, resumed: true };
-  }
-  if (!(await hasSyncKey())) {
-    st.tour = { ...newTour([], now), reason: 'synchro non activée : rien à envoyer au Fil' };
-    st.lastDay = dayKey(now);
-    await save(st);
-    return { started: false, reason: st.tour.reason };
-  }
-  const zones = (await chrome.storage.local.get(ZONES_KEY))[ZONES_KEY] || [];
-  const tour = newTour(buildQueue(zones), now);
-  tour.nextAt = now + delayMs;
-  st.tour = tour;
-  if (tour.status !== 'running') st.lastDay = tour.day;
-  await save(st);
-  if (tour.status === 'running') scheduleStep(delayMs);
-  return { started: tour.status === 'running', reason: tour.reason };
-}
-
-async function setEnabled(enabled) {
-  const st = await load();
-  st.enabled = !!enabled;
-  if (!st.enabled && st.tour && st.tour.status === 'running') {
-    st.tour = { ...st.tour, status: 'stopped', reason: 'tournée désactivée' };
-    await closeWindow(st);
-    if (chrome.alarms) chrome.alarms.clear(STEP_ALARM);
-  }
-  await save(st);
-  return st;
-}
-
-// Ce que le Fil affiche : état, dernière tournée, prochain passage.
-async function status() {
-  const st = await load();
-  const now = Date.now();
-  const t = st.tour;
-  return {
-    enabled: st.enabled,
-    nextRunAt: nextRunAt(now),
-    lastDay: st.lastDay,
-    tour: t
-      ? {
-          day: t.day,
-          status: t.status,
-          reason: t.reason,
-          startedAt: t.startedAt,
-          searches: t.queue.length,
-          current: t.status === 'running' ? t.queue[t.idx] && t.queue[t.idx].label : null,
-          ...summary(t),
-          notes: t.results.filter((r) => r && r.note).map((r) => `${r.label} : ${r.note}`),
-        }
-      : null,
-  };
-}
-
-// Mise en route : alarmes, reprise d'une tournée en cours, rattrapage à l'ouverture de Chrome.
+// Mise en route : nettoie la tournée automatique de 10 h des versions 0.28.0 à 0.29.2 (alarmes, état, fenêtre).
 export function initLbcTour() {
   if (!supported()) return;
-  scheduleDaily();
-  if (chrome.alarms) {
-    chrome.alarms.onAlarm.addListener((a) => {
-      if (a.name === DAILY_ALARM) {
-        scheduleDaily();
-        startTour().catch((e) => console.warn('[immodex tournée]', e));
-      } else if (a.name === STEP_ALARM) {
-        runStep().catch((e) => console.warn('[immodex tournée]', e));
-      }
-    });
-  }
-  chrome.runtime.onStartup.addListener(async () => {
-    const st = await load();
-    const now = Date.now();
-    if (st.tour && st.tour.status === 'running' && st.tour.day === dayKey(now)) {
-      scheduleStep(Math.max(STARTUP_DELAY_MS, st.tour.nextAt - now));
-    } else if (st.enabled && missedToday(now, st.lastDay)) {
-      await startTour({ delayMs: STARTUP_DELAY_MS });
-    }
-  });
-  // Le service worker vient de se réveiller au milieu d'une tournée : l'alarme de l'étape suivante existe-t-elle ?
-  load()
-    .then(async (st) => {
-      if (!st.tour || st.tour.status !== 'running' || !chrome.alarms) return;
-      if (!(await chrome.alarms.get(STEP_ALARM))) scheduleStep(st.tour.nextAt - Date.now());
+  if (chrome.alarms) for (const name of OLD_ALARMS) chrome.alarms.clear(name).catch(() => {});
+  chrome.storage.local
+    .get(OLD_STATE_KEY)
+    .then(async (items) => {
+      const old = items[OLD_STATE_KEY];
+      if (!old) return;
+      if (old.window && old.window.windowId != null) await chrome.windows.remove(old.window.windowId).catch(() => {});
+      await chrome.storage.local.remove(OLD_STATE_KEY);
     })
     .catch(() => {});
 }
 
-// Messages du Fil et du popup : état, activation, lancement immédiat.
+// Messages du Fil : état de la journée, lecture de la suivante.
 export function lbcTourMessage(message) {
   if (!supported()) return null;
-  if (message.type === 'LBC_TOUR_STATUS') return status().then((s) => ({ status: s }));
-  if (message.type === 'LBC_TOUR_SET') return setEnabled(message.enabled).then(status).then((s) => ({ status: s }));
-  if (message.type === 'LBC_TOUR_RUN_NOW') return startTour({ force: true }).then(async (r) => ({ ...r, status: await status() }));
+  if (message.type === 'LBC_GUIDED_STATUS') return status().then((s) => ({ status: s }));
+  if (message.type === 'LBC_GUIDED_NEXT') return readNext().then((s) => ({ status: s }));
   return null;
 }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { TOUR_HOUR, MAX_PAGES, MAX_PAGES_PER_DAY, dayKey, nextRunAt, missedToday, searchUrl, buildQueue, newTour, step, summary } from '../src/common/lbc-tour.js';
+import { TOUR_HOUR, MAX_PAGES, dayKey, nextRunAt, missedToday, searchUrl, buildQueue, newDay, refreshDay, nextTarget, record, skip, summary } from '../src/common/lbc-tour.js';
 
 const commune = (code, nom, codesPostaux) => ({ code, nom, codesPostaux, centre: null });
 const zone = (communes, type = null) => ({ id: 'z', name: 'Z', communes, type });
@@ -10,7 +10,7 @@ const LILLE = commune('59350', 'Lille', ['59000', '59160']);
 // Page lue par le contenu de la page : ce que l'extension renvoie au service worker.
 const page = (over = {}) => ({ hasData: true, total: 70, maxPages: 2, count: 35, postalCounts: { 59700: 35 }, seen: 35, added: 4, ...over });
 
-test('10 h : prochain passage aujourd’hui si l’heure n’est pas passée, sinon demain', () => {
+test('SeLoger s’appuie sur ces horaires : prochain passage aujourd’hui si l’heure n’est pas passée, sinon demain', () => {
   const morning = new Date(2026, 10, 9, 8, 30).getTime();
   const afternoon = new Date(2026, 10, 9, 14, 0).getTime();
   assert.equal(nextRunAt(morning), new Date(2026, 10, 9, TOUR_HOUR, 0).getTime());
@@ -65,125 +65,121 @@ test('file : une commune sans code postal est ignorée, pas de recherche au hasa
   assert.deepEqual(buildQueue(null), []);
 });
 
-test('tournée : deux pages puis la commune suivante, puis fin', () => {
+test('journée : la page 2 n’est proposée que si la page 1 était entièrement nouvelle', () => {
   const queue = buildQueue([zone([MARCQ, commune('59368', 'Mons-en-Barœul', ['59370'])])]);
-  let t = newTour(queue, 1000);
-  assert.equal(t.status, 'running');
-  assert.equal(t.page, 1);
-  t = step(t, page(), 2000);
-  assert.equal(t.status, 'running');
-  assert.equal(t.page, 2);
-  // Dernière page de la commune (maxPages = 2) : on passe à la suivante, page 1.
-  t = step(t, page({ added: 3 }), 3000);
-  assert.equal(t.idx, 1);
-  assert.equal(t.page, 1);
-  t = step(t, page({ postalCounts: { 59370: 20 }, count: 20, maxPages: 1 }), 4000);
-  assert.equal(t.status, 'done');
-  const s = summary(t);
-  assert.equal(s.pages, 3);
-  assert.equal(s.added, 4 + 3 + 4);
-  assert.equal(s.searches, 2);
+  let day = newDay(queue, 1000);
+  let target = nextTarget(day);
+  assert.equal(target.search.key, '59378|59700');
+  assert.equal(target.page, 1);
+  day = record(day, target, page({ maxPages: 5, seen: 35, added: 35 }));
+  target = nextTarget(day);
+  assert.equal(target.search.key, '59378|59700');
+  assert.equal(target.page, 2);
+  // Page 2 avec des annonces déjà connues : la commune est finie, on passe à la suivante.
+  day = record(day, target, page({ maxPages: 5, seen: 35, added: 10 }));
+  target = nextTarget(day);
+  assert.equal(target.search.key, '59368|59370');
+  assert.equal(target.page, 1);
 });
 
-test('tournée : le rythme entre deux pages est respecté', () => {
-  const t = step(newTour(buildQueue([zone([MARCQ])]), 1000), page(), 5000);
-  assert.ok(t.nextAt >= 5000 + 30_000);
+test('journée : page 1 avec des annonces déjà connues = commune finie tout de suite', () => {
+  const day = record(newDay(buildQueue([zone([MARCQ])]), 0), nextTarget(newDay(buildQueue([zone([MARCQ])]), 0)), page({ maxPages: 5, seen: 35, added: 4 }));
+  assert.equal(nextTarget(day), null);
 });
 
-test('tournée : page sans annonce nouvelle (à partir de la 2e) = commune suivante', () => {
-  const queue = buildQueue([zone([MARCQ, commune('59368', 'Mons-en-Barœul', ['59370'])])]);
-  let t = newTour(queue, 0);
-  t = step(t, page({ maxPages: 5, added: 6 }), 1);
-  assert.equal(t.page, 2);
-  t = step(t, page({ maxPages: 5, added: 0 }), 2);
-  assert.equal(t.idx, 1);
+test('journée : page déjà envoyée par une visite de Nathan (rien de nouveau à compter) = commune finie', () => {
+  const q = buildQueue([zone([MARCQ])]);
+  const day = record(newDay(q, 0), nextTarget(newDay(q, 0)), { hasData: true, count: 35, postalCounts: { 59700: 35 }, maxPages: 5 });
+  assert.equal(nextTarget(day), null);
 });
 
-test('tournée : jamais plus de pages que le plafond par recherche', () => {
-  let t = newTour(buildQueue([zone([MARCQ])]), 0);
-  for (let i = 1; i < MAX_PAGES; i++) t = step(t, page({ maxPages: 99, added: 5 }), i);
-  assert.equal(t.page, MAX_PAGES);
-  t = step(t, page({ maxPages: 99, added: 5 }), 100);
-  assert.equal(t.status, 'done');
-});
-
-test('tournée : aucune annonce dans la commune demandée = recherche non reconnue, on passe', () => {
-  const queue = buildQueue([zone([MARCQ, commune('59368', 'Mons-en-Barœul', ['59370'])])]);
-  let t = newTour(queue, 0);
-  // Leboncoin a répondu avec des annonces d’ailleurs : l’adresse de recherche n’a pas été comprise.
-  t = step(t, page({ postalCounts: { 75001: 35 } }), 1);
-  assert.equal(t.idx, 1);
-  assert.equal(t.status, 'running');
-  assert.match(t.results[0].note, /non reconnue/);
-});
-
-test('tournée : commune sans annonce = suivante, sans erreur', () => {
-  const queue = buildQueue([zone([MARCQ, commune('59368', 'Mons-en-Barœul', ['59370'])])]);
-  const t = step(newTour(queue, 0), page({ count: 0, postalCounts: {}, total: 0 }), 1);
-  assert.equal(t.idx, 1);
-  assert.equal(t.status, 'running');
-});
-
-test('tournée : arrêt net au premier refus, la raison est gardée', () => {
-  const queue = buildQueue([zone([MARCQ, commune('59368', 'Mons-en-Barœul', ['59370'])])]);
-  const t = step(newTour(queue, 0), { hasData: false, count: 0, postalCounts: {} }, 1);
-  assert.equal(t.status, 'stopped');
-  assert.match(t.reason, /refus|défi|anti-robot/i);
-  assert.equal(t.idx, 0);
-});
-
-test('tournée : erreur d’envoi (synchro absente, réseau) = arrêt avec le message', () => {
-  const t = step(newTour(buildQueue([zone([MARCQ])]), 0), { hasData: true, count: 35, postalCounts: { 59700: 35 }, error: 'synchro non activée' }, 1);
-  assert.equal(t.status, 'stopped');
-  assert.match(t.reason, /synchro non activée/);
-});
-
-test('tournée : plafond de pages par jour', () => {
-  const many = Array.from({ length: 60 }, (_, i) => commune(`590${String(i).padStart(2, '0')}`, `Commune ${i}`, [`590${String(i).padStart(2, '0')}`]));
-  let t = newTour(buildQueue([zone(many)]), 0);
-  let n = 0;
-  while (t.status === 'running' && n < 1000) {
-    const s = t.queue[t.idx];
-    t = step(t, page({ maxPages: 3, added: 5, postalCounts: { [s.postals[0]]: 35 } }), n++);
+test('journée : jamais plus de pages que le plafond par recherche', () => {
+  let day = newDay(buildQueue([zone([MARCQ])]), 0);
+  for (let i = 1; i <= MAX_PAGES; i++) {
+    const target = nextTarget(day);
+    assert.equal(target.page, i);
+    day = record(day, target, page({ maxPages: 99, seen: 35, added: 35 }));
   }
-  assert.equal(t.status, 'done');
-  assert.equal(summary(t).pages, MAX_PAGES_PER_DAY);
-  assert.match(t.reason, /limite/i);
+  assert.equal(nextTarget(day), null);
+  assert.equal(summary(day).pages, MAX_PAGES);
 });
 
-test('file vide : la tournée est terminée avant de commencer', () => {
-  const t = newTour([], 0);
-  assert.equal(t.status, 'done');
+test('journée : aucune annonce dans la commune demandée = recherche non reconnue, on passe', () => {
+  const queue = buildQueue([zone([MARCQ, commune('59368', 'Mons-en-Barœul', ['59370'])])]);
+  let day = newDay(queue, 0);
+  // Leboncoin a répondu avec des annonces d’ailleurs : l’adresse de recherche n’a pas été comprise.
+  day = record(day, nextTarget(day), page({ postalCounts: { 75001: 35 } }));
+  assert.equal(nextTarget(day).search.key, '59368|59370');
+  assert.match(summary(day).notes[0], /non reconnue/);
+});
+
+test('journée : commune sans annonce = suivante, sans erreur', () => {
+  const queue = buildQueue([zone([MARCQ, commune('59368', 'Mons-en-Barœul', ['59370'])])]);
+  let day = newDay(queue, 0);
+  day = record(day, nextTarget(day), page({ count: 0, postalCounts: {}, total: 0 }));
+  assert.equal(nextTarget(day).search.key, '59368|59370');
+});
+
+test('journée : tout lu = plus de cible, et le résumé compte les annonces', () => {
+  const queue = buildQueue([zone([MARCQ, commune('59368', 'Mons-en-Barœul', ['59370'])])]);
+  let day = newDay(queue, 0);
+  day = record(day, nextTarget(day), page({ maxPages: 1, seen: 30, added: 5 }));
+  day = record(day, nextTarget(day), page({ maxPages: 1, postalCounts: { 59370: 20 }, count: 20, seen: 20, added: 2 }));
+  assert.equal(nextTarget(day), null);
+  const s = summary(day);
+  assert.deepEqual([s.total, s.finished, s.pages, s.seen, s.added, s.next], [2, 2, 2, 50, 7, null]);
+});
+
+test('journée : une recherche laissée (test anti-robot non passé) est sautée, les autres continuent', () => {
+  const queue = buildQueue([zone([MARCQ, commune('59368', 'Mons-en-Barœul', ['59370'])])]);
+  const day = skip(newDay(queue, 0), '59378|59700', 'non lue');
+  assert.equal(nextTarget(day).search.key, '59368|59370');
+  assert.match(summary(day).notes[0], /non lue/);
+});
+
+test('journée : le lendemain repart de zéro, la même journée garde ce qui est lu', () => {
+  const queue = buildQueue([zone([MARCQ, LILLE])]);
+  const noon = new Date(2026, 10, 10, 12, 0).getTime();
+  let day = newDay(queue, noon);
+  day = record(day, nextTarget(day), page({ maxPages: 1 }));
+  assert.equal(summary(refreshDay(day, queue, noon + 3600_000)).finished, 1);
+  assert.equal(summary(refreshDay(day, queue, noon + 24 * 3600_000)).finished, 0);
+  // Une recherche retirée en cours de journée n’est plus comptée.
+  assert.equal(summary(refreshDay(day, buildQueue([zone([LILLE])]), noon)).total, 2);
+  assert.equal(summary(refreshDay(day, buildQueue([zone([LILLE])]), noon)).finished, 0);
+});
+
+test('file vide : rien à lire', () => {
+  const day = newDay([], 0);
+  assert.equal(nextTarget(day), null);
+  assert.equal(summary(day).total, 0);
 });
 
 // ─── Ligne « Leboncoin » du Fil ───
-import { tourText } from '../src/common/lbc-tour.js';
+import { guidedText } from '../src/common/lbc-tour.js';
 
-const NOW = new Date(2026, 10, 9, 15, 0).getTime();
-const TOMORROW_10 = new Date(2026, 10, 10, 10, 0).getTime();
-const tourOf = (over) => ({ day: '2026-11-09', status: 'done', reason: null, startedAt: new Date(2026, 10, 9, 10, 0).getTime(), searches: 3, pages: 9, count: 280, seen: 214, added: 12, current: null, notes: [], ...over });
-const status = (over = {}) => ({ enabled: true, nextRunAt: TOMORROW_10, lastDay: '2026-11-09', tour: tourOf(), ...over });
+const state = (over = {}) => ({ total: 12, finished: 0, seen: 0, added: 0, next: 'Marcq-en-Barœul 59700', waiting: null, error: null, ...over });
 
-test('ligne Leboncoin : tournée faite aujourd’hui', () => {
-  assert.equal(tourText(status(), NOW), 'Leboncoin : lu aujourd’hui à 10 h 00 : 214 annonces de vos communes lues, 12 nouvelles. Prochain passage demain à 10 h 00.');
+test('ligne Leboncoin : rien lu encore, avec la prochaine commune', () => {
+  assert.equal(guidedText(state()), 'Leboncoin : lecture guidée, 0 commune sur 12 lue aujourd’hui. Suivante : Marcq-en-Barœul 59700.');
 });
 
-test('ligne Leboncoin : interruption, avec la raison et la reprise', () => {
-  const t = tourText(status({ tour: tourOf({ status: 'stopped', pages: 4, reason: 'Leboncoin n’a pas renvoyé la liste (refus ou défi anti-robot)' }) }), NOW);
-  assert.match(t, /^Leboncoin : lecture interrompue aujourd’hui après 4 pages \(Leboncoin n’a pas renvoyé la liste/);
-  assert.match(t, /Reprise demain à 10 h 00\.$/);
+test('ligne Leboncoin : en cours de journée', () => {
+  assert.equal(
+    guidedText(state({ finished: 7, seen: 214, added: 12, next: 'Lille 59000, page 2' })),
+    'Leboncoin : lecture guidée, 7 communes sur 12 lues aujourd’hui (214 annonces de tes communes lues, 12 nouvelles). Suivante : Lille 59000, page 2.'
+  );
 });
 
-test('ligne Leboncoin : en cours, jamais lancée, désactivée, sans recherche', () => {
-  assert.match(tourText(status({ tour: tourOf({ status: 'running', current: 'Marcq-en-Barœul 59700', pages: 2 }) }), NOW), /lecture en cours \(Marcq-en-Barœul 59700\), 2 pages lues\./);
-  assert.match(tourText(status({ tour: null }), NOW), /chaque jour à 10 h, Chrome ouvert\. Prochain passage demain à 10 h 00\./);
-  assert.equal(tourText(status({ enabled: false }), NOW), 'Leboncoin : lecture automatique désactivée.');
-  assert.match(tourText(status({ tour: tourOf({ searches: 0, reason: 'aucune commune suivie' }) }), NOW), /rien lu aujourd’hui \(aucune commune suivie\)/);
+test('ligne Leboncoin : tout lu', () => {
+  assert.equal(
+    guidedText(state({ finished: 12, seen: 300, added: 1, next: null })),
+    'Leboncoin : toutes les communes sont lues aujourd’hui (300 annonces de tes communes lues, 1 nouvelle). Prochaine lecture demain.'
+  );
 });
 
-test('ligne Leboncoin : tournée d’un autre jour et passage prévu aujourd’hui', () => {
-  const old = tourOf({ day: '2026-11-08', startedAt: new Date(2026, 10, 8, 10, 0).getTime() });
-  const t = tourText(status({ tour: old, nextRunAt: new Date(2026, 10, 9, 18, 0).getTime() }), NOW);
-  assert.match(t, /^Leboncoin : lu le 8 novembre à 10 h 00/);
-  assert.match(t, /Prochain passage aujourd’hui à 18 h 00\.$/);
+test('ligne Leboncoin : test anti-robot à passer, aucune commune, erreur', () => {
+  assert.match(guidedText(state({ waiting: 'Lille 59000' })), /^Leboncoin : Lille 59000 attend ta vérification anti-robot dans l’onglet ouvert\..*« Lire la suivante »\.$/);
+  assert.equal(guidedText(state({ total: 0, next: null })), 'Leboncoin : aucune commune suivie, rien à lire.');
+  assert.equal(guidedText(state({ error: 'lecture interrompue : envoi refusé' })), 'Leboncoin : lecture interrompue : envoi refusé');
 });

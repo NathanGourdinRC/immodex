@@ -1,7 +1,7 @@
 // Page de résultats ouverte dans le navigateur (Leboncoin, PAP, Bien'ici, SeLoger) : les annonces
 // affichées sont envoyées au Fil, une fois par page. Ce script ne clique sur rien et n'ouvre aucune
-// page : seule la tournée quotidienne de Leboncoin (src/background/lbc-tour-runner.js) ouvre des
-// recherches, et c'est elle qui réclame le résultat ci-dessous. Un petit message confirme ce qui a
+// page : seule la lecture guidée de Leboncoin (src/background/lbc-tour-runner.js) ouvre une recherche,
+// à chaque clic de Nathan, et c'est elle qui réclame le résultat ci-dessous. Un petit message confirme ce qui a
 // été lu.
 (function () {
   'use strict';
@@ -22,14 +22,14 @@
   }
 
   // Lire la page a un coût (gros bloc de données chez SeLoger) : seulement si elle a changé.
-  // Le résultat de la dernière lecture est gardé : la tournée quotidienne de Leboncoin (service
+  // Le résultat de la dernière lecture est gardé : la lecture guidée de Leboncoin (service
   // worker) le réclame sans relire ni renvoyer la page une seconde fois.
   let signature = '';
   let last = null;
   let running = null;
 
   // Ce que la page montre quand rien n'est lisible : sert à savoir, dans la ligne du Fil, si le site a
-  // renvoyé un défi anti-robot, une page vide ou autre chose (la tournée s'arrête dans tous les cas).
+  // renvoyé un défi anti-robot, une page vide ou autre chose (la lecture guidée attend alors que Nathan passe le test).
   function diagnose() {
     const captcha = !!document.querySelector('iframe[src*="captcha-delivery"], iframe[src*="datadome"], script[src*="captcha-delivery"]');
     const data = !!document.getElementById('__NEXT_DATA__') || !!document.getElementById('__UFRN_FETCHER__');
@@ -92,8 +92,8 @@
     return running;
   }
 
-  // Tournée quotidienne : le service worker ouvre la recherche dans une fenêtre réduite (où le
-  // minuteur ci-dessous ne lit pas) et réclame ce qui a été lu et envoyé.
+  // Lecture guidée : à un clic de Nathan, le service worker ouvre la recherche dans son onglet et
+  // réclame ce qui a été lu et envoyé.
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (!message || message.type !== 'LBC_TOUR_READ') return false;
     capture().then((r) => sendResponse(r || { hasData: false, count: 0, postalCounts: {} }));
