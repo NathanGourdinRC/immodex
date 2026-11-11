@@ -49,6 +49,48 @@ test('deux biens voisins publiés chacun sur trois sources restent deux groupes'
   }
 });
 
+// Toutes les façons d'ordonner une liste (la base ne garantit aucun ordre d'arrivée).
+const permutations = (list) => (list.length <= 1 ? [list] : list.flatMap((x, i) => permutations([...list.slice(0, i), ...list.slice(i + 1)]).map((rest) => [x, ...rest])));
+
+// Cas réel (La Madeleine) : deux maisons de 127 m², 5 pièces, 4 chambres, à 1 000 € d'écart, chacune
+// sur Leboncoin et SeLoger. Seule la première donne un terrain et un DPE. Selon l'ordre d'arrivée,
+// l'annonce Leboncoin pauvre en détails prenait la place de la bonne : chaque carte réunissait
+// l'annonce d'une maison et celle de l'autre, et l'annonce déjà écartée revenait avec le mauvais bien.
+test('deux maisons jumelles sur Leboncoin et SeLoger : mêmes groupes, quel que soit l’ordre d’arrivée', () => {
+  const house = { surface: 127, pieces: 5, chambres: 4 };
+  const sl1 = base({ id: 'seloger:/269', source: 'seloger', url: 'https://www.seloger.com/269', ...house, price: 439000, terrain: 147, energyClass: 'C', energyConsumption: 170, gesEmission: 28, firstSeen: NOW - 3 * DAY });
+  const lbc1 = base({ id: 'leboncoin:/3245', source: 'leboncoin', url: 'https://www.leboncoin.fr/3245', ...house, price: 439000, terrain: 147, energyClass: 'C', firstSeen: NOW - 2 * DAY });
+  const sup = base({ id: 'superimmo:/x', source: 'superimmo', url: 'https://www.superimmo.com/x', surface: 127, price: 439000, firstSeen: NOW - 2 * DAY });
+  const lbc2 = base({ id: 'leboncoin:/3301', source: 'leboncoin', url: 'https://www.leboncoin.fr/3301', ...house, price: 440000, firstSeen: NOW - 2 * DAY });
+  const sl2 = base({ id: 'seloger:/26TT', source: 'seloger', url: 'https://www.seloger.com/26TT', ...house, price: 440000, firstSeen: NOW - DAY });
+  for (const order of permutations([sl1, lbc1, sup, lbc2, sl2])) {
+    const groups = groupListings(order);
+    assert.equal(groups.length, 2, order.map((l) => l.id).join(' '));
+    const urlsOf = (l) => groups.find((g) => g.listings.includes(l)).listings.map((m) => m.url).sort();
+    assert.deepEqual(urlsOf(lbc2), [lbc2.url, sl2.url].sort(), 'la maison sans détails : ses deux annonces ensemble');
+    assert.ok(urlsOf(lbc1).includes(sl1.url), 'la maison au terrain de 147 m² : ses deux annonces ensemble');
+  }
+});
+
+// Cas réel (Marcq-en-Barœul) : l'annonce Leboncoin à 460 k€ (classe E) prenait la place de l'annonce
+// Leboncoin à 445 k€ (classe C, terrain 260 m²) dans le groupe du SeLoger à 445 k€ : le bon bien
+// restait seul, donc « nouveau » alors qu'il avait déjà été écarté sous une autre adresse.
+test('une classe énergie différente prouve deux biens, et la bonne annonce rejoint son groupe', () => {
+  const sl = base({ id: 'seloger:/267', source: 'seloger', url: 'https://www.seloger.com/267', surface: 100, pieces: 5, chambres: 4, terrain: 260, energyClass: 'C', price: 445000, firstSeen: NOW - 3 * DAY });
+  const lbcSame = base({ id: 'leboncoin:/3276', source: 'leboncoin', url: 'https://www.leboncoin.fr/3276', surface: 100, pieces: 5, chambres: 4, terrain: 260, energyClass: 'C', price: 445000, firstSeen: NOW - 2 * DAY });
+  const lbcOther = base({ id: 'leboncoin:/3284', source: 'leboncoin', url: 'https://www.leboncoin.fr/3284', surface: 100, pieces: 5, chambres: 4, energyClass: 'E', price: 460000, firstSeen: NOW - 2 * DAY });
+  for (const order of permutations([sl, lbcSame, lbcOther])) {
+    const groups = groupListings(order);
+    assert.equal(groups.length, 2, order.map((l) => l.id).join(' '));
+    assert.deepEqual(groups.find((g) => g.listings.includes(sl)).listings.map((l) => l.url).sort(), [lbcSame.url, sl.url].sort());
+  }
+  // Même sans les autres annonces : deux maisons, classes C et E, ne se réunissent pas.
+  const mk = (id, source, energyClass) => base({ id: `${source}:/${id}`, source, url: `https://exemple.fr/${id}`, surface: 100, price: 300000, energyClass });
+  assert.equal(groupListings([mk('a', 'orpi', 'C'), mk('b', 'pap', 'E')]).length, 2);
+  assert.equal(groupListings([mk('a', 'orpi', 'C'), mk('b', 'pap', 'C')]).length, 1);
+  assert.equal(groupListings([mk('a', 'orpi', 'C'), mk('b', 'pap', null)]).length, 1);
+});
+
 test('sans DPE : deux annonces en ligne de la même source ne forment pas un même bien', () => {
   const a = base({ id: 'leboncoin:/1', source: 'leboncoin', url: 'https://www.leboncoin.fr/1', surface: 80, price: 300000 });
   const b = base({ id: 'leboncoin:/2', source: 'leboncoin', url: 'https://www.leboncoin.fr/2', surface: 80, price: 305000 });
@@ -144,6 +186,22 @@ test('statut d’un bien : retrouvé sous n’importe quelle adresse de ses anno
   assert.equal(trackingKeyOf(g, { 'https://www.jinka.fr/annonce/42': { note: 'cave humide' } }, seen), 'https://www.jinka.fr/annonce/42');
   // Rien de connu : la clé du groupe.
   assert.equal(trackingKeyOf(g, {}), g.key);
+});
+
+// Cas réel : un bien écarté sous l'adresse d'une de ses annonces revenait comme non écarté, parce
+// qu'une autre de ses annonces portait seulement un « ouvert » (clic sur la carte) et passait d'abord.
+test('statut d’un bien : un verdict (écarté, gardé) passe avant un simple « ouvert » ou une note sur une autre annonce', () => {
+  const a = base({ id: 'maes:/x', source: 'maes', url: 'https://www.maesimmobilier.fr/bien-immobilier/x/', surface: 109, energyConsumption: 224, gesEmission: 32, firstSeen: NOW - 12 * DAY });
+  const b = base({ id: 'lesiteimmo:/1', source: 'lesiteimmo', url: 'https://www.lesiteimmo.com/acheter/maison-5pieces/wambrechies-59118/1', surface: 109, energyConsumption: 224, gesEmission: 32 });
+  const [g] = groupListings([a, b]);
+  assert.equal(g.key, a.url, 'la clé du groupe est l’annonce la plus ancienne');
+  assert.equal(trackingKeyOf(g, { [a.url]: { opened: NOW }, [b.url]: { status: 'ecarte' } }), b.url);
+  assert.equal(trackingKeyOf(g, { [a.url]: { note: 'cave humide' }, [b.url]: { status: 'favori' } }), b.url);
+  // Un verdict d'une annonce vue du même bien passe aussi avant un « ouvert » de la clé du groupe.
+  const seen = new Map([[b.url, 'https://www.jinka.fr/annonce/42']]);
+  assert.equal(trackingKeyOf(g, { [a.url]: { opened: NOW }, 'https://www.jinka.fr/annonce/42': { status: 'ecarte' } }, seen), 'https://www.jinka.fr/annonce/42');
+  // Sans verdict nulle part : la première annonce suivie, comme avant.
+  assert.equal(trackingKeyOf(g, { [b.url]: { opened: NOW } }), b.url);
 });
 
 test('marge de négociation : écart entre le premier prix affiché et le prix signé, à partir de 3 ventes reliées', () => {

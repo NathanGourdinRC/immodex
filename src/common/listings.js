@@ -38,8 +38,23 @@ function contradicts(a, b) {
   if (differs(a.chambres, b.chambres) || differs(a.pieces, b.pieces)) return true;
   // Le terrain est arrondi ou mal lu selon les sites : 10 % de marge.
   if (a.terrain != null && b.terrain != null && differs(a.terrain, b.terrain, 0.1 * Math.max(a.terrain, b.terrain))) return true;
+  // Une lettre de DPE connue des deux côtés et différente (E d'un côté, C de l'autre) : deux biens.
+  if (a.energyClass && b.energyClass && a.energyClass !== b.energyClass) return true;
   return false;
 }
+
+// Détails qui, connus des deux annonces et identiques, rapprochent deux annonces (l'inverse de
+// `contradicts`). Sert à choisir le bon groupe quand plusieurs conviennent.
+function agreements(a, b) {
+  let n = 0;
+  if (a.terrain != null && b.terrain != null && !differs(a.terrain, b.terrain, 0.1 * Math.max(a.terrain, b.terrain))) n++;
+  for (const f of ['energyClass', 'pieces', 'chambres']) if (a[f] != null && a[f] !== '' && a[f] === b[f]) n++;
+  if (a.price && a.price === b.price) n++;
+  return n;
+}
+
+// Nombre de détails que l'annonce renseigne : plus il est grand, plus elle ancre son groupe.
+const richness = (l) => ['terrain', 'energyClass', 'pieces', 'chambres'].filter((f) => l[f] != null && l[f] !== '').length;
 
 // Même bien : mêmes valeurs de DPE et surface à 1 m² près (sûr), ou à défaut même commune,
 // même type, surface à 1 m² près et prix à 5 % près, sans aucun détail qui les contredise
@@ -71,26 +86,28 @@ function fitsGroup(l, g) {
 
 function groupListings(listings) {
   const groups = [];
-  // Les annonces avec DPE d'abord : elles forment des groupes solides auxquels les annonces
-  // sans DPE se rattachent ensuite, quel que soit l'ordre d'arrivée.
-  const ordered = [...listings].sort((a, b) => (b.energyConsumption != null) - (a.energyConsumption != null));
+  // Ordre de traitement fixe, jamais celui d'arrivée (la base n'en garantit aucun : selon lui, une
+  // annonce pauvre en détails prenait la place de la bonne et laissait celle-ci seule, ou réunissait
+  // deux maisons jumelles). D'abord les annonces avec DPE, qui forment des groupes solides ; puis
+  // les plus riches en détails (terrain, classe, pièces, chambres) ; à égalité la plus ancienne.
+  const ordered = [...listings].sort(
+    (a, b) => (b.energyConsumption != null) - (a.energyConsumption != null) || richness(b) - richness(a) || a.firstSeen - b.firstSeen || (a.url < b.url ? -1 : a.url > b.url ? 1 : 0)
+  );
   for (const l of ordered) {
     // Meilleur groupe : celui qui partage le DPE de l'annonce (sûr) avant un simple air de
-    // ressemblance (probable), à égalité le plus ancien.
+    // ressemblance (probable), puis celui où le plus de détails concordent, à égalité le premier posé.
     let target = null;
-    let how = null;
     for (const g of groups) {
       if (!fitsGroup(l, g)) continue;
       const levels = g.listings.map((other) => sameProperty(l, other));
-      const s = levels.includes('sure') ? 'sure' : levels.includes('probable') ? 'probable' : null;
-      if (s && (!target || (s === 'sure' && how === 'probable'))) {
-        target = g;
-        how = s;
-      }
+      const how = levels.includes('sure') ? 'sure' : levels.includes('probable') ? 'probable' : null;
+      if (!how) continue;
+      const affinity = Math.max(...g.listings.map((other) => agreements(l, other)));
+      if (!target || (how === 'sure' && target.how === 'probable') || (how === target.how && affinity > target.affinity)) target = { g, how, affinity };
     }
     if (target) {
-      target.listings.push(l);
-      if (how === 'probable') target.probable = true;
+      target.g.listings.push(l);
+      if (target.how === 'probable') target.g.probable = true;
     } else groups.push({ listings: [l], probable: false });
   }
   for (const g of groups) {
@@ -215,7 +232,9 @@ function urlKey(url) {
 function trackingKeyOf(g, tracking, seenByUrl = new Map()) {
   const urls = g.listings.map((l) => l.url);
   const candidates = [g.key, ...urls, ...urls.map((u) => seenByUrl.get(urlKey(u))).filter(Boolean)];
-  return candidates.find((k) => tracking[k]) || g.key;
+  // Un verdict (écarté, gardé…) passe avant un simple « ouvert » ou une note posés sur une autre
+  // annonce du même bien : sans cela, un bien écarté revenait comme non écarté.
+  return candidates.find((k) => tracking[k] && tracking[k].status) || candidates.find((k) => tracking[k]) || g.key;
 }
 
 // Vente DVF reliée à un bien retiré (sûre de préférence), avec l'écart en % entre le premier
