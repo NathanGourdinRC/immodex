@@ -31,13 +31,14 @@ const differs = (x, y, tolerance = 0) => x != null && y != null && Math.abs(x - 
 // Preuve que ce sont deux biens : un détail connu des deux annonces et incompatible. Les
 // annonces d'un même bien disent la même chose sur les chambres, les pièces et le terrain ;
 // deux maisons voisines de même surface et de prix proche, non.
-function contradicts(a, b) {
+// `ignoreTerrain` : le terrain n'est pas un indice fiable pour ce bien (voir fitsGroup).
+function contradicts(a, b, ignoreTerrain = false) {
   if (a.insee !== b.insee) return true;
   if (a.type && b.type && a.type !== b.type) return true;
   if (differs(a.surface, b.surface, 1)) return true;
   if (differs(a.chambres, b.chambres) || differs(a.pieces, b.pieces)) return true;
   // Le terrain est arrondi ou mal lu selon les sites : 10 % de marge.
-  if (a.terrain != null && b.terrain != null && differs(a.terrain, b.terrain, 0.1 * Math.max(a.terrain, b.terrain))) return true;
+  if (!ignoreTerrain && a.terrain != null && b.terrain != null && differs(a.terrain, b.terrain, 0.1 * Math.max(a.terrain, b.terrain))) return true;
   // Une lettre de DPE connue des deux côtés et différente (E d'un côté, C de l'autre) : deux biens.
   if (a.energyClass && b.energyClass && a.energyClass !== b.energyClass) return true;
   return false;
@@ -74,10 +75,15 @@ function sameProperty(a, b) {
 // deux annonces en ligne de la même source (une source publie un bien une fois, une annonce
 // retirée puis republiée reste reliée).
 function fitsGroup(l, g) {
+  // Le groupe (réuni par le DPE) contient déjà deux terrains en désaccord : les sites lisent le
+  // terrain différemment pour ce bien (45 m² pour les uns, 775 m² pour les autres). Le terrain
+  // ne prouve plus rien ici, sinon il refuserait chaque annonce qui ne dit pas comme tous les membres.
+  const terrains = g.listings.map((m) => m.terrain).filter((t) => t != null);
+  const terrainUnreliable = terrains.length > 1 && differs(Math.max(...terrains), Math.min(...terrains), 0.1 * Math.max(...terrains));
   return g.listings.every((m) => {
     if (sameProperty(l, m) === 'sure') return true;
     if (l.energyConsumption != null && m.energyConsumption != null) return false;
-    if (contradicts(l, m)) return false;
+    if (contradicts(l, m, terrainUnreliable)) return false;
     // Le prix doit rester à 5 % de chaque membre, pas seulement du voisin (sinon 420 k€ → 400 k€ → 389 k€ s'enchaînent).
     if (l.price && m.price && Math.abs(l.price - m.price) > 0.05 * Math.max(l.price, m.price)) return false;
     return !(l.source === m.source && !l.removedAt && !m.removedAt);

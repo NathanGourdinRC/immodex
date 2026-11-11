@@ -91,6 +91,35 @@ test('une classe énergie différente prouve deux biens, et la bonne annonce rej
   assert.equal(groupListings([mk('a', 'orpi', 'C'), mk('b', 'pap', null)]).length, 1);
 });
 
+// Cas réel (Lompret) : un seul bien sur six sites, mais les sources ne s'accordent pas sur le terrain
+// (45 m² pour iad et lesiteimmo, 775 m² pour les trois autres). Le DPE réunit déjà un 45 et un 775 :
+// le terrain est prouvé peu fiable pour ce bien, il ne doit plus bloquer les autres annonces.
+test('terrain lu différemment par les sources : un bien déjà réuni par le DPE n’est pas coupé en trois cartes', () => {
+  const house = { insee: '59356', surface: 119, pieces: 3, chambres: 2, price: 399000, energyClass: 'F' };
+  const mk = (source, o) => base({ id: `${source}:/lompret`, source, url: `https://${source}.example/lompret`, ...house, ...o });
+  const listings = [
+    mk('paruvendu', { terrain: 775, energyConsumption: 371, gesEmission: 82 }),
+    mk('lesiteimmo', { terrain: 45, energyConsumption: 371, gesEmission: 82 }),
+    mk('superimmo', { terrain: null, pieces: null, chambres: null, energyClass: null }),
+    mk('iad', { terrain: 45 }),
+    mk('seloger', { terrain: 775 }),
+    mk('leboncoin', { terrain: 775 }),
+  ];
+  for (const order of permutations(listings)) {
+    const groups = groupListings(order);
+    assert.equal(groups.length, 1, order.map((l) => l.source).join(' '));
+    assert.equal(groups[0].listings.length, 6);
+  }
+});
+
+test('terrain : sans désaccord déjà prouvé dans le groupe, un terrain différent reste la preuve de deux biens', () => {
+  const house = { surface: 119, pieces: 3, chambres: 2, price: 399000, energyClass: 'F' };
+  const mk = (source, terrain, o) => base({ id: `${source}:/x`, source, url: `https://${source}.example/x`, ...house, terrain, ...o });
+  // Le groupe du DPE a un terrain cohérent (45 et 45) : une annonce à 775 m² est un autre bien.
+  const groups = groupListings([mk('paruvendu', 45, { energyConsumption: 371, gesEmission: 82 }), mk('lesiteimmo', 45, { energyConsumption: 371, gesEmission: 82 }), mk('seloger', 775)]);
+  assert.equal(groups.length, 2);
+});
+
 test('sans DPE : deux annonces en ligne de la même source ne forment pas un même bien', () => {
   const a = base({ id: 'leboncoin:/1', source: 'leboncoin', url: 'https://www.leboncoin.fr/1', surface: 80, price: 300000 });
   const b = base({ id: 'leboncoin:/2', source: 'leboncoin', url: 'https://www.leboncoin.fr/2', surface: 80, price: 305000 });
