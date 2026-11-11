@@ -233,6 +233,25 @@ test('statut d’un bien : un verdict (écarté, gardé) passe avant un simple �
   assert.equal(trackingKeyOf(g, { [b.url]: { opened: NOW } }), b.url);
 });
 
+// Deux annonces d'un même bien peuvent porter deux verdicts (l'une gardée, l'autre écartée, cas des
+// cartes d'abord séparées puis réunies). Écarté l'emporte, quel que soit l'ordre : un bien refusé
+// ne doit pas revenir dans le fil parce qu'une autre de ses annonces avait été gardée.
+test('statut d’un bien : « écarté » l’emporte sur « gardé » quand deux annonces du même bien portent chacune un verdict', () => {
+  const a = base({ id: 'maes:/x', source: 'maes', url: 'https://www.maesimmobilier.fr/bien-immobilier/x/', surface: 109, energyConsumption: 224, gesEmission: 32, firstSeen: NOW - 12 * DAY });
+  const b = base({ id: 'lesiteimmo:/1', source: 'lesiteimmo', url: 'https://www.lesiteimmo.com/acheter/maison-5pieces/wambrechies-59118/1', surface: 109, energyConsumption: 224, gesEmission: 32 });
+  const [g] = groupListings([a, b]);
+  assert.equal(g.key, a.url);
+  // Gardé sur la clé du groupe (trouvée en premier), écarté sur l'autre annonce : écarté gagne.
+  assert.equal(trackingKeyOf(g, { [a.url]: { status: 'favori' }, [b.url]: { status: 'ecarte' } }), b.url);
+  // Même résultat dans l'autre sens.
+  assert.equal(trackingKeyOf(g, { [a.url]: { status: 'ecarte' }, [b.url]: { status: 'favori' } }), a.url);
+  // Verdict écarté posé sous l'adresse d'une annonce vue du même bien.
+  const seen = new Map([[b.url, 'https://www.jinka.fr/annonce/42']]);
+  assert.equal(trackingKeyOf(g, { [a.url]: { status: 'favori' }, 'https://www.jinka.fr/annonce/42': { status: 'ecarte' } }, seen), 'https://www.jinka.fr/annonce/42');
+  // Deux « gardé » : le premier trouvé, comme avant.
+  assert.equal(trackingKeyOf(g, { [a.url]: { status: 'favori' }, [b.url]: { status: 'favori' } }), a.url);
+});
+
 test('marge de négociation : écart entre le premier prix affiché et le prix signé, à partir de 3 ventes reliées', () => {
   const sold = (id, first, signed, how = 'probable') => base({ id, source: 'orpi', url: `https://www.orpi.com/${id}`, price: first, prices: [{ at: 1, price: first }], removedAt: NOW - 90 * DAY, sale: { date: '2027-04-10', price: signed, pricePerM2: 4000, how } });
   const two = groupListings([sold('a', 500000, 465000), sold('b', 300000, 291000)]);

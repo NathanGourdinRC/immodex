@@ -239,8 +239,15 @@ function trackingKeyOf(g, tracking, seenByUrl = new Map()) {
   const urls = g.listings.map((l) => l.url);
   const candidates = [g.key, ...urls, ...urls.map((u) => seenByUrl.get(urlKey(u))).filter(Boolean)];
   // Un verdict (écarté, gardé…) passe avant un simple « ouvert » ou une note posés sur une autre
-  // annonce du même bien : sans cela, un bien écarté revenait comme non écarté.
-  return candidates.find((k) => tracking[k] && tracking[k].status) || candidates.find((k) => tracking[k]) || g.key;
+  // annonce du même bien : sans cela, un bien écarté revenait comme non écarté. Et si deux annonces
+  // du bien portent deux verdicts, « écarté » l'emporte : un bien refusé ne doit pas revenir parce
+  // qu'une autre de ses annonces avait été gardée.
+  return (
+    candidates.find((k) => tracking[k] && tracking[k].status === 'ecarte') ||
+    candidates.find((k) => tracking[k] && tracking[k].status) ||
+    candidates.find((k) => tracking[k]) ||
+    g.key
+  );
 }
 
 // Vente DVF reliée à un bien retiré (sûre de préférence), avec l'écart en % entre le premier
