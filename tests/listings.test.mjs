@@ -29,6 +29,50 @@ test('sans DPE : même commune, même type, surface à 1 m² et prix à 5 % → 
   assert.equal(groups.find((g) => g.listings.length === 2).probable, true);
 });
 
+// Cas réel (Marcq-en-Barœul) : deux maisons voisines, chacune sur Deleu, SeLoger et Leboncoin.
+// L'annonce Leboncoin sans DPE de A ressemble à B (surface, prix à 5 %) : elle ne doit pas
+// ramener tout B dans le groupe de A.
+test('deux biens voisins publiés chacun sur trois sources restent deux groupes', () => {
+  const A = { surface: 110, price: 420000, pieces: 5, chambres: 4, terrain: 350 };
+  const B = { surface: 109, price: 416000, pieces: 4, chambres: 3 };
+  const a1 = base({ id: 'deleu:/a', source: 'deleu', url: 'https://deleu.fr/a', ...A, energyConsumption: 147, gesEmission: 30 });
+  const a2 = base({ id: 'seloger:/a', source: 'seloger', url: 'https://www.seloger.com/a', ...A, energyConsumption: 147, gesEmission: 30 });
+  const a3 = base({ id: 'leboncoin:/a', source: 'leboncoin', url: 'https://www.leboncoin.fr/a', ...A });
+  const b1 = base({ id: 'deleu:/b', source: 'deleu', url: 'https://deleu.fr/b', ...B, energyConsumption: 112, gesEmission: 4 });
+  const b2 = base({ id: 'seloger:/b', source: 'seloger', url: 'https://www.seloger.com/b', ...B, terrain: 100 });
+  const b3 = base({ id: 'leboncoin:/b', source: 'leboncoin', url: 'https://www.leboncoin.fr/b', ...B });
+  for (const order of [[a1, a2, a3, b1, b2, b3], [a3, b3, b2, a2, b1, a1], [b1, a3, a1, b3, a2, b2]]) {
+    const groups = groupListings(order);
+    assert.equal(groups.length, 2);
+    for (const g of groups) assert.deepEqual(g.listings.map((l) => l.source).sort(), ['deleu', 'leboncoin', 'seloger']);
+    for (const g of groups) assert.equal(new Set(g.listings.map((l) => l.url.slice(-1))).size, 1, 'a et b ne se mélangent pas');
+  }
+});
+
+test('sans DPE : deux annonces en ligne de la même source ne forment pas un même bien', () => {
+  const a = base({ id: 'leboncoin:/1', source: 'leboncoin', url: 'https://www.leboncoin.fr/1', surface: 80, price: 300000 });
+  const b = base({ id: 'leboncoin:/2', source: 'leboncoin', url: 'https://www.leboncoin.fr/2', surface: 80, price: 305000 });
+  assert.equal(groupListings([a, b]).length, 2);
+  // l'ancienne annonce retirée puis republiée par la même source reste reliée
+  assert.equal(groupListings([{ ...a, removedAt: NOW - DAY }, b]).length, 1);
+});
+
+test('sans DPE : les prix ne s’enchaînent pas (420 k€ → 400 k€ → 389 k€ = trois biens, pas un)', () => {
+  const mk = (id, source, price) => base({ id: `${source}:/${id}`, source, url: `https://exemple.fr/${id}`, surface: 110, price });
+  const groups = groupListings([mk('a', 'orpi', 420000), mk('b', 'paruvendu', 400000), mk('c', 'pap', 389000)]);
+  assert.equal(groups.length, 2);
+  assert.ok(groups.every((g) => g.listings.every((l) => g.listings.every((m) => Math.abs(l.price - m.price) <= 0.05 * Math.max(l.price, m.price)))));
+});
+
+test('sans DPE : chambres, pièces ou terrain différents → deux biens', () => {
+  const mk = (id, o) => base({ id: `orpi:/${id}`, source: id === 'x' ? 'orpi' : 'paruvendu', url: `https://exemple.fr/${id}`, surface: 90, price: 300000, ...o });
+  assert.equal(groupListings([mk('x', { chambres: 3 }), mk('y', { chambres: 4 })]).length, 2);
+  assert.equal(groupListings([mk('x', { pieces: 4 }), mk('y', { pieces: 5 })]).length, 2);
+  assert.equal(groupListings([mk('x', { terrain: 350 }), mk('y', { terrain: 100 })]).length, 2);
+  // un champ absent d'un côté ne bloque pas
+  assert.equal(groupListings([mk('x', { chambres: 3, terrain: 350 }), mk('y', {})]).length, 1);
+});
+
 test('statut : retiré, prix baissé (avec l’écart), nouveau depuis la dernière visite', () => {
   const [removed] = groupListings([base({ id: 'x:/r', source: 'orpi', url: 'https://www.orpi.com/r', removedAt: NOW - DAY })]);
   assert.deepEqual(statusOf(removed, NOW - 3 * DAY, NOW), { status: 'retire' });

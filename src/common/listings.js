@@ -25,32 +25,68 @@ const addressKey = (a) =>
 
 const close = (a, b, tolerance) => a != null && b != null && Math.abs(a - b) <= tolerance;
 
+// Deux valeurs connues des deux côtés et différentes (une valeur absente ne contredit rien).
+const differs = (x, y, tolerance = 0) => x != null && y != null && Math.abs(x - y) > tolerance;
+
+// Preuve que ce sont deux biens : un détail connu des deux annonces et incompatible. Les
+// annonces d'un même bien disent la même chose sur les chambres, les pièces et le terrain ;
+// deux maisons voisines de même surface et de prix proche, non.
+function contradicts(a, b) {
+  if (a.insee !== b.insee) return true;
+  if (a.type && b.type && a.type !== b.type) return true;
+  if (differs(a.surface, b.surface, 1)) return true;
+  if (differs(a.chambres, b.chambres) || differs(a.pieces, b.pieces)) return true;
+  // Le terrain est arrondi ou mal lu selon les sites : 10 % de marge.
+  if (a.terrain != null && b.terrain != null && differs(a.terrain, b.terrain, 0.1 * Math.max(a.terrain, b.terrain))) return true;
+  return false;
+}
+
 // Même bien : mêmes valeurs de DPE et surface à 1 m² près (sûr), ou à défaut même commune,
-// même type, surface à 1 m² près et prix à 5 % près (probable).
+// même type, surface à 1 m² près et prix à 5 % près, sans aucun détail qui les contredise
+// (probable).
 function sameProperty(a, b) {
   if (a.insee !== b.insee) return null;
   if (a.energyConsumption != null && b.energyConsumption != null) {
     return a.energyConsumption === b.energyConsumption && a.gesEmission === b.gesEmission && close(a.surface, b.surface, 1) ? 'sure' : null;
   }
-  if (a.type === b.type && close(a.surface, b.surface, 1) && a.price && b.price && Math.abs(a.price - b.price) <= 0.05 * Math.max(a.price, b.price)) return 'probable';
+  if (a.type === b.type && close(a.surface, b.surface, 1) && a.price && b.price && Math.abs(a.price - b.price) <= 0.05 * Math.max(a.price, b.price) && !contradicts(a, b)) return 'probable';
   return null;
+}
+
+// `l` peut rejoindre le groupe `g` s'il ne contredit aucun de ses membres : sans cela, une
+// annonce sans DPE (qui ressemble à deux biens voisins) relierait tout un bien à l'autre.
+// Un membre relié à `l` par le DPE reste sûr ; pour les autres, pas de détail contraire, et pas
+// deux annonces en ligne de la même source (une source publie un bien une fois, une annonce
+// retirée puis republiée reste reliée).
+function fitsGroup(l, g) {
+  return g.listings.every((m) => {
+    if (sameProperty(l, m) === 'sure') return true;
+    if (l.energyConsumption != null && m.energyConsumption != null) return false;
+    if (contradicts(l, m)) return false;
+    // Le prix doit rester à 5 % de chaque membre, pas seulement du voisin (sinon 420 k€ → 400 k€ → 389 k€ s'enchaînent).
+    if (l.price && m.price && Math.abs(l.price - m.price) > 0.05 * Math.max(l.price, m.price)) return false;
+    return !(l.source === m.source && !l.removedAt && !m.removedAt);
+  });
 }
 
 function groupListings(listings) {
   const groups = [];
-  for (const l of listings) {
+  // Les annonces avec DPE d'abord : elles forment des groupes solides auxquels les annonces
+  // sans DPE se rattachent ensuite, quel que soit l'ordre d'arrivée.
+  const ordered = [...listings].sort((a, b) => (b.energyConsumption != null) - (a.energyConsumption != null));
+  for (const l of ordered) {
+    // Meilleur groupe : celui qui partage le DPE de l'annonce (sûr) avant un simple air de
+    // ressemblance (probable), à égalité le plus ancien.
     let target = null;
     let how = null;
     for (const g of groups) {
-      for (const other of g.listings) {
-        const s = sameProperty(l, other);
-        if (s) {
-          target = g;
-          how = s;
-          break;
-        }
+      if (!fitsGroup(l, g)) continue;
+      const levels = g.listings.map((other) => sameProperty(l, other));
+      const s = levels.includes('sure') ? 'sure' : levels.includes('probable') ? 'probable' : null;
+      if (s && (!target || (s === 'sure' && how === 'probable'))) {
+        target = g;
+        how = s;
       }
-      if (target) break;
     }
     if (target) {
       target.listings.push(l);
