@@ -86,8 +86,15 @@ function fitsGroup(l, g) {
     if (contradicts(l, m, terrainUnreliable)) return false;
     // Le prix doit rester à 5 % de chaque membre, pas seulement du voisin (sinon 420 k€ → 400 k€ → 389 k€ s'enchaînent).
     if (l.price && m.price && Math.abs(l.price - m.price) > 0.05 * Math.max(l.price, m.price)) return false;
-    return !(l.source === m.source && !l.removedAt && !m.removedAt);
+    return !(l.source === m.source && !l.removedAt && !m.removedAt) || twins(l, m);
   });
+}
+
+// Annonces jumelles : même prix au euro près, même surface et au moins deux autres détails
+// identiques (pièces, chambres, terrain, classe). Une même source en publie deux pour un seul
+// bien (deux agences, republication) ; sans cela le bien se coupait en deux cartes et l'écartée revenait.
+function twins(a, b) {
+  return !!a.price && a.price === b.price && close(a.surface, b.surface, 1) && agreements(a, b) >= 3;
 }
 
 function groupListings(listings) {

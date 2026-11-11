@@ -128,6 +128,16 @@ test('sans DPE : deux annonces en ligne de la même source ne forment pas un mê
   assert.equal(groupListings([{ ...a, removedAt: NOW - DAY }, b]).length, 1);
 });
 
+// Cas réel : deux annonces SeLoger à 267 000 €, 80 m², 3 pièces, 2 chambres. Un même bien posté
+// deux fois (deux agences, republication) restait en deux cartes ; l'écartée revenait.
+test('même source, annonces jumelles (même prix, même surface, deux détails identiques) : un seul bien', () => {
+  const mk = (id, o) => base({ id: `seloger:/${id}`, source: 'seloger', url: `https://www.seloger.com/${id}`, surface: 80, price: 267000, pieces: 3, chambres: 2, ...o });
+  assert.equal(groupListings([mk('a'), mk('b')]).length, 1);
+  assert.equal(groupListings([mk('a'), mk('b', { price: 270000 })]).length, 2, 'prix différent : deux biens');
+  assert.equal(groupListings([mk('a'), mk('b', { chambres: 3 })]).length, 2, 'détail contraire : deux biens');
+  assert.equal(groupListings([mk('a', { pieces: null }), mk('b', { pieces: null })]).length, 2, 'un seul détail en commun : on ne fusionne pas');
+});
+
 test('sans DPE : les prix ne s’enchaînent pas (420 k€ → 400 k€ → 389 k€ = trois biens, pas un)', () => {
   const mk = (id, source, price) => base({ id: `${source}:/${id}`, source, url: `https://exemple.fr/${id}`, surface: 110, price });
   const groups = groupListings([mk('a', 'orpi', 420000), mk('b', 'paruvendu', 400000), mk('c', 'pap', 389000)]);
