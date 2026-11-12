@@ -5,7 +5,7 @@
 // jusqu'au premier clic dessus ; ce clic est rangé avec le suivi, donc synchronisé.
 // Un bien sans adresse retrouvée montre ses pistes d'adresse, que Nathan vérifie (leads.js).
 // S'il lui manque un critère demandé par la recherche, il est masqué : un bouton le remontre.
-import { checkCriteria, trackingKey } from '../common/zones.js';
+import { checkCriteria, trackingKey, returnedByPrice } from '../common/zones.js';
 import { groupListings, listingFacts, statusOf, isUnopened, trackingKeyOf, urlKey, saleOf, negotiation, negotiationText, placeOf, needsPlace, isIncomplete, SOURCE_LABELS } from '../common/listings.js';
 import { nearestSales, isComparable } from '../common/sectors.js';
 import { loadSearchSales } from './sector-layer.js';
@@ -22,9 +22,17 @@ const { el, num } = UI;
 const ORDER = { nouveau: 0, baisse: 1, null: 2, retire: 3 };
 const DAY = 24 * 3600 * 1000;
 
+// Verdict d'un suivi pour les boutons : « écarté, trop cher » se distingue d'« écarté, pas pertinent ».
+const verdictOf = (track) => (track.status === 'ecarte' && track.reason === 'prix' ? 'ecarte-prix' : track.status || null);
+
+// Bien refusé « trop cher » dont le prix a baissé (zones.js, returnedByPrice) : dit d'un coup d'œil
+// pourquoi il est revenu et de combien.
+const backText = (back) => `Revenu, prix baissé de ${UI.priceText(back.drop)} depuis ton refus (${UI.priceText(back.was)} → ${UI.priceText(back.now)}, −${num(back.percent)} %)`;
+
 // Étiquettes d'un bien. « Nouveau » (jaune) : annonce du robot pas encore ouverte.
-function tagsOf(st, fresh) {
+function tagsOf(st, fresh, back) {
   return [
+    back ? el('span', { class: 'imx-tag is-back' }, backText(back)) : null,
     fresh ? el('span', { class: 'imx-tag is-fresh' }, 'Nouveau') : null,
     st.status === 'baisse' ? el('span', { class: 'imx-tag is-drop' }, `Prix baissé de ${UI.priceText(st.drop)}`) : null,
     st.status === 'retire' ? el('span', { class: 'imx-tag is-gone' }, 'Retiré') : null,
@@ -46,19 +54,28 @@ function soldLine(g) {
   return el('div', { class: 'imx-meta imx-sold' }, `Vendue ${UI.priceText(sale.price)} le ${UI.formatDate(sale.date)}${gap} (${sale.how === 'sure' ? 'lien sûr, même adresse' : 'lien probable'})`);
 }
 
-const priceHead = (f) => el('div', { class: 'imx-candidate-address' }, f.price ? UI.priceText(f.price) : 'Prix non précisé', f.price && f.surface ? el('span', { class: 'imx-ppm' }, ` · ${num(Math.round(f.price / f.surface))} €/m²`) : null);
+// `was` : prix du refus « trop cher », barré à côté du prix actuel quand le bien est revenu.
+const priceHead = (f, back) =>
+  el(
+    'div',
+    { class: 'imx-candidate-address' },
+    f.price ? UI.priceText(f.price) : 'Prix non précisé',
+    el('s', { class: `imx-was${back ? '' : ' imx-hidden'}` }, back ? UI.priceText(back.was) : ''),
+    f.price && f.surface ? el('span', { class: 'imx-ppm' }, ` · ${num(Math.round(f.price / f.surface))} €/m²`) : null
+  );
 const sourceLinks = (g) => el('div', { class: 'imx-actions' }, g.listings.map((l) => UI.linkButton(l.url, SOURCE_LABELS[l.source] || l.source, { iconName: 'external' })));
 
 // Carte du Fil d'un bien. `where` : point du bien (placeOf), commune de l'annonce et choix
 // d'adresse (onPlace). Rend la carte et la fonction qui remet ses boutons Garder / Écarter à jour.
 function annonceRow(g, key, f, st, track, unknown, onStatus, now, where) {
-  const verdict = verdictButtons((value) => onStatus(key, value));
+  // « Trop cher » garde le prix du jour : le bien revient quand il baisse de 2 % (zones.js).
+  const verdict = verdictButtons((value, reason) => onStatus(key, value, undefined, reason ? { reason, priceAt: f.price } : undefined), { price: !!f.price });
   const note = el('textarea', { class: 'imx-note', placeholder: 'Note : visite, défauts, contact…', maxlength: '1000' }, track.note || '');
   const days = Math.max(0, Math.round((now - f.firstSeen) / DAY));
   const row = el(
     'div',
     { class: `imx-row imx-annonce${st.status === 'retire' ? ' is-gone' : ''}` },
-    el('div', { class: 'imx-row-head' }, el('div', null, priceHead(f), el('div', { class: 'imx-meta' }, factsLine(f) || f.title || 'Annonce')), f.photo ? el('img', { class: 'imx-annonce-photo', src: f.photo, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }) : null),
+    el('div', { class: 'imx-row-head' }, el('div', null, priceHead(f, track.back), el('div', { class: 'imx-meta' }, factsLine(f) || f.title || 'Annonce')), f.photo ? el('img', { class: 'imx-annonce-photo', src: f.photo, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }) : null),
     el('div', { class: 'imx-tags' }),
     el(
       'div',
@@ -141,7 +158,16 @@ async function loadAnnonces(ctx, body) {
     return;
   }
   for (const x of groups) x.key = trackingKeyOf(x.g, tracking, seenByUrl);
-  const trackOf = (key) => tracking[key] || {};
+  // Suivi d'un bien tel que le Fil le voit : refusé « trop cher » et son prix a baissé de 2 % →
+  // il n'est plus écarté (`status` nul) et porte `back` (ancien prix, nouveau prix, écart).
+  // Refusé « pas pertinent » : jamais de retour. `tracking` garde le suivi tel qu'enregistré.
+  const priceOfKey = new Map(groups.map((x) => [x.key, x.f.price]));
+  const trackOf = (key) => {
+    const t = tracking[key] || {};
+    const back = returnedByPrice(t, priceOfKey.get(key));
+    return back ? { ...t, status: null, back } : t;
+  };
+  const isBack = (x) => !!trackOf(x.key).back;
   // Jaune : annonce du robot jamais ouverte, ni sur ce tableau de bord, ni sur le site d'origine.
   const isFresh = (x) => isUnopened(x.g, trackOf(x.key), { seenUrls: seenByUrl });
   // Biens sans adresse à qui il manque un critère : cachés tant que le bouton ne les montre pas
@@ -150,8 +176,9 @@ async function loadAnnonces(ctx, body) {
   let showIncomplete = false;
   const masked = (x) => isIncomplete(x.f, trackOf(x.key), x.check.unknown);
   const onScreen = () => groups.filter((x) => showIncomplete || !masked(x));
-  // Les jaunes d'abord, puis baisses de prix, le reste, les retirées ; les plus récentes en tête.
-  groups.sort((a, b) => Number(isFresh(b)) - Number(isFresh(a)) || ORDER[a.st.status] - ORDER[b.st.status] || b.f.firstSeen - a.f.firstSeen);
+  // Les jaunes et les biens revenus après une baisse d'abord, puis baisses de prix, le reste, les
+  // retirées ; les plus récentes en tête.
+  groups.sort((a, b) => Number(isFresh(b) || isBack(b)) - Number(isFresh(a) || isBack(a)) || ORDER[a.st.status] - ORDER[b.st.status] || b.f.firstSeen - a.f.firstSeen);
 
   const list = el('div', { class: 'imx-bien-list' });
   const toggle = droppedToggle(() => groups.filter((x) => trackOf(x.key).status === 'ecarte').length, isCurrent);
@@ -162,18 +189,26 @@ async function loadAnnonces(ctx, body) {
 
   // Carte du Fil, point et bulle d'un bien remis à jour d'après son suivi (Garder, Écarter, clic).
   const refresh = (x) => {
-    const status = trackOf(x.key).status || null;
+    const track = trackOf(x.key);
+    const status = track.status || null;
     const fresh = isFresh(x);
     x.row.classList.toggle('is-ecarte', status === 'ecarte');
     x.row.classList.toggle('is-kept', status === 'favori');
     x.row.classList.toggle('is-incomplete', masked(x));
     x.row.classList.toggle('is-fresh', fresh);
-    x.applyRow(status);
-    x.row.querySelector('.imx-tags').replaceChildren(...tagsOf(x.st, fresh), ...(x.g.probable ? [el('span', { class: 'imx-tag' }, 'même bien probable')] : []));
+    x.row.classList.toggle('is-back', !!track.back);
+    // Ancien prix barré à côté du prix actuel (bien revenu après une baisse).
+    const was = x.row.querySelector('.imx-was');
+    if (was) {
+      was.textContent = track.back ? UI.priceText(track.back.was) : '';
+      was.classList.toggle('imx-hidden', !track.back);
+    }
+    x.applyRow(verdictOf(track));
+    x.row.querySelector('.imx-tags').replaceChildren(...tagsOf(x.st, fresh, track.back), ...(x.g.probable ? [el('span', { class: 'imx-tag' }, 'même bien probable')] : []));
     if (!x.marker) return;
     setPinState(x.marker, { price: x.f.price, status, fresh });
-    x.applyPopup(status);
-    x.popupTags.replaceChildren(...tagsOf(x.st, fresh));
+    x.applyPopup(verdictOf(track));
+    x.popupTags.replaceChildren(...tagsOf(x.st, fresh, track.back));
   };
 
   // Bandeau des nouveautés : combien d'annonces jaunes, et les marquer toutes comme vues.
@@ -203,8 +238,9 @@ async function loadAnnonces(ctx, body) {
     refreshFresh();
   };
 
-  const onStatus = async (key, status, note) => {
-    keep(key, await store.setTracking(key, note === undefined ? { status } : { note }));
+  // `extra` : { reason: 'prix', priceAt } pour « Trop cher » (voir verdictButtons).
+  const onStatus = async (key, status, note, extra) => {
+    keep(key, await store.setTracking(key, note === undefined ? { status, ...extra } : { note }));
     if (!isCurrent()) return;
     // Une note ou un verdict fait entrer le bien dans ceux que Nathan a touchés (ou l'en sort).
     if (note !== undefined) {
@@ -250,7 +286,7 @@ async function loadAnnonces(ctx, body) {
     if (!place || x.st.status === 'retire') return;
     const { g, f } = x;
     const status = trackOf(x.key).status || '';
-    const verdict = verdictButtons((value) => onStatus(x.key, value));
+    const verdict = verdictButtons((value, reason) => onStatus(x.key, value, undefined, reason ? { reason, priceAt: f.price } : undefined), { price: !!f.price });
     x.popupTags = el('div', { class: 'imx-tags' });
     x.applyPopup = verdict.apply;
     x.marker = placeListing({

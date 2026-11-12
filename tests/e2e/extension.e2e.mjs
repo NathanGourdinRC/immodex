@@ -467,6 +467,60 @@ test('fil : annonces scannées, nouveautés, baisses et retraits, Garder', async
   await page.close();
 });
 
+test('fil : « Trop cher » revient à 2 % de baisse avec l’ancien prix, « Écarter » ne revient jamais', async () => {
+  const now = Date.now();
+  let price = 400000;
+  const listings = () => [
+    { id: 'orpi:/annonce-vente-maison-trop-cher-e2e/', source: 'orpi', url: 'https://www.orpi.com/annonce-vente-maison-trop-cher-e2e/', insee: '59636', type: 'maison', missed: 0, removedAt: null, detail: true, lastSeen: now, firstSeen: now - 5 * 24 * 3600 * 1000, title: 'Maison 5 pièces Wambrechies', price, prices: [{ at: now - 5 * 24 * 3600 * 1000, price }], surface: 120, pieces: 5, chambres: 4, terrain: 300, energyClass: 'D', address: '12 Rue de Quesnoy 59118 Wambrechies', lat: 50.6862, lon: 3.0489 },
+  ];
+  const page = await context.newPage();
+  await page.route('https://immodex.vercel.app/api/listings**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, listings: listings(), sources: {}, lastRun: now }) }));
+  await page.route('https://immodex.vercel.app/api/dvf**', (route) => route.fulfill({ status: 503, body: 'indisponible' }));
+  await page.route('https://geo.api.gouv.fr/communes/**', (route) => route.fulfill({ status: 503, body: 'indisponible' }));
+  await page.goto(`chrome-extension://${extId}/src/dashboard/dashboard.html`);
+  if (!(await page.locator('#zone-tabs button:has-text("Wambrechies")').count())) {
+    await page.click('#zone-tabs button:has-text("Nouvelle recherche")');
+    await page.fill('input[type="search"]', 'Wambrechies');
+    await page.click('.imx-suggest button:has-text("Wambrechies ·")', { timeout: 15000 });
+    await page.selectOption('select.imx-select', 'maison');
+    await page.click('button:has-text("Créer la recherche")');
+  }
+  const openFil = async () => {
+    await page.goto(`chrome-extension://${extId}/src/dashboard/dashboard.html`);
+    await page.click('#zone-tabs button:has-text("Wambrechies")');
+    await page.click('.imx-views button:has-text("Fil")');
+    await page.waitForSelector('.imx-annonce', { state: 'attached', timeout: 30000 });
+  };
+  const dropped = async () => /is-ecarte/.test(await page.locator('.imx-annonce').first().getAttribute('class'));
+  await openFil();
+  // Refus « trop cher » à 400 000 € : la carte est écartée, le bouton le dit.
+  await page.locator('.imx-annonce').first().locator('button:has-text("Trop cher")').click();
+  await page.waitForSelector('.imx-annonce.is-ecarte', { state: 'attached' });
+  assert.equal(await page.locator('.imx-annonce').first().locator('.imx-verdict-dear.is-active').count(), 1);
+  assert.ok(await dropped());
+  // 395 000 € : seulement 1,25 % de baisse, le bien reste écarté.
+  price = 395000;
+  await openFil();
+  assert.ok(await dropped(), 'baisse de moins de 2 % : toujours écarté');
+  // 380 000 € : 5 % sous le prix du refus, le bien revient avec son ancien prix et le dit.
+  price = 380000;
+  await openFil();
+  assert.ok(!(await dropped()), 'baisse de 5 % : le bien revient');
+  const back = page.locator('.imx-annonce').first();
+  assert.match(await back.locator('.imx-tag.is-back').textContent(), /Revenu, prix baissé de 20\s000\s€ depuis ton refus \(400\s000\s€ → 380\s000\s€, −5 %\)/);
+  assert.match(await back.getAttribute('class'), /is-back/);
+  assert.match(await back.locator('.imx-was').textContent(), /400\s000\s€/);
+  assert.equal(await back.locator('.imx-was:not(.imx-hidden)').count(), 1);
+  // « Écarter » (pas pertinent) : il ne revient plus, même à 300 000 €.
+  await back.locator('button:has-text("Écarter")').click();
+  await page.waitForSelector('.imx-annonce.is-ecarte', { state: 'attached' });
+  price = 300000;
+  await openFil();
+  assert.ok(await dropped(), 'refus pas pertinent : jamais de retour');
+  assert.equal(await page.locator('.imx-tag.is-back:visible').count(), 0);
+  await page.close();
+});
+
 test('fil : biens sans point, pistes vérifiées sur Street View, adresse choisie ou saisie', async () => {
   const now = Date.now();
   const DAY = 24 * 3600 * 1000;

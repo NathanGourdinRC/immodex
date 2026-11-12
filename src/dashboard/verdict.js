@@ -5,11 +5,18 @@
 const UI = window.__immodexUI;
 const { el, icon } = UI;
 
-// Paire Garder / Écarter. Un second appui annule (un bien écarté par erreur revient ainsi).
-// `onPick(statut)` enregistre ; `apply(statut)` remet les boutons à jour (choix fait ailleurs).
-function verdictButtons(onPick) {
+// Garder / Écarter, et Trop cher quand le bien a un prix. Un second appui annule (un bien écarté
+// par erreur revient ainsi). « Écarter » : pas pertinent, le bien ne revient jamais. « Trop cher » :
+// il revient dans le Fil quand son prix baisse de 2 % (zones.js, returnedByPrice).
+// `onPick(statut, raison)` enregistre : raison 'prix' pour « Trop cher », rien sinon.
+// `apply(statut)` remet les boutons à jour (choix fait ailleurs) : null, 'favori', 'ecarte' ou
+// 'ecarte-prix' (écarté parce que trop cher).
+function verdictButtons(onPick, { price = false } = {}) {
   const keep = el('button', { type: 'button', class: 'imx-btn imx-btn-sm imx-verdict-keep', 'aria-pressed': 'false' }, icon('check', 14), 'Garder');
-  const drop = el('button', { type: 'button', class: 'imx-btn imx-btn-sm imx-btn-ghost imx-verdict-drop', 'aria-pressed': 'false' }, icon('trash', 14), 'Écarter');
+  const drop = el('button', { type: 'button', class: 'imx-btn imx-btn-sm imx-btn-ghost imx-verdict-drop', 'aria-pressed': 'false', title: 'Pas pertinent : ce bien ne reviendra pas' }, icon('trash', 14), 'Écarter');
+  const dear = price
+    ? el('button', { type: 'button', class: 'imx-btn imx-btn-sm imx-btn-ghost imx-verdict-dear', 'aria-pressed': 'false', title: 'Trop cher : ce bien reviendra si son prix baisse de 2 %' }, icon('euro', 14), 'Trop cher')
+    : null;
   let current = null;
   const apply = (status) => {
     current = status || null;
@@ -19,10 +26,16 @@ function verdictButtons(onPick) {
     drop.setAttribute('aria-pressed', String(current === 'ecarte'));
     keep.lastChild.textContent = current === 'favori' ? 'Gardé' : 'Garder';
     drop.lastChild.textContent = current === 'ecarte' ? 'Écarté' : 'Écarter';
+    if (dear) {
+      dear.classList.toggle('is-active', current === 'ecarte-prix');
+      dear.setAttribute('aria-pressed', String(current === 'ecarte-prix'));
+      dear.lastChild.textContent = current === 'ecarte-prix' ? 'Écarté, trop cher' : 'Trop cher';
+    }
   };
   keep.addEventListener('click', () => onPick(current === 'favori' ? null : 'favori'));
   drop.addEventListener('click', () => onPick(current === 'ecarte' ? null : 'ecarte'));
-  return { node: el('div', { class: 'imx-actions imx-verdict' }, keep, drop), apply };
+  if (dear) dear.addEventListener('click', () => (current === 'ecarte-prix' ? onPick(null) : onPick('ecarte', 'prix')));
+  return { node: el('div', { class: 'imx-actions imx-verdict' }, keep, drop, dear), apply };
 }
 
 // ─── Écartés montrés ou cachés (classe imx-show-ecarte sur body, styles dans dashboard.html) ───

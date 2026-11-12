@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanZone, fpInZone, groupsInZone, trackingKey, createZoneStore, checkCriteria } from '../src/common/zones.js';
+import { cleanZone, fpInZone, groupsInZone, trackingKey, createZoneStore, checkCriteria, returnedByPrice } from '../src/common/zones.js';
 import { zoneDpeFilters, isoDaysAgo, marketOf, priceBreaks, priceClass, priceColumns } from '../src/common/zone-data.js';
 
 const LILLE = { code: '59350', nom: 'Lille', codesPostaux: ['59000', '59160', '59260', '59777', '59800'], centre: { type: 'Point', coordinates: [3.047, 50.632] } };
@@ -181,4 +181,44 @@ test('annonce et critères : budget strict, surface à 3 m², inconnues signalé
   assert.equal(checkCriteria({ price: 400000, surface: 96 }, s).ok, false);
   assert.equal(checkCriteria({ price: 400000, surface: 110, terrain: 100 }, s).ok, false);
   assert.deepEqual(checkCriteria({ price: null, surface: 110, terrain: 200, chambres: 3 }, s), { ok: true, unknown: ['prix non précisé'] });
+});
+
+// ─── Refus « trop cher » : le bien revient quand son prix baisse de 2 % ───
+
+test('refus « trop cher » : la raison et le prix du refus sont gardés, effacés si le verdict change', async () => {
+  const store = createZoneStore(memoryStorage());
+  const url = 'https://www.leboncoin.fr/ad/ventes_immobilieres/1';
+  await store.setTracking(url, { status: 'ecarte', reason: 'prix', priceAt: 420000 }, 1000);
+  assert.deepEqual((await store.tracking())[url], { status: 'ecarte', note: '', reason: 'prix', priceAt: 420000, updatedAt: 1000 });
+  // une note ne change pas le verdict : la raison reste
+  await store.setTracking(url, { note: 'jardin trop petit' }, 2000);
+  assert.equal((await store.tracking())[url].reason, 'prix');
+  assert.equal((await store.tracking())[url].priceAt, 420000);
+  // refus « pas pertinent » : plus de raison, le bien ne revient jamais
+  await store.setTracking(url, { status: 'ecarte' }, 3000);
+  assert.equal((await store.tracking())[url].reason, undefined);
+  assert.equal((await store.tracking())[url].priceAt, undefined);
+  // gardé ensuite : pas de raison non plus
+  await store.setTracking(url, { status: 'ecarte', reason: 'prix', priceAt: 400000 }, 4000);
+  await store.setTracking(url, { status: 'favori' }, 5000);
+  assert.equal((await store.tracking())[url].reason, undefined);
+  // une raison sans prix, ou sans refus, n'est pas gardée
+  await store.setTracking(url, { status: 'ecarte', reason: 'prix' }, 6000);
+  assert.equal((await store.tracking())[url].reason, undefined);
+  await store.setTracking(url, { status: 'favori', reason: 'prix', priceAt: 1 }, 7000);
+  assert.equal((await store.tracking())[url].reason, undefined);
+});
+
+test('un bien refusé pour son prix revient à 2 % de baisse ; refusé comme non pertinent, jamais', () => {
+  const dropped = { status: 'ecarte', reason: 'prix', priceAt: 420000 };
+  assert.equal(returnedByPrice(dropped, 420000), null);
+  assert.equal(returnedByPrice(dropped, 415000), null, '1,2 % : pas assez');
+  assert.equal(returnedByPrice(dropped, 411601), null, 'juste au-dessus de 2 %');
+  assert.deepEqual(returnedByPrice(dropped, 411600), { was: 420000, now: 411600, drop: 8400, percent: 2 });
+  assert.deepEqual(returnedByPrice(dropped, 395000), { was: 420000, now: 395000, drop: 25000, percent: 6 });
+  assert.equal(returnedByPrice(dropped, 450000), null, 'prix en hausse');
+  assert.equal(returnedByPrice(dropped, null), null, 'prix inconnu');
+  assert.equal(returnedByPrice({ status: 'ecarte' }, 300000), null, 'pas pertinent : jamais');
+  assert.equal(returnedByPrice({ status: 'favori' }, 300000), null);
+  assert.equal(returnedByPrice(undefined, 300000), null);
 });

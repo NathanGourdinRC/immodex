@@ -92,6 +92,12 @@
       .imx-tags { display: flex; flex-wrap: wrap; gap: 4px; }
       .imx-tags:empty { display: none; }
       .imx-tag.is-drop { background: #ecfdf3; color: #067647; border: 1px solid #abefc6; }
+      /* Bien refusé « trop cher » revenu après une baisse : plein, pour se voir d'un coup d'œil. */
+      .imx-tag.is-back { background: #067647; color: #fff; border: 1px solid #067647; font-weight: 600; }
+      .imx-annonce.is-back:not(.is-selected) { box-shadow: inset 3px 0 0 #12b76a; }
+      .imx-annonce.is-back { margin: 0 -8px; padding-left: 8px; padding-right: 8px; border-radius: 6px; }
+      .imx-was { margin-left: 6px; font-weight: 400; font-size: 0.85em; color: var(--imx-text-3); text-decoration: line-through; }
+      .imx-verdict .imx-verdict-dear.is-active { border-color: #b54708; background: #fffaeb; color: #b54708; }
       .imx-tag.is-gone { background: var(--imx-bg-muted); color: var(--imx-text-3); border: 1px solid var(--imx-border); }
       .imx-annonce.is-gone { opacity: 0.6; }
       .imx-btn.is-active { border-color: var(--imx-accent); color: var(--imx-accent); }

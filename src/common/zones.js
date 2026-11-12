@@ -153,17 +153,41 @@ function cleanPlace(place, now) {
 
 // Suivi d'un bien après une modification ; null quand il n'a plus rien à garder (ni statut, ni
 // note, ni adresse choisie, ni clic sur l'annonce).
-function nextTracking(current, { status, note, place, opened }, now) {
+function nextTracking(current, { status, note, place, opened, reason, priceAt }, now) {
   const next = {
     status: status !== undefined ? (STATUSES[status] ? status : null) : current.status || null,
     note: note !== undefined ? String(note || '').slice(0, 1000) : current.note || '',
   };
+  // Refus « trop cher » : la raison et le prix du jour du refus. Un nouveau verdict les remplace
+  // (pas de raison = refus « pas pertinent », définitif) ; une note ou une adresse les laisse.
+  if (status !== undefined) {
+    const price = Math.round(Number(priceAt));
+    if (next.status === 'ecarte' && reason === 'prix' && price > 0) {
+      next.reason = 'prix';
+      next.priceAt = price;
+    }
+  } else if (current.reason === 'prix' && current.priceAt > 0 && next.status === 'ecarte') {
+    next.reason = 'prix';
+    next.priceAt = current.priceAt;
+  }
   const kept = place !== undefined ? cleanPlace(place, now) : current.place || null;
   if (kept) next.place = kept;
   const seen = opened !== undefined ? Number(opened) || null : current.opened || null;
   if (seen) next.opened = seen;
   next.updatedAt = now;
   return next.status || next.note || next.place || next.opened ? next : null;
+}
+
+// Baisse de prix qui fait revenir un bien refusé « trop cher » : 2 % sous le prix du refus.
+const PRICE_RETURN_PERCENT = 2;
+
+// Un bien écarté pour son prix revient quand son prix actuel est au moins 2 % sous celui du
+// refus. Renvoie l'ancien et le nouveau prix, l'écart en € et en % ; null sinon (refus « pas
+// pertinent » : jamais, prix inconnu ou pas assez bas).
+function returnedByPrice(track, price) {
+  if (!track || track.status !== 'ecarte' || track.reason !== 'prix' || !(track.priceAt > 0) || !(price > 0)) return null;
+  if (price * 100 > track.priceAt * (100 - PRICE_RETURN_PERCENT)) return null;
+  return { was: track.priceAt, now: price, drop: track.priceAt - price, percent: Math.round((1 - price / track.priceAt) * 1000) / 10 };
 }
 
 // Le suivi (statut, note) est rangé sous l'adresse de la première annonce du bien :
@@ -238,10 +262,10 @@ function createZoneStore(storageArea) {
     },
     // `opened` : date du premier clic sur une annonce du robot (elle n'est plus jaune). Rangé
     // avec le statut, il suit la même synchro entre appareils.
-    setTracking(url, { status, note, place, opened }, now = Date.now()) {
+    setTracking(url, { status, note, place, opened, reason, priceAt }, now = Date.now()) {
       return write(TRACKING_KEY, {}, (data) => {
         const all = { ...(data || {}) };
-        const next = nextTracking(all[url] || {}, { status, note, place, opened }, now);
+        const next = nextTracking(all[url] || {}, { status, note, place, opened, reason, priceAt }, now);
         if (next) all[url] = next;
         else delete all[url];
         return { data: all, value: next };
@@ -258,4 +282,4 @@ function createZoneStore(storageArea) {
   };
 }
 
-export { ZONES_KEY, TRACKING_KEY, MAX_ZONES, STATUSES, cleanZone, checkCriteria, fpInZone, groupsInZone, trackingKey, createZoneStore };
+export { ZONES_KEY, TRACKING_KEY, MAX_ZONES, STATUSES, PRICE_RETURN_PERCENT, cleanZone, checkCriteria, fpInZone, groupsInZone, trackingKey, returnedByPrice, createZoneStore };
