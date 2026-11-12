@@ -90,11 +90,15 @@ function fitsGroup(l, g) {
   });
 }
 
-// Annonces jumelles : même prix au euro près, même surface et au moins deux autres détails
-// identiques (pièces, chambres, terrain, classe). Une même source en publie deux pour un seul
-// bien (deux agences, republication) ; sans cela le bien se coupait en deux cartes et l'écartée revenait.
+// Annonces jumelles : même surface et, parmi les quatre détails (pièces, chambres, terrain,
+// classe), trois identiques sans contradiction ; ou le même prix au euro près et deux détails
+// identiques. Une même source en publie deux pour un seul bien (deux agences, republication, prix
+// baissé : 365 k€ puis 349 k€) ; sans cela le bien se coupait en deux cartes et l'écartée revenait.
+// Le prix à 5 % près est déjà exigé par fitsGroup.
 function twins(a, b) {
-  return !!a.price && a.price === b.price && close(a.surface, b.surface, 1) && agreements(a, b) >= 3;
+  if (!close(a.surface, b.surface, 1)) return false;
+  const samePrice = !!a.price && a.price === b.price;
+  return agreements(a, b) - (samePrice ? 1 : 0) >= 3 || (samePrice && agreements(a, b) >= 3);
 }
 
 function groupListings(listings) {

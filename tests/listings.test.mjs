@@ -138,6 +138,20 @@ test('même source, annonces jumelles (même prix, même surface, deux détails 
   assert.equal(groupListings([mk('a', { pieces: null }), mk('b', { pieces: null })]).length, 2, 'un seul détail en commun : on ne fusionne pas');
 });
 
+// Cas réel (La Madeleine) : un bien à 365 000 € republié à 349 000 € sur Leboncoin et SeLoger. Les
+// anciennes annonces sont encore en ligne ; la nouvelle d'une source qui a déjà la sienne restait
+// seule, donc « nouvelle », alors que le bien était écarté.
+test('même source, prix baissé : le bien republié reste dans la carte de l’ancienne annonce', () => {
+  const d = { surface: 100, pieces: 6, chambres: 5, terrain: 67, energyClass: 'C' };
+  const mk = (src, id, price, o = {}) => base({ id: `${src}:/${id}`, source: src, url: `https://${src}.fr/${id}`, price, ...d, ...o });
+  const dpe = { energyConsumption: 179, gesEmission: 7 };
+  const groups = groupListings([mk('leboncoin', 'old', 365000), mk('seloger', 'old', 365000, dpe), mk('leboncoin', 'new', 349000), mk('seloger', 'new', 349000, dpe)]);
+  assert.equal(groups.length, 1);
+  // un seul détail commun (terrain) ou un détail contraire : toujours deux biens
+  assert.equal(groupListings([mk('leboncoin', 'a', 365000), mk('leboncoin', 'b', 349000, { pieces: 5, chambres: 4 })]).length, 2);
+  assert.equal(groupListings([mk('leboncoin', 'a', 365000, { terrain: null, energyClass: null }), mk('leboncoin', 'b', 349000)]).length, 2);
+});
+
 test('sans DPE : les prix ne s’enchaînent pas (420 k€ → 400 k€ → 389 k€ = trois biens, pas un)', () => {
   const mk = (id, source, price) => base({ id: `${source}:/${id}`, source, url: `https://exemple.fr/${id}`, surface: 110, price });
   const groups = groupListings([mk('a', 'orpi', 420000), mk('b', 'paruvendu', 400000), mk('c', 'pap', 389000)]);
