@@ -528,6 +528,32 @@ test('lecteur changé pour ParuVendu seul : ses annonces relues une fois, pas ce
   assert.equal(w.asked.filter((u) => u.endsWith('/annonce/p1')).length, 1);
 });
 
+test('annonce vue depuis deux communes : sa page demandée une seule fois, les deux copies lues', async () => {
+  const redis = fakeRedis();
+  const MARCQ = { code: '59378', nom: 'Marcq-en-Barœul', codesPostaux: ['59700'] };
+  const sources = [makeSource('paruvendu'), makeSource('beta')];
+  const w = world({
+    'https://paruvendu.test/vente/59636': results('paruvendu', [['m1', '275 000 €']]),
+    // La carte nomme la commune, sinon le robot la laisse de côté.
+    'https://paruvendu.test/vente/59378': results('paruvendu', [['m1', '275 000 €']]).replace('Maison Wambrechies', 'Maison Marcq-en-Barœul'),
+    'https://beta.test/vente/59636': results('beta', []),
+    'https://beta.test/vente/59378': results('beta', []),
+  });
+  await withSearch(redis, w.now(), [WAMB, MARCQ]);
+  let lookups = 0;
+  const lookup = async () => (lookups++, { address: '12 Rue Claude Huet 59700 Marcq-en-Barœul', addressConfidence: 'haute', leads: null });
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources, readListingImpl, lookup });
+  assert.equal(w.asked.filter((u) => u.endsWith('/annonce/m1')).length, 1);
+  // Mêmes valeurs lues sur la page : une seule recherche d'adresse pour les deux copies.
+  assert.equal(lookups, 1);
+  for (const insee of ['59636', '59378']) {
+    const m1 = (await listingsOf(redis, insee)).get('paruvendu:/annonce/m1');
+    assert.equal(m1.detail, true);
+    assert.equal(m1.surface, 100);
+    assert.equal(m1.address, '12 Rue Claude Huet 59700 Marcq-en-Barœul');
+  }
+});
+
 test('page illisible : marquée lue avec la version du lecteur, jamais remise en file', async () => {
   const redis = fakeRedis();
   const w = world({ 'https://alpha.test/vente/59636': results('alpha', [['a1', '300 000 €']]), 'https://beta.test/vente/59636': results('beta', []) });

@@ -237,9 +237,15 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
   // injoignable), l'annonce garde sa version et sera cherchée de nouveau au passage suivant,
   // trois fois au plus : une recherche toujours trop lente ne bloque pas les autres.
   const lookedUp = new Set();
+  // Copies d'une même annonce (une par commune où elle est vue) : mêmes valeurs, même réponse
+  // du registre, demandée une seule fois par passage (chaque recherche peut prendre 8 s).
+  const lookupMemo = new Map();
   const lookUp = async (l, insee) => {
     lookedUp.add(l.id);
-    const found = await withTimeout(lookup(forLookup(l, insee)), LOOKUP_MS);
+    const q = forLookup(l, insee);
+    const key = JSON.stringify([q.postal, q.city, q.surface, q.type, q.energyClass, q.gesClass, q.energyConsumption, q.gesEmission, q.dateRange]);
+    if (!lookupMemo.has(key)) lookupMemo.set(key, withTimeout(lookup(q), LOOKUP_MS));
+    const found = await lookupMemo.get(key);
     if (found) {
       Object.assign(l, found);
       delete l.lookupTries;
@@ -252,7 +258,9 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
   };
 
   const queue = await readQueue(redis);
-  const queued = new Set(queue.map((q) => q.id));
+  // Une copie par commune : la même annonce vue depuis deux communes est deux entrées à lire.
+  const queueKey = (insee, id) => `${insee}|${id}`;
+  const queued = new Set(queue.map((q) => queueKey(q.insee, q.id)));
 
   await Promise.all(
     communes.map(async (commune) => {
@@ -261,9 +269,9 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
       metas.set(commune.code, meta);
       // Annonce restée sans page lue et absente de la file (passage coupé) : remise en file.
       for (const l of listings.values()) {
-        if (needsReading(l) && !queued.has(l.id)) {
+        if (needsReading(l) && !queued.has(queueKey(commune.code, l.id))) {
           queue.push({ insee: commune.code, id: l.id, url: l.url });
-          queued.add(l.id);
+          queued.add(queueKey(commune.code, l.id));
         }
       }
       const types = commune.types.has(null) ? [null] : [...commune.types];
@@ -323,9 +331,9 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
             const { entry, isNew } = mergeCard(listings, source, commune.code, card, t);
             seen.add(entry.id);
             if (!isNew) continue;
-            if (!entry.detail && !queued.has(entry.id)) {
+            if (!entry.detail && !queued.has(queueKey(commune.code, entry.id))) {
               queue.push({ insee: commune.code, id: entry.id, url: card.url });
-              queued.add(entry.id);
+              queued.add(queueKey(commune.code, entry.id));
             }
             summary.added++;
           }
@@ -365,23 +373,32 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
   // à la fois par file (le robot poli impose 5 s entre deux pages d'un même site).
   const remaining = [];
   const refusedSources = new Set();
+  // Une même annonce est enregistrée une fois par commune où le site la montre (ParuVendu liste
+  // aussi les communes voisines : une maison de Marcq vue depuis 5 communes). Sa page n'est
+  // demandée qu'une fois par passage et sert à toutes ses copies, rangées à la suite dans la file.
   const byHost = new Map();
   for (const item of queue) {
     const host = new URL(item.url).host;
-    if (!byHost.has(host)) byHost.set(host, []);
-    byHost.get(host).push(item);
+    if (!byHost.has(host)) byHost.set(host, new Map());
+    const byUrl = byHost.get(host);
+    if (!byUrl.has(item.url)) byUrl.set(item.url, []);
+    byUrl.get(item.url).push(item);
   }
+  const pageRead = new Map(); // adresse de la page → réponse déjà reçue pendant ce passage
   await Promise.all(
-    [...byHost.values()].map(async (items) => {
-      for (const item of items) {
-        if (now() >= detailsDeadline) {
+    [...byHost.values()].map(async (byUrl) => {
+      for (const item of [...byUrl.values()].flat()) {
+        // Temps écoulé : une copie dont la page vient d'être lue est encore traitée (sans
+        // nouvelle demande au site), les autres attendent le passage suivant.
+        if (now() >= detailsDeadline && !pageRead.has(item.url)) {
           remaining.push(item);
           continue;
         }
         const listings = await listingsFor(item.insee);
         const l = listings.get(item.id);
         if (!l || !needsReading(l)) continue;
-        const res = await fetcher.get(item.url, { deadline: detailsDeadline });
+        const res = pageRead.get(item.url) || (await fetcher.get(item.url, { deadline: detailsDeadline }));
+        if (res.ok) pageRead.set(item.url, res);
         if (res.late) {
           remaining.push(item);
           continue;
