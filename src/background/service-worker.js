@@ -312,7 +312,7 @@ function respond(promise, sendResponse) {
 
 // Annonces d'une liste ouverte dans le navigateur : envoyées au Fil avec la clé de synchro.
 function sendListCards({ source, cards }) {
-  return sendCards({ source, cards }).then(({ seen, added }) => ({ seen, added }));
+  return sendCards({ source, cards }).then(({ seen, added, addressed, ignored }) => ({ seen, added, addressed, ignored }));
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

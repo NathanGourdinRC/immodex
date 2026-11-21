@@ -276,7 +276,10 @@
       // Trace dans la console de la page (F12) : l'envoi ne se voit pas autrement.
       chrome.runtime
         .sendMessage({ type: 'LIST_CARDS', source: 'leboncoin', cards: [card] })
-        .then((res) => console.log('[immodex] annonce envoyée au Fil', res && res.ok ? `(reçue, ${res.added ? 'nouvelle' : 'déjà connue'})` : `: refus, ${(res && res.error) || 'sans réponse'}`, card.detail.dateRange))
+        .then((res) => {
+          const how = !res || !res.ok ? `refusée : ${(res && res.error) || 'sans réponse'}` : res.ignored ? 'ignorée : commune hors de tes recherches' : res.addressed ? 'reçue, adresse trouvée' : res.added ? 'reçue, nouvelle annonce' : 'reçue, adresse cherchée au prochain passage du robot si besoin';
+          console.log(`[immodex] annonce envoyée au Fil, ${how}`, card.detail.dateRange || '');
+        })
         .catch((err) => console.warn('[immodex] envoi au Fil impossible :', String((err && err.message) || err)));
     } catch {
       // Extension rechargée pendant la visite, ou page sans bloc de données : rien à envoyer.
@@ -369,7 +372,7 @@
   // Relancé toutes les 2 s (ensureButton) tant que la page n'est pas lisible : une page qui se
   // dessine après coup est lue dès que la surface ou la lettre du DPE apparaît.
   let autoSentFor = null;
-  function autoSend() {
+  async function autoSend() {
     if (autoSentFor === location.href) return;
     let payload = null;
     try {
@@ -379,6 +382,23 @@
     }
     if (!payload || (!payload.surface && !payload.energyClass)) return;
     autoSentFor = location.href;
+    if (!payload.dateRange && payload.energyConsumption == null) {
+      // Page déjà cherchée (historique de 7 jours) : le bouton réaffiche le résultat gardé sans
+      // relancer la recherche, donc sans envoi. La date saisie alors est dans cette recherche.
+      try {
+        const res = await chrome.runtime.sendMessage({ type: 'HISTORY_GET_FOR_URL', url: location.href });
+        const saved = res && res.ok && res.entry && res.entry.payload;
+        if (saved && (saved.dateRange || saved.energyConsumption != null)) {
+          payload = { ...payload, dateRange: saved.dateRange || null, energyConsumption: saved.energyConsumption ?? null, gesEmission: saved.gesEmission ?? null };
+        }
+      } catch {
+        // Historique illisible : rien de plus à envoyer.
+      }
+    }
+    if (!payload.dateRange && payload.energyConsumption == null) {
+      console.log('[immodex] rien à envoyer au Fil : ni date ni chiffres du DPE sur cette page (le bouton Immodex te demandera la date)');
+      return;
+    }
     sendToFil(payload);
   }
 

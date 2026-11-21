@@ -34,5 +34,5 @@ export async function sendCards({ source, cards, insee }, { delays = RETRY_DELAY
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) throw new Error(data.error || `erreur ${res.status}`);
-  return { seen: data.seen, added: data.added, addressed: data.addressed || 0 };
+  return { seen: data.seen, added: data.added, addressed: data.addressed || 0, ignored: data.ignored || 0 };
 }

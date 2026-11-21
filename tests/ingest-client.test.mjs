@@ -22,7 +22,7 @@ const NO_WAIT = { delays: [0, 0] };
 test('une coupure réseau passagère : l’envoi est retenté et réussit', async () => {
   const calls = setup(['coupure', OK]);
   const res = await sendCards({ source: 'leboncoin', cards: [{ url: 'u' }] }, NO_WAIT);
-  assert.deepEqual(res, { seen: 3, added: 1, addressed: 0 });
+  assert.deepEqual(res, { seen: 3, added: 1, addressed: 0, ignored: 0 });
   assert.equal(calls.length, 2);
   assert.equal(calls[1].init.body, calls[0].init.body);
 });

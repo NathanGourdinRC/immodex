@@ -31,12 +31,13 @@ const AD = {
 };
 
 // Ouvre la page dans jsdom avec une extension simulée ; renvoie les messages envoyés.
-async function openAd(ad, { path = '/ad/ventes_immobilieres/3280694365' } = {}) {
+async function openAd(ad, { path = '/ad/ventes_immobilieres/3280694365', saved = null } = {}) {
   const html = `<html><body><h1>${ad.subject}</h1><script id="__NEXT_DATA__" type="application/json">${JSON.stringify({ props: { pageProps: { ad } } })}</script></body></html>`;
   const dom = new JSDOM(html, { url: `https://www.leboncoin.fr${path}`, runScripts: 'outside-only', virtualConsole: new VirtualConsole() });
   const sent = [];
   const w = dom.window;
-  w.chrome = { runtime: { sendMessage: async (m) => (sent.push(JSON.parse(JSON.stringify(m))), { ok: true }) } };
+  // Recherche gardée dans l'historique pour cette page (`saved`), sinon aucune.
+  w.chrome = { runtime: { sendMessage: async (m) => (sent.push(JSON.parse(JSON.stringify(m))), m.type === 'HISTORY_GET_FOR_URL' ? { ok: true, entry: saved } : { ok: true }) } };
   w.__immodexOverlay = { mountListingButton() {}, onNavigate() {}, closeCard() {}, showLoading() {}, showResult() {}, showError() {}, showDatePrompt() {} };
   w.setInterval = () => 0;
   w.eval(extractCode);
@@ -98,4 +99,16 @@ test('page sans bloc de données : l’annonce part quand même, construite avec
   assert.equal(card.price, 344000);
   assert.deepEqual(card.detail.dateRange, { gte: '2026-05-14', lte: '2026-05-14', precision: 'day' });
   assert.deepEqual([card.detail.surface, card.detail.postal, card.detail.energyClass], [102, '59520', 'D']);
+});
+
+// Cas réel (Marquette-lez-Lille, 21/11/2026) : la date du DPE avait été saisie par Nathan lors d'une
+// première recherche. En rouvrant l'annonce, le bouton réaffiche le résultat gardé (100/100) sans
+// relancer la recherche : rien ne partait au Fil. La date est reprise de cette recherche gardée.
+test('date saisie lors d’une recherche gardée dans l’historique : reprise et envoyée à la réouverture', async () => {
+  const saved = { payload: { kind: 'dpe', surface: 102, energyClass: 'D', dateRange: { gte: '2026-05-14', lte: '2026-05-14', precision: 'day' } } };
+  const { sent } = await openAd({ ...AD, body: 'Maison lumineuse, proche gare.' }, { saved });
+  assert.equal(sent.length, 1);
+  assert.deepEqual(sent[0].cards[0].detail.dateRange, saved.payload.dateRange);
+  // Recherche gardée sans date (saisie passée) : toujours rien.
+  assert.equal((await openAd({ ...AD, body: 'Sans date.' }, { saved: { payload: { kind: 'dpe', dateRange: null } } })).sent.length, 0);
 });
