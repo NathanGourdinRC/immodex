@@ -296,6 +296,39 @@ test('synchro arrêtée ou espace changé pendant un appel : la fin de l’ancie
   }
 });
 
+// Même cas, côté données : ce qu'envoie le serveur de l'ancien espace n'est plus rangé sur
+// l'appareil, et la synchro s'arrête sans envoyer les données locales à cet espace.
+test('synchro arrêtée pendant un appel : les données de l’ancien espace ne sont pas rangées, rien n’y est envoyé', async () => {
+  const server = fakeServer();
+  const phone = device(server, { [ZONES_KEY]: [zone('z2', 'Duingt', clock)] });
+  const { pairUrl: link } = await phone.sync.enable();
+  await phone.sync.sync();
+  const storage = memArea({ [ZONES_KEY]: [zone('z1', 'Sévrier', clock)] });
+  let release;
+  const gate = new Promise((r) => (release = r));
+  let calls = 0;
+  const pc = createSync({
+    storage,
+    now: tick,
+    fetchImpl: async (url, opts) => {
+      calls++;
+      await gate;
+      return server.fetchImpl(url, opts);
+    },
+  });
+  await pc.enable(keyFromHash(new URL(link).hash));
+  const running = pc.sync();
+  while (!calls) await new Promise((r) => setTimeout(r, 1));
+  await pc.disable();
+  release();
+  const r = await running;
+  assert.equal(r.ok, false);
+  assert.equal(r.paired, false);
+  assert.deepEqual(storage.dump()[ZONES_KEY].map((z) => z.id), ['z1'], 'la recherche de l’ancien espace n’est pas rangée ici');
+  assert.equal(calls, 1, 'aucun envoi après l’arrêt');
+  assert.deepEqual(storage.dump()[SYNC_STATE_KEY], {});
+});
+
 test('fusion d’annonces indépendante de l’ordre', () => {
   const a = { ...sighting('u', [{ price: 1, at: 1 }], 10), dpeId: 'X' };
   const b = { ...sighting('u', [{ price: 2, at: 5 }], 20), fp: { postal: '74320', surface: 95, energyClass: 'C' } };

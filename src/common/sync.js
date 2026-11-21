@@ -141,6 +141,9 @@ const ERRORS = {
   'item-too-large': 'élément trop volumineux',
 };
 
+// La clé de l'appareil a changé pendant une synchro (voir checkSpace).
+class SpaceChanged extends Error {}
+
 function createSync({ storage, endpoint = SYNC_ENDPOINT, fetchImpl = (...args) => fetch(...args), now = () => Date.now() }) {
   let running = null;
   let again = false;
@@ -154,13 +157,18 @@ function createSync({ storage, endpoint = SYNC_ENDPOINT, fetchImpl = (...args) =
     }
   }
 
-  // Écrit l'état de l'espace `key` seulement s'il est toujours celui de l'appareil. Une synchro dure
-  // le temps de ses appels au serveur : si la synchro a été arrêtée ou un autre espace rejoint entre
-  // temps, sa fin ne doit ni recréer un état sans clé ni poser son curseur sur le nouvel espace.
-  async function writeState(patch, key) {
+  // Une synchro dure le temps de ses appels au serveur. Si la synchro a été arrêtée ou un autre
+  // espace rejoint entre temps, elle s'arrête là : elle ne recrée pas un état sans clé, ne pose pas
+  // son curseur sur le nouvel espace, ne range pas les données de l'ancien et ne lui envoie plus rien.
+  async function checkSpace(key) {
     const current = await readState();
-    if (current.key !== key) return null;
-    const state = { ...current, ...patch };
+    if (current.key !== key) throw new SpaceChanged();
+    return current;
+  }
+
+  // Écrit l'état de l'espace `key`, s'il est toujours celui de l'appareil.
+  async function writeState(patch, key) {
+    const state = { ...(await checkSpace(key)), ...patch };
     await storage.set({ [SYNC_STATE_KEY]: state });
     return state;
   }
@@ -208,7 +216,7 @@ function createSync({ storage, endpoint = SYNC_ENDPOINT, fetchImpl = (...args) =
   // Applique les éléments reçus. L'ombre prend l'empreinte de la version du serveur : si la
   // version locale l'emporte (modifiée ici après l'autre) ou résulte d'une fusion, elle
   // diffère de l'ombre et part au prochain envoi. Renvoie le nombre d'éléments modifiés ici.
-  async function applyRemote(remote, shadow) {
+  async function applyRemote(remote, shadow, key) {
     const touched = remote.filter((r) => r && COLLECTIONS[r.kind] && typeof r.key === 'string');
     if (!touched.length) return 0;
     const stored = await storage.get(SYNCED_STORAGE_KEYS);
@@ -240,6 +248,7 @@ function createSync({ storage, endpoint = SYNC_ENDPOINT, fetchImpl = (...args) =
       }
     }
     if (changed) {
+      await checkSpace(key);
       const patch = {};
       for (const [kind, map] of maps) patch[COLLECTIONS[kind].storageKey] = COLLECTIONS[kind].build(map, stored[COLLECTIONS[kind].storageKey]);
       await storage.set(patch);
@@ -269,7 +278,7 @@ function createSync({ storage, endpoint = SYNC_ENDPOINT, fetchImpl = (...args) =
           res = null;
           continue;
         }
-        applied += await applyRemote(res.items || [], shadow);
+        applied += await applyRemote(res.items || [], shadow, state.key);
         cursor = res.rev;
         await writeState({ cursor, shadow }, state.key);
         if (!res.more) return;
@@ -286,6 +295,7 @@ function createSync({ storage, endpoint = SYNC_ENDPOINT, fetchImpl = (...args) =
         const batch = changes.slice(i, i + PUSH_BATCH);
         const stamp = now();
         const items = batch.map((c) => (c.deleted ? { kind: c.kind, key: c.key, deleted: true, updated_at: stamp } : { kind: c.kind, key: c.key, data: c.data, updated_at: pushStamp(c, stamp) }));
+        await checkSpace(state.key);
         const res = await call(state.key, { since: cursor, items });
         for (const c of batch) {
           if (c.deleted) delete shadow[c.id];
@@ -297,6 +307,8 @@ function createSync({ storage, endpoint = SYNC_ENDPOINT, fetchImpl = (...args) =
       await writeState({ lastSync: now(), lastError: null }, state.key);
       return { ok: true, paired: true, applied, sent };
     } catch (err) {
+      // Synchro arrêtée ou autre espace rejoint : `paired` dit ce qu'il en est maintenant.
+      if (err instanceof SpaceChanged) return { ok: false, paired: !!(await readState()).key, applied, sent, stopped: true };
       const message = String((err && err.message) || err);
       await writeState({ cursor, shadow, lastError: message, lastErrorAt: now() }, state.key).catch(() => {});
       return { ok: false, paired: true, applied, sent, error: message };
