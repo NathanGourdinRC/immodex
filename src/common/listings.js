@@ -9,7 +9,8 @@ const FRESH_MS = 3 * DAY; // première visite : « nouveau » = vu il y a moins 
 
 async function fetchListings(codes, { fetchImpl = fetch } = {}) {
   if (!codes.length) return { listings: [], sources: {}, lastRun: null };
-  const res = await fetchImpl(`${LISTINGS_ENDPOINT}?insee=${codes.map(encodeURIComponent).join(',')}`);
+  // `no-store` : jamais la copie gardée par le navigateur (une adresse trouvée à l'instant manquerait).
+  const res = await fetchImpl(`${LISTINGS_ENDPOINT}?insee=${codes.map(encodeURIComponent).join(',')}`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`listings ${res.status}`);
   return res.json();
 }

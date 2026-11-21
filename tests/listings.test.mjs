@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { groupListings, statusOf, listingFacts, trackingKeyOf, linkedKeys, groupUrls, negotiation, negotiationText, saleOf, shortPrice, placeOf, probablePlaceOf, needsPlace, isIncomplete, isUnopened, robotSeenAt, UNOPENED_SINCE } from '../src/common/listings.js';
+import { groupListings, statusOf, listingFacts, trackingKeyOf, linkedKeys, groupUrls, negotiation, negotiationText, saleOf, shortPrice, placeOf, probablePlaceOf, fetchListings, needsPlace, isIncomplete, isUnopened, robotSeenAt, UNOPENED_SINCE } from '../src/common/listings.js';
 import { handleListings } from '../api/listings.js';
 import { fakeRedis } from './helpers/fake-redis.mjs';
 
@@ -480,4 +480,14 @@ test('adresse probable : la meilleure piste quand elle est seule ou devant, jama
   assert.equal(probablePlaceOf(f([lead('78 Rue Pasteur', 62)], { lat: 50.6, lon: 3.1 }), {}), null);
   assert.equal(probablePlaceOf(f([lead('78 Rue Pasteur', 62)]), { place: { address: '1 Rue Y', lat: 50.6, lon: 3.1, by: 'saisie' } }), null);
   assert.equal(probablePlaceOf(f([lead('78 Rue Pasteur', 62)]), { place: { none: true } }), null);
+});
+
+// Cas réel (Saint-André-lez-Lille, 21/11/2026) : adresse trouvée à l'ouverture de l'annonce
+// Leboncoin, mais le Fil rouvert juste après montrait la copie gardée 5 minutes, sans point.
+test('annonces du Fil : toujours une réponse fraîche, jamais la copie du navigateur', async () => {
+  let asked = null;
+  const fetchImpl = async (url, opts) => ((asked = { url, opts }), { ok: true, json: async () => ({ listings: [] }) });
+  await fetchListings(['59527', '59386'], { fetchImpl });
+  assert.equal(asked.url, 'https://immodex.vercel.app/api/listings?insee=59527,59386');
+  assert.equal(asked.opts.cache, 'no-store');
 });

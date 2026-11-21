@@ -46,7 +46,10 @@ export async function GET(request) {
   if (!config) return new Response(JSON.stringify({ ok: false, error: 'not-configured' }), { status: 503, headers });
   try {
     const data = await handleListings({ codes: new URL(request.url).searchParams.get('insee'), redis: upstash(config) });
-    return new Response(JSON.stringify({ ok: true, ...data }), { status: 200, headers: { ...headers, 'Cache-Control': 'public, max-age=300, s-maxage=300' } });
+    // Jamais gardée en cache : une annonce ouverte sur Leboncoin reçoit son adresse à l'instant
+    // (api/_lib/ingest.js), et le Fil rouvert juste après doit la montrer. Avec 5 minutes de
+    // cache (navigateur et réseau de Vercel), le bien restait sans point en attendant.
+    return new Response(JSON.stringify({ ok: true, ...data }), { status: 200, headers: { ...headers, 'Cache-Control': 'no-store' } });
   } catch (err) {
     if (err instanceof HttpError) return new Response(JSON.stringify({ ok: false, error: err.message }), { status: err.status, headers });
     console.error('[listings]', err);
