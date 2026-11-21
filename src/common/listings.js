@@ -57,13 +57,30 @@ function agreements(a, b) {
 // Nombre de détails que l'annonce renseigne : plus il est grand, plus elle ancre son groupe.
 const richness = (l) => ['terrain', 'energyClass', 'pieces', 'chambres'].filter((f) => l[f] != null && l[f] !== '').length;
 
+// Annonce nue : ni détail ni chiffres de DPE, seulement le prix et la surface (les pages
+// Superimmo, qui reprennent les annonces des agences). Elle ne peut ni confirmer ni contredire.
+const bare = (l) => richness(l) === 0 && l.energyConsumption == null;
+
+// Deux DPE aux chiffres différents pour un même bien : DPE refait, ou chiffres lus autrement d'un
+// site à l'autre (227 puis 194 kWh/m², toujours classe D). Même bien quand tout le reste concorde :
+// même prix à l'euro près, même surface, même lettre connue des deux côtés, aucun détail contraire,
+// et au moins un détail de plus en commun (pièces, chambres ou terrain). Deux appartements voisins
+// au même prix, à la même surface et à la même lettre ont rarement aussi le même nombre de pièces.
+function redoneDpe(a, b) {
+  if (!a.price || a.price !== b.price || !close(a.surface, b.surface, 1)) return false;
+  if (!a.energyClass || a.energyClass !== b.energyClass || contradicts(a, b)) return false;
+  // agreements compte déjà le prix et la classe : il en faut un troisième.
+  return agreements(a, b) >= 3;
+}
+
 // Même bien : mêmes valeurs de DPE et surface à 1 m² près (sûr), ou à défaut même commune,
 // même type, surface à 1 m² près et prix à 5 % près, sans aucun détail qui les contredise
-// (probable).
+// (probable). Deux DPE aux chiffres différents : probable seulement si redoneDpe le permet.
 function sameProperty(a, b) {
   if (a.insee !== b.insee) return null;
   if (a.energyConsumption != null && b.energyConsumption != null) {
-    return a.energyConsumption === b.energyConsumption && a.gesEmission === b.gesEmission && close(a.surface, b.surface, 1) ? 'sure' : null;
+    if (a.energyConsumption === b.energyConsumption && a.gesEmission === b.gesEmission && close(a.surface, b.surface, 1)) return 'sure';
+    return redoneDpe(a, b) ? 'probable' : null;
   }
   if (a.type === b.type && close(a.surface, b.surface, 1) && a.price && b.price && Math.abs(a.price - b.price) <= 0.05 * Math.max(a.price, b.price) && !contradicts(a, b)) return 'probable';
   return null;
@@ -80,12 +97,24 @@ function fitsGroup(l, g) {
   // ne prouve plus rien ici, sinon il refuserait chaque annonce qui ne dit pas comme tous les membres.
   const terrains = g.listings.map((m) => m.terrain).filter((t) => t != null);
   const terrainUnreliable = terrains.length > 1 && differs(Math.max(...terrains), Math.min(...terrains), 0.1 * Math.max(...terrains));
+  // Groupe ancré par au moins une annonce détaillée : une annonce nue de la même source qu'un
+  // autre membre nu y entre quand même (Superimmo garde en ligne l'ancien prix et le nouveau,
+  // 249 000 puis 239 000 €, et une page par agence). Entre annonces nues seules, la règle
+  // « une annonce en ligne par source » tient : rien ne prouve qu'il s'agit du même bien.
+  const anchored = g.listings.some((m) => !bare(m));
+  // Prix comparé aux annonces encore en ligne : une ancienne annonce retirée à 276 000 € ne
+  // ferme plus la porte au bien affiché aujourd'hui 260 000 € (sa propre annonce est déjà là).
+  const live = g.listings.filter((m) => !m.removedAt);
+  const priceRefs = new Set(!l.removedAt && live.length ? live : g.listings);
   return g.listings.every((m) => {
-    if (sameProperty(l, m) === 'sure') return true;
-    if (l.energyConsumption != null && m.energyConsumption != null) return false;
+    const how = sameProperty(l, m);
+    if (how === 'sure') return true;
+    // Deux DPE différents : deux biens, sauf DPE refait ou relu (redoneDpe, alors « probable »).
+    if (l.energyConsumption != null && m.energyConsumption != null && !how) return false;
     if (contradicts(l, m, terrainUnreliable)) return false;
     // Le prix doit rester à 5 % de chaque membre, pas seulement du voisin (sinon 420 k€ → 400 k€ → 389 k€ s'enchaînent).
-    if (l.price && m.price && Math.abs(l.price - m.price) > 0.05 * Math.max(l.price, m.price)) return false;
+    if (priceRefs.has(m) && l.price && m.price && Math.abs(l.price - m.price) > 0.05 * Math.max(l.price, m.price)) return false;
+    if (anchored && bare(l) && bare(m)) return true;
     return !(l.source === m.source && !l.removedAt && !m.removedAt) || twins(l, m);
   });
 }
@@ -95,9 +124,13 @@ function fitsGroup(l, g) {
 // identiques. Une même source en publie deux pour un seul bien (deux agences, republication, prix
 // baissé : 365 k€ puis 349 k€) ; sans cela le bien se coupait en deux cartes et l'écartée revenait.
 // Le prix à 5 % près est déjà exigé par fitsGroup.
+// Annonce nue (Superimmo publie un même bien une fois par agence, sans aucun détail) : le prix à
+// l'euro près suffit. Sans cela, une seule de ses annonces rejoignait la carte du bien, les autres
+// restaient seules, sans adresse, et revenaient dans le Fil alors que le bien était écarté.
 function twins(a, b) {
   if (!close(a.surface, b.surface, 1)) return false;
   const samePrice = !!a.price && a.price === b.price;
+  if (samePrice && (bare(a) || bare(b))) return true;
   return agreements(a, b) - (samePrice ? 1 : 0) >= 3 || (samePrice && agreements(a, b) >= 3);
 }
 
@@ -246,9 +279,12 @@ function urlKey(url) {
 // cherchée parmi les adresses de ses annonces et celles des annonces vues du même bien (une
 // annonce vue est suivie sous l'adresse de sa première annonce, parfois une autre). Ainsi un
 // favori ne disparaît pas quand deux annonces sont réunies, séparées ou lues par le robot.
-function trackingKeyOf(g, tracking, seenByUrl = new Map()) {
+// `linked` (linkedKeys) : clés des verdicts qui gardent l'adresse d'une annonce du bien. Un bien
+// dont une annonce faisait partie d'une carte écartée reste écarté, même si la carte a été
+// coupée depuis et que l'annonce-clé n'en fait plus partie.
+function trackingKeyOf(g, tracking, seenByUrl = new Map(), linked = linkedKeys(tracking)) {
   const urls = g.listings.map((l) => l.url);
-  const candidates = [g.key, ...urls, ...urls.map((u) => seenByUrl.get(urlKey(u))).filter(Boolean)];
+  const candidates = [g.key, ...urls, ...urls.map((u) => seenByUrl.get(urlKey(u))).filter(Boolean), ...urls.flatMap((u) => linked.get(urlKey(u)) || [])];
   // Un verdict (écarté, gardé…) passe avant un simple « ouvert » ou une note posés sur une autre
   // annonce du même bien : sans cela, un bien écarté revenait comme non écarté. Et si deux annonces
   // du bien portent deux verdicts, « écarté » l'emporte : un bien refusé ne doit pas revenir parce
@@ -260,6 +296,20 @@ function trackingKeyOf(g, tracking, seenByUrl = new Map()) {
     g.key
   );
 }
+
+// Index des verdicts par annonce : urlKey → clés des suivis qui ont un verdict et gardent cette
+// adresse (champ `urls`, zones.js). À calculer une fois pour tout le Fil.
+function linkedKeys(tracking) {
+  const out = new Map();
+  for (const [key, t] of Object.entries(tracking || {})) {
+    if (!t || !t.status || !Array.isArray(t.urls)) continue;
+    for (const u of t.urls) out.set(u, [...(out.get(u) || []), key]);
+  }
+  return out;
+}
+
+// Adresses (urlKey) des annonces d'un bien, à garder avec son verdict.
+const groupUrls = (g) => [...new Set(g.listings.map((l) => urlKey(l.url)))];
 
 // Vente DVF reliée à un bien retiré (sûre de préférence), avec l'écart en % entre le premier
 // prix relevé (annonce vue la première) et le prix signé. Un bien encore en ligne sur un site
@@ -302,4 +352,4 @@ function negotiationText(n) {
   return `Écart médian entre le premier prix relevé et le prix signé : ${n.median} % (${n.count} ventes reliées${how}). Le prix affiché comprend souvent les honoraires d’agence, que le prix de l’acte n’inclut pas.`;
 }
 
-export { LISTINGS_ENDPOINT, SOURCE_LABELS, UNOPENED_SINCE, addressKey, placeOf, needsPlace, isIncomplete, urlKey, trackingKeyOf, saleOf, negotiation, negotiationText, shortPrice, fetchListings, groupListings, listingFacts, statusOf, robotSeenAt, isUnopened, sameProperty };
+export { LISTINGS_ENDPOINT, SOURCE_LABELS, UNOPENED_SINCE, addressKey, placeOf, needsPlace, isIncomplete, urlKey, trackingKeyOf, linkedKeys, groupUrls, saleOf, negotiation, negotiationText, shortPrice, fetchListings, groupListings, listingFacts, statusOf, robotSeenAt, isUnopened, sameProperty };

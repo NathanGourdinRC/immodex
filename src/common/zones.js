@@ -153,7 +153,7 @@ function cleanPlace(place, now) {
 
 // Suivi d'un bien après une modification ; null quand il n'a plus rien à garder (ni statut, ni
 // note, ni adresse choisie, ni clic sur l'annonce).
-function nextTracking(current, { status, note, place, opened, reason, priceAt }, now) {
+function nextTracking(current, { status, note, place, opened, reason, priceAt, urls }, now) {
   const next = {
     status: status !== undefined ? (STATUSES[status] ? status : null) : current.status || null,
     note: note !== undefined ? String(note || '').slice(0, 1000) : current.note || '',
@@ -174,8 +174,20 @@ function nextTracking(current, { status, note, place, opened, reason, priceAt },
   if (kept) next.place = kept;
   const seen = opened !== undefined ? Number(opened) || null : current.opened || null;
   if (seen) next.opened = seen;
+  const linked = mergeUrls(current.urls, urls);
+  if (linked.length) next.urls = linked;
   next.updatedAt = now;
   return next.status || next.note || next.place || next.opened ? next : null;
+}
+
+// Adresses des annonces d'un bien, gardées avec son verdict : le verdict suit chacune d'elles,
+// même si l'annonce dont l'adresse sert de clé quitte un jour la carte (regroupement revu,
+// annonce retirée). Sans cela, le reste du bien revenait dans le Fil comme jamais écarté.
+// Les plus récentes d'abord, 40 au plus.
+const MAX_LINKED_URLS = 40;
+function mergeUrls(current, added) {
+  const list = [...(Array.isArray(added) ? added : []), ...(Array.isArray(current) ? current : [])].filter((u) => typeof u === 'string' && u);
+  return [...new Set(list)].slice(0, MAX_LINKED_URLS);
 }
 
 // Baisse de prix qui fait revenir un bien refusé « trop cher » : 2 % sous le prix du refus.
@@ -262,13 +274,29 @@ function createZoneStore(storageArea) {
     },
     // `opened` : date du premier clic sur une annonce du robot (elle n'est plus jaune). Rangé
     // avec le statut, il suit la même synchro entre appareils.
-    setTracking(url, { status, note, place, opened, reason, priceAt }, now = Date.now()) {
+    // `urls` : adresses (urlKey) des annonces du bien, gardées avec le verdict (mergeUrls).
+    setTracking(url, { status, note, place, opened, reason, priceAt, urls }, now = Date.now()) {
       return write(TRACKING_KEY, {}, (data) => {
         const all = { ...(data || {}) };
-        const next = nextTracking(all[url] || {}, { status, note, place, opened, reason, priceAt }, now);
+        const next = nextTracking(all[url] || {}, { status, note, place, opened, reason, priceAt, urls }, now);
         if (next) all[url] = next;
         else delete all[url];
         return { data: all, value: next };
+      });
+    },
+    // Verdicts déjà posés : ajoute les adresses des annonces que leur carte contient aujourd'hui.
+    // `links` : { clé: [urlKey…] }. La date du suivi ne bouge pas : ce complément ne doit jamais
+    // l'emporter, à la synchro, sur un verdict changé entre-temps sur le téléphone. Renvoie le
+    // suivi complet.
+    linkUrls(links) {
+      return write(TRACKING_KEY, {}, (data) => {
+        const all = { ...(data || {}) };
+        for (const [key, urls] of Object.entries(links || {})) {
+          const t = all[key];
+          if (!t || !t.status) continue;
+          all[key] = { ...t, urls: mergeUrls(t.urls, urls) };
+        }
+        return { data: all, value: all };
       });
     },
     // Plusieurs annonces ouvertes d'un coup (« Tout marquer comme vu ») : une seule écriture.

@@ -222,3 +222,26 @@ test('un bien refusé pour son prix revient à 2 % de baisse ; refusé comme non
   assert.equal(returnedByPrice({ status: 'favori' }, 300000), null);
   assert.equal(returnedByPrice(undefined, 300000), null);
 });
+
+// ─── Verdict rangé avec les adresses de toutes les annonces du bien ───
+
+test('verdict : les adresses des annonces du bien sont gardées avec lui, et complétées sans changer sa date', async () => {
+  const store = createZoneStore(memoryStorage());
+  const key = 'https://www.iadfrance.fr/annonce/x';
+  await store.setTracking(key, { status: 'ecarte', urls: [key, 'https://www.seloger.com/x'] }, 1000);
+  assert.deepEqual((await store.tracking())[key].urls, [key, 'https://www.seloger.com/x']);
+  // une note garde les adresses
+  await store.setTracking(key, { note: 'vis-à-vis' }, 2000);
+  assert.deepEqual((await store.tracking())[key].urls, [key, 'https://www.seloger.com/x']);
+  // complément à l'ouverture du Fil : adresse ajoutée en tête, sans doublon, date inchangée
+  await store.linkUrls({ [key]: ['https://www.paruvendu.fr/x', key] });
+  const t = (await store.tracking())[key];
+  assert.deepEqual(t.urls, ['https://www.paruvendu.fr/x', key, 'https://www.seloger.com/x']);
+  assert.equal(t.updatedAt, 2000, 'le complément ne doit pas l’emporter à la synchro sur un verdict changé ailleurs');
+  // un suivi sans verdict (clic, note seule) n'est pas complété ; une clé inconnue n'est pas créée
+  await store.setTracking('https://www.orpi.com/y', { opened: 3000 }, 3000);
+  await store.linkUrls({ 'https://www.orpi.com/y': ['https://www.seloger.com/y'], 'https://inconnue.fr/z': ['https://inconnue.fr/z'] });
+  const all = await store.tracking();
+  assert.equal(all['https://www.orpi.com/y'].urls, undefined);
+  assert.equal(all['https://inconnue.fr/z'], undefined);
+});

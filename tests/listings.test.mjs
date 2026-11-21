@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { groupListings, statusOf, listingFacts, trackingKeyOf, negotiation, negotiationText, saleOf, shortPrice, placeOf, needsPlace, isIncomplete, isUnopened, robotSeenAt, UNOPENED_SINCE } from '../src/common/listings.js';
+import { groupListings, statusOf, listingFacts, trackingKeyOf, linkedKeys, groupUrls, negotiation, negotiationText, saleOf, shortPrice, placeOf, needsPlace, isIncomplete, isUnopened, robotSeenAt, UNOPENED_SINCE } from '../src/common/listings.js';
 import { handleListings } from '../api/listings.js';
 import { fakeRedis } from './helpers/fake-redis.mjs';
 
@@ -152,6 +152,63 @@ test('même source, prix baissé : le bien republié reste dans la carte de l’
   assert.equal(groupListings([mk('leboncoin', 'a', 365000, { terrain: null, energyClass: null }), mk('leboncoin', 'b', 349000)]).length, 2);
 });
 
+// Cas réel (Marcq-en-Barœul, 21/11/2026) : un appartement de 80 m² à 267 000 € sur SeLoger,
+// ParuVendu et Immotram, plus quatre pages Superimmo (une par agence) qui ne donnent que le prix
+// et la surface. Une seule entrait dans la carte ; les trois autres restaient seules, sans
+// adresse, et revenaient dans le Fil alors que le bien était écarté.
+test('Superimmo : les pages nues d’un même bien rejoignent toutes sa carte', () => {
+  const flat = { type: 'appartement', surface: 80, price: 267000 };
+  const sl = base({ id: 'seloger:/a', source: 'seloger', url: 'https://www.seloger.com/a', ...flat, pieces: 3, chambres: 2, energyClass: 'C', energyConsumption: 122, gesEmission: 25 });
+  const pv = base({ id: 'paruvendu:/a', source: 'paruvendu', url: 'https://www.paruvendu.fr/a', ...flat, pieces: 3, chambres: 2, energyClass: 'C', energyConsumption: 122, gesEmission: 25 });
+  const sup = [1, 2, 3, 4].map((i) => base({ id: `superimmo:/${i}`, source: 'superimmo', url: `https://www.superimmo.com/x${i}`, ...flat }));
+  for (const order of [[sl, pv, ...sup], [...sup, pv, sl], [sup[2], sl, sup[0], pv, sup[3], sup[1]]]) {
+    const groups = groupListings(order);
+    assert.equal(groups.length, 1, order.map((l) => l.id).join(' '));
+    assert.equal(groups[0].listings.length, 6);
+  }
+  // Ancien prix encore en ligne sur Superimmo (249 000 €) et nouveau (239 000 €) : une seule carte.
+  const house = { surface: 118, pieces: 5, chambres: 4, energyClass: 'E' };
+  const lsi = base({ id: 'lesiteimmo:/h', source: 'lesiteimmo', url: 'https://www.lesiteimmo.com/h', ...house, price: 239000, energyConsumption: 322, gesEmission: 62 });
+  const slh = base({ id: 'seloger:/h', source: 'seloger', url: 'https://www.seloger.com/h', ...house, price: 249000, energyConsumption: 322, gesEmission: 62 });
+  const oldSup = base({ id: 'superimmo:/h1', source: 'superimmo', url: 'https://www.superimmo.com/h1', surface: 118, price: 249000 });
+  const newSup = base({ id: 'superimmo:/h2', source: 'superimmo', url: 'https://www.superimmo.com/h2', surface: 118, price: 239000 });
+  assert.equal(groupListings([lsi, slh, oldSup, newSup]).length, 1);
+  // Sans annonce détaillée pour ancrer la carte, deux pages nues d'une même source restent deux biens.
+  assert.equal(groupListings([oldSup, newSup]).length, 2);
+});
+
+// Cas réels : SeLoger 227 puis 194 kWh/m² (Saint-Jorioz, DPE refait), Citya 228 et ParuVendu 231
+// (chiffres relus), même lettre, même prix à l'euro, mêmes pièces, chambres et terrain. Le DPE exact
+// était exigé : deux cartes, et l'écartée revenait.
+test('DPE refait ou relu : chiffres différents, même lettre, même prix et mêmes détails → un seul bien', () => {
+  const d = { surface: 210, pieces: 8, chambres: 5, terrain: 1902, energyClass: 'D', price: 1290000 };
+  const mk = (id, o) => base({ id: `seloger:/${id}`, source: id === 'b' ? 'orpi' : 'seloger', url: `https://exemple.fr/${id}`, ...d, ...o });
+  const groups = groupListings([mk('a', { energyConsumption: 227, gesEmission: 7 }), mk('b', { energyConsumption: 194, gesEmission: 7 })]);
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].probable, true, 'réunis par ressemblance, pas par le DPE');
+  // Même source, deux annonces en ligne : aussi un seul bien.
+  assert.equal(groupListings([mk('a', { energyConsumption: 227 }), mk('c', { energyConsumption: 194 })]).length, 1);
+  // Prix différent, lettre différente ou un seul détail en plus en commun : deux biens.
+  assert.equal(groupListings([mk('a', { energyConsumption: 227 }), mk('b', { energyConsumption: 194, price: 1280000 })]).length, 2);
+  assert.equal(groupListings([mk('a', { energyConsumption: 227 }), mk('b', { energyConsumption: 194, energyClass: 'C' })]).length, 2);
+  const flat = (id, ec) => base({ id: `x:/${id}`, source: id, url: `https://exemple.fr/${id}`, surface: 60, price: 200000, energyClass: 'C', energyConsumption: ec });
+  assert.equal(groupListings([flat('orpi', 120), flat('pap', 140)]).length, 2, 'prix et lettre seuls : deux biens');
+  // Un détail contraire (chambres) : deux biens, même au même prix.
+  assert.equal(groupListings([mk('a', { energyConsumption: 227 }), mk('b', { energyConsumption: 194, chambres: 4 })]).length, 2);
+});
+
+// Cas réel (Wambrechies) : un bien réuni par son DPE à 276 000 € (annonce retirée) puis 260 000 €.
+// Une nouvelle annonce à 260 000 € était refusée, à plus de 5 % de l'ancien prix retiré.
+test('prix : une annonce retirée à l’ancien prix ne ferme plus la carte au prix du jour', () => {
+  const d = { surface: 72, pieces: 4, chambres: 3, energyClass: 'D' };
+  const old = base({ id: 'maes:/old', source: 'maes', url: 'https://maes.fr/old', ...d, price: 276000, energyConsumption: 216, gesEmission: 47, removedAt: NOW - 5 * DAY });
+  const cur = base({ id: 'maes:/new', source: 'maes', url: 'https://maes.fr/new', ...d, price: 260000, energyConsumption: 216, gesEmission: 47 });
+  const lbc = base({ id: 'leboncoin:/1', source: 'leboncoin', url: 'https://www.leboncoin.fr/1', ...d, price: 260000 });
+  assert.equal(groupListings([old, cur, lbc]).length, 1);
+  // Toutes en ligne : le prix reste comparé à chaque annonce (pas d'enchaînement).
+  assert.equal(groupListings([{ ...old, removedAt: null, source: 'deleu' }, cur, lbc]).length, 2);
+});
+
 test('sans DPE : les prix ne s’enchaînent pas (420 k€ → 400 k€ → 389 k€ = trois biens, pas un)', () => {
   const mk = (id, source, price) => base({ id: `${source}:/${id}`, source, url: `https://exemple.fr/${id}`, surface: 110, price });
   const groups = groupListings([mk('a', 'orpi', 420000), mk('b', 'paruvendu', 400000), mk('c', 'pap', 389000)]);
@@ -274,6 +331,25 @@ test('statut d’un bien : « écarté » l’emporte sur « gardé » quand deu
   assert.equal(trackingKeyOf(g, { [a.url]: { status: 'favori' }, 'https://www.jinka.fr/annonce/42': { status: 'ecarte' } }, seen), 'https://www.jinka.fr/annonce/42');
   // Deux « gardé » : le premier trouvé, comme avant.
   assert.equal(trackingKeyOf(g, { [a.url]: { status: 'favori' }, [b.url]: { status: 'favori' } }), a.url);
+});
+
+// Le verdict n'était rangé que sous l'adresse d'une annonce (la clé de la carte). Quand cette
+// annonce quittait la carte (regroupement revu), le reste du bien revenait comme jamais écarté.
+test('statut d’un bien : le verdict suit toutes les annonces de la carte, même si la carte est coupée', () => {
+  const a = base({ id: 'iad:/x', source: 'iad', url: 'https://www.iadfrance.fr/annonce/x?ref=fil', surface: 118, firstSeen: NOW - 12 * DAY });
+  const b = base({ id: 'seloger:/x', source: 'seloger', url: 'https://www.seloger.com/x', surface: 118 });
+  const c = base({ id: 'paruvendu:/x', source: 'paruvendu', url: 'https://www.paruvendu.fr/x', surface: 118 });
+  const [before] = groupListings([a, b, c]);
+  // Écarté sous la clé de la carte, avec les adresses de ses trois annonces.
+  const tracking = { [before.key]: { status: 'ecarte', urls: groupUrls(before) } };
+  assert.deepEqual(groupUrls(before).sort(), ['https://www.iadfrance.fr/annonce/x', 'https://www.paruvendu.fr/x', 'https://www.seloger.com/x']);
+  // Plus tard, la carte ne contient plus l'annonce iad : toujours écartée.
+  const [after] = groupListings([b, c]);
+  assert.notEqual(after.key, before.key);
+  assert.equal(trackingKeyOf(after, tracking), before.key);
+  assert.equal(trackingKeyOf(after, tracking, new Map(), linkedKeys(tracking)), before.key);
+  // Un suivi sans verdict (simple clic) ne sert pas de lien.
+  assert.equal(trackingKeyOf(after, { [before.key]: { opened: NOW, urls: groupUrls(before) } }), after.key);
 });
 
 test('marge de négociation : écart entre le premier prix affiché et le prix signé, à partir de 3 ventes reliées', () => {

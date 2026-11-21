@@ -6,7 +6,7 @@
 // Un bien sans adresse retrouvée montre ses pistes d'adresse, que Nathan vérifie (leads.js).
 // S'il lui manque un critère demandé par la recherche, il est masqué : un bouton le remontre.
 import { checkCriteria, trackingKey, returnedByPrice } from '../common/zones.js';
-import { groupListings, listingFacts, statusOf, isUnopened, trackingKeyOf, urlKey, saleOf, negotiation, negotiationText, placeOf, needsPlace, isIncomplete, SOURCE_LABELS } from '../common/listings.js';
+import { groupListings, listingFacts, statusOf, isUnopened, trackingKeyOf, linkedKeys, groupUrls, urlKey, saleOf, negotiation, negotiationText, placeOf, needsPlace, isIncomplete, SOURCE_LABELS } from '../common/listings.js';
 import { nearestSales, isComparable } from '../common/sectors.js';
 import { loadSearchSales } from './sector-layer.js';
 import { classLine } from '../common/energy-text.js';
@@ -157,7 +157,27 @@ async function loadAnnonces(ctx, body) {
     body.replaceChildren(robotLine(data, [], unread), lbcTourLine(), selogerTourLine(), UI.empty('Aucune annonce en vente qui passe tes critères pour le moment.'));
     return;
   }
-  for (const x of groups) x.key = trackingKeyOf(x.g, tracking, seenByUrl);
+  const linked = linkedKeys(tracking);
+  for (const x of groups) x.key = trackingKeyOf(x.g, tracking, seenByUrl, linked);
+  // Verdicts posés avant que le suivi garde les adresses des annonces (ou carte grossie depuis) :
+  // on y ajoute celles de la carte d'aujourd'hui. Si la carte est coupée un jour, chaque morceau
+  // reste écarté (ou gardé). Une seule écriture, seulement quand une adresse manque.
+  const links = {};
+  for (const x of groups) {
+    const t = tracking[x.key];
+    if (!t || !t.status) continue;
+    const have = new Set(t.urls || []);
+    const missing = groupUrls(x.g).filter((u) => !have.has(u));
+    if (missing.length) links[x.key] = [...(links[x.key] || []), ...missing];
+  }
+  if (Object.keys(links).length) {
+    try {
+      Object.assign(tracking, await store.linkUrls(links));
+    } catch {
+      // Écriture impossible : le Fil s'affiche quand même, le complément sera refait à la prochaine ouverture.
+    }
+    if (!isCurrent()) return;
+  }
   // Suivi d'un bien tel que le Fil le voit : refusé « trop cher » et son prix a baissé de 2 % →
   // il n'est plus écarté (`status` nul) et porte `back` (ancien prix, nouveau prix, écart).
   // Refusé « pas pertinent » : jamais de retour. `tracking` garde le suivi tel qu'enregistré.
@@ -240,7 +260,10 @@ async function loadAnnonces(ctx, body) {
 
   // `extra` : { reason: 'prix', priceAt } pour « Trop cher » (voir verdictButtons).
   const onStatus = async (key, status, note, extra) => {
-    keep(key, await store.setTracking(key, note === undefined ? { status, ...extra } : { note }));
+    // Un verdict garde les adresses de toutes les annonces du bien (plusieurs cartes peuvent
+    // partager la clé) : il les suivra même si la carte est un jour coupée.
+    const urls = [...new Set(groups.filter((x) => x.key === key).flatMap((x) => groupUrls(x.g)))];
+    keep(key, await store.setTracking(key, note === undefined ? { status, ...extra, urls } : { note }));
     if (!isCurrent()) return;
     // Une note ou un verdict fait entrer le bien dans ceux que Nathan a touchés (ou l'en sort).
     if (note !== undefined) {
