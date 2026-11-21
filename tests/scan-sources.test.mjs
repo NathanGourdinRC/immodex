@@ -659,3 +659,18 @@ test('Espaces Atypiques : la commune de la carte compte, pas celle citée par la
   assert.deepEqual(cards.map((c) => [c.url, c.price]), [['https://www.espaces-atypiques.com/ventes/59130-lambersart-un-grain-dhistoire-18108/', 890000]]);
   assert.equal(readResults(html, 'https://www.espaces-atypiques.com/lille/', s, { code: '59360', nom: 'Loos', codesPostaux: ['59120'] }).cards[0].type, 'appartement');
 });
+
+test('RD Immo : les biens sans prix sont les biens vendus, écartés', () => {
+  // Cartes telles que le site les donne : bien à vendre avec son prix, bien vendu sans prix,
+  // marqué « vendu par RDIMMO » (tournure que la règle « vendu » laisse passer).
+  const html = `<html><body><div class="property-list">
+    <div><a href="/vente/159-marcq-institution-jolie-maison-marcq-en-baroeul"><span class="label">exclusivité</span>
+      <h3>Marcq Institution : Jolie maison</h3><p class="city">Marcq-en-Baroeul</p><p class="price">415 000 &euro;</p><p class="surface">100 m²</p></a></div>
+    </div><section id="soldout"><div class="property-list">
+    <div><a href="/vente/46-marcq-en-baroeul-le-quesne-maison-4-chambres"><span class="label">vendu par RDIMMO</span>
+      <h3>Le Quesne : Maison 4 chambres</h3><p class="city">Marcq-en-Baroeul</p><p class="surface">110 m²</p></a></div>
+    </div></section></body></html>`;
+  const r = readResults(html, 'https://www.rdimmo.fr/vente/immobilier/marcq-en-baroeul/', sourceById('rdimmo'), MARCQ);
+  assert.deepEqual(r.cards.map((c) => c.price), [415000]);
+  assert.equal(r.all.length, 2);
+});

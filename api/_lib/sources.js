@@ -793,10 +793,13 @@ const SOURCES = [
   {
     // Agence de Marcq-en-Barœul : une liste par commune (« /vente/immobilier/marcq-en-baroeul/ »,
     // puis « ?p=2 »), biens à vendre puis biens vendus ; la commune finit l'adresse de la fiche.
+    // Les biens vendus (« vendu par RDIMMO », tournure que la règle « vendu » laisse passer) n'ont
+    // jamais de prix, les biens à vendre toujours (`pricedOnly`, vérifié le 21/11/2026).
     id: 'rdimmo',
     label: 'RD Immo',
     host: 'www.rdimmo.fr',
     departments: ['59'],
+    pricedOnly: true,
     pageSize: 9,
     communeInUrl: true,
     listUrls: (c) => [`https://www.rdimmo.fr/vente/immobilier/${slugOf(c.nom)}/`],
@@ -1210,6 +1213,8 @@ function readResults(html, pageUrl, source, commune) {
     const priced = [...card.querySelectorAll('*')].filter((el) => priceOf(el.textContent));
     const deepest = priced.find((el) => !priced.some((other) => other !== el && el.contains(other)));
     const price = deepest ? priceOf(deepest.textContent) : null;
+    // Source dont seuls les biens vendus n'ont pas de prix (`pricedOnly`) : carte sans prix écartée.
+    if (source.pricedOnly && !price) continue;
     const text = norm(card.textContent);
     // Mention « vendu » portée par une image (texte de remplacement « Maison - VENDU »).
     const alts = [...card.querySelectorAll('img[alt]')].map((img) => img.getAttribute('alt')).join(' ');
