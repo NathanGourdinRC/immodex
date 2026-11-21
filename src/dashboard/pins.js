@@ -7,9 +7,10 @@ import { shortPrice } from '../common/listings.js';
 // Clic sur un bouton, un lien, une note ou un menu de la carte du Fil : ce geste-là seulement.
 const INTERACTIVE = 'button, a, input, textarea, select, label';
 
-// `fresh` : annonce du robot pas encore ouverte, point jaune (is-fresh).
-function priceIcon(price, status, fresh = false) {
-  return L.divIcon({ className: 'imx-price-pin-wrap', html: `<div class="imx-price-pin is-${status || 'aucun'}${fresh ? ' is-fresh' : ''}">${shortPrice(price) || 'prix ?'}</div>`, iconSize: null });
+// `fresh` : annonce du robot pas encore ouverte, point jaune (is-fresh). `probable` : posé sur la
+// meilleure piste du registre, pas encore confirmé (bord en pointillé, is-probable).
+function priceIcon(price, status, fresh = false, probable = false) {
+  return L.divIcon({ className: 'imx-price-pin-wrap', html: `<div class="imx-price-pin is-${status || 'aucun'}${fresh ? ' is-fresh' : ''}${probable ? ' is-probable' : ''}">${shortPrice(price) || 'prix ?'}</div>`, iconSize: null });
 }
 
 const pinOf = (marker) => (marker.getElement() ? marker.getElement().querySelector('.imx-price-pin') : null);
@@ -17,8 +18,8 @@ const pinOf = (marker) => (marker.getElement() ? marker.getElement().querySelect
 // Couleur d'un point déjà posé (gardé, écarté, ouvert) sans le recréer : sa bulle, peut-être
 // ouverte à l'instant du clic, reste ouverte. L'icône enregistrée suit, pour un point remis sur
 // la carte plus tard (calque masqué puis réaffiché).
-function setPinState(marker, { price, status, fresh }) {
-  marker.options.icon = priceIcon(price, status, fresh);
+function setPinState(marker, { price, status, fresh, probable = !!marker.options.probable }) {
+  marker.options.icon = priceIcon(price, status, fresh, probable);
   const pin = pinOf(marker);
   if (!pin) return;
   for (const c of [...pin.classList]) if (/^is-(aucun|a-voir|favori|visite|ecarte)$/.test(c)) pin.classList.remove(c);
@@ -35,8 +36,8 @@ function setRowSelected(row, on) {
 
 // Place un bien sur la carte et le relie à sa carte du Fil. `focus(id)` centre la carte et
 // ouvre la bulle (dashboard.js). Rend le marqueur.
-function placeListing({ layer, markers, id, lat, lon, price, status, fresh, title, popup, row, focus }) {
-  const marker = L.marker([lat, lon], { icon: priceIcon(price, status, fresh), title: title || '' });
+function placeListing({ layer, markers, id, lat, lon, price, status, fresh, probable = false, title, popup, row, focus }) {
+  const marker = L.marker([lat, lon], { icon: priceIcon(price, status, fresh, probable), title: title || '', probable });
   // Marge en haut : la bulle ne passe pas sous les boutons de zoom et de calques (croix visible).
   marker.bindPopup(popup, { maxWidth: 320, autoPanPaddingTopLeft: [10, 64], autoPanPaddingBottomRight: [10, 10] });
   marker.on('popupopen', () => {

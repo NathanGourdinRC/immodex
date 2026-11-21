@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { groupListings, statusOf, listingFacts, trackingKeyOf, linkedKeys, groupUrls, negotiation, negotiationText, saleOf, shortPrice, placeOf, needsPlace, isIncomplete, isUnopened, robotSeenAt, UNOPENED_SINCE } from '../src/common/listings.js';
+import { groupListings, statusOf, listingFacts, trackingKeyOf, linkedKeys, groupUrls, negotiation, negotiationText, saleOf, shortPrice, placeOf, probablePlaceOf, needsPlace, isIncomplete, isUnopened, robotSeenAt, UNOPENED_SINCE } from '../src/common/listings.js';
 import { handleListings } from '../api/listings.js';
 import { fakeRedis } from './helpers/fake-redis.mjs';
 
@@ -461,4 +461,23 @@ test('pistes pas encore cherchées par le robot (version de la recherche d’adr
   // Sans DPE lu : rien à chercher dans le registre.
   const [noDpe] = groupListings([base({ id: 'maes:/2', source: 'maes', url: 'https://www.maesimmobilier.fr/2', surface: 170 })]);
   assert.equal(listingFacts(noDpe).leadsPending, false);
+});
+
+// Biens sans adresse sûre : 1 286 avaient des pistes du registre, mais aucun point sur la carte tant
+// que Nathan n'avait pas cliqué « C'est ici ». La meilleure piste, quand elle est nette, donne un
+// point « probable » (en pointillé).
+test('adresse probable : la meilleure piste quand elle est seule ou devant, jamais à égalité', () => {
+  const lead = (address, score, o = {}) => ({ address, score, lat: 50.67, lon: 3.07, ...o });
+  const f = (leads, o = {}) => ({ lat: null, lon: null, leads, ...o });
+  assert.deepEqual(probablePlaceOf(f([lead('78 Rue Pasteur', 62)]), {}), { address: '78 Rue Pasteur', lat: 50.67, lon: 3.07, by: 'probable', score: 62 });
+  assert.equal(probablePlaceOf(f([lead('8 Rue de la Station', 80), lead('7 Rue Faidherbe', 70)]), {}).address, '8 Rue de la Station');
+  // Quatre maisons à 70 points : pas de point, il tomberait au hasard.
+  assert.equal(probablePlaceOf(f([lead('8 Rue de la Station', 70), lead('7 Rue Faidherbe', 70)]), {}), null);
+  // Piste sans coordonnées, pas de piste : rien.
+  assert.equal(probablePlaceOf(f([lead('Rue X', 70, { lat: null })]), {}), null);
+  assert.equal(probablePlaceOf(f(null), {}), null);
+  // Adresse sûre, adresse choisie ou « Je ne le trouve pas » : pas de point probable.
+  assert.equal(probablePlaceOf(f([lead('78 Rue Pasteur', 62)], { lat: 50.6, lon: 3.1 }), {}), null);
+  assert.equal(probablePlaceOf(f([lead('78 Rue Pasteur', 62)]), { place: { address: '1 Rue Y', lat: 50.6, lon: 3.1, by: 'saisie' } }), null);
+  assert.equal(probablePlaceOf(f([lead('78 Rue Pasteur', 62)]), { place: { none: true } }), null);
 });

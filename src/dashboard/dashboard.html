@@ -62,6 +62,10 @@
       /* Annonce du robot pas encore ouverte : jaune, en pastille comme en petit point. */
       .imx-price-pin.is-fresh { background: #fde047; border-color: #a16207; color: #0f172a; }
       .imx-zoom-low .imx-price-pin.is-fresh:not(.is-hover):not(.is-selected):not(.is-legend) { background: #facc15; box-shadow: 0 0 0 1.5px #a16207, 0 1px 4px rgba(15, 23, 42, 0.35); }
+      /* Adresse probable (meilleure piste du registre, à confirmer) : bord en pointillé ; en vue
+         d'ensemble, rond blanc cerclé en pointillé au lieu du point plein. */
+      .imx-price-pin.is-probable { border-style: dashed; border-width: 2px; }
+      .imx-zoom-low .imx-price-pin.is-probable:not(.is-hover):not(.is-selected):not(.is-legend) { background: #fff; border: 2px dashed #7c3aed; }
       /* Biens écartés cachés sur la carte, sauf « Voir les écartées » (verdict.js) ou bulle ouverte. */
       body:not(.imx-show-ecarte) .imx-price-pin.is-ecarte:not(.is-legend):not(.is-selected) { display: none; }
       .imx-map-dropped { box-shadow: 0 1px 5px rgba(15, 23, 42, 0.3); }

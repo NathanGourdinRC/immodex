@@ -73,10 +73,11 @@ legend.onAdd = () => {
     el('div', null, pill('is-aucun', '389 k€'), 'Annonce en vente, prix affiché (point violet en vue d’ensemble)'),
     el('div', null, pill('is-aucun is-fresh', 'k€'), 'nouvelle du robot, jaune tant que tu ne l’as pas ouverte'),
     el('div', null, pill('is-favori', 'k€'), 'gardée', pill('is-ecarte', 'k€'), 'écartée (cachée, bouton « Voir les écartées »)'),
+    el('div', null, pill('is-aucun is-probable', 'k€'), 'adresse probable, à confirmer (« C’est ici » dans sa bulle)'),
     el('div', null, dot('#0d9488'), 'DPE récent : bientôt en vente ?'),
     el('div', null, dot('#f79009'), 'DPE nouveau depuis ta visite'),
     el('div', null, 'Hexagones : prix des ventes DVF du secteur'),
-    el('small', null, 'Seuls les biens dont l’adresse a été retrouvée ont un point.')
+    el('small', null, 'Un bien sans adresse sûre ni piste nette n’a pas de point.')
   );
   L.DomEvent.disableClickPropagation(box);
   return box;

@@ -6,7 +6,7 @@
 // Un bien sans adresse retrouvée montre ses pistes d'adresse, que Nathan vérifie (leads.js).
 // S'il lui manque un critère demandé par la recherche, il est masqué : un bouton le remontre.
 import { checkCriteria, trackingKey, returnedByPrice } from '../common/zones.js';
-import { groupListings, listingFacts, statusOf, isUnopened, trackingKeyOf, linkedKeys, groupUrls, urlKey, saleOf, negotiation, negotiationText, placeOf, needsPlace, isIncomplete, SOURCE_LABELS } from '../common/listings.js';
+import { groupListings, listingFacts, statusOf, isUnopened, trackingKeyOf, linkedKeys, groupUrls, urlKey, saleOf, negotiation, negotiationText, placeOf, probablePlaceOf, needsPlace, isIncomplete, SOURCE_LABELS } from '../common/listings.js';
 import { nearestSales, isComparable } from '../common/sectors.js';
 import { loadSearchSales } from './sector-layer.js';
 import { classLine } from '../common/energy-text.js';
@@ -82,7 +82,9 @@ function annonceRow(g, key, f, st, track, unknown, onStatus, now, where) {
       { class: 'imx-meta' },
       [
         where.place && where.place.by === 'registre' ? where.place.address : where.place ? null : f.address || where.communeName,
-        !where.place && st.status !== 'retire' && !(track.place && track.place.none) ? 'adresse non retrouvée, pas de point sur la carte' : null,
+        // Adresse probable (meilleure piste du registre) : point en pointillé sur la carte.
+        !where.place && where.probable && st.status !== 'retire' ? `adresse probable : ${where.probable.address}, point en pointillé à confirmer` : null,
+        !where.place && !where.probable && st.status !== 'retire' && !(track.place && track.place.none) ? 'adresse non retrouvée, pas de point sur la carte' : null,
         days ? `en ligne depuis ${days} jour${days > 1 ? 's' : ''}` : 'vu aujourd’hui',
         g.listings.length > 1 ? `${g.listings.length} sources` : null,
       ]
@@ -282,12 +284,13 @@ async function loadAnnonces(ctx, body) {
   };
   const communeOf =(x) => (search.communes.find((c) => c.code === x.g.listings[0].insee) || {}).nom || x.f.city || '';
   const placeFor = (x) => placeOf(x.f, trackOf(x.key));
+  const probableFor = (x) => probablePlaceOf(x.f, trackOf(x.key));
   let sales = null; // ventes DVF de la recherche, une fois chargées (repères de prix)
 
   // Carte du Fil d'un bien ; reconstruite quand Nathan choisit (ou annule) son adresse.
   const build = (x) => {
     const track = trackOf(x.key);
-    const where = { place: placeFor(x), toPlace: needsPlace(x.f, track, x.st), communeName: communeOf(x), onPlace: (place) => setPlace(x, place) };
+    const where = { place: placeFor(x), probable: probableFor(x), toPlace: needsPlace(x.f, track, x.st), communeName: communeOf(x), onPlace: (place) => setPlace(x, place) };
     const { row, apply } = annonceRow(x.g, x.key, x.f, x.st, track, x.check.unknown, onStatus, now, where);
     // Tout clic dans la carte (bouton, lien, note) compte comme une ouverture.
     row.addEventListener('click', () => open(x));
@@ -305,13 +308,28 @@ async function loadAnnonces(ctx, body) {
       markers.delete(id);
     }
     x.marker = null;
-    const place = placeFor(x);
+    // Adresse sûre (registre ou choisie par Nathan), sinon adresse probable (meilleure piste).
+    const sure = placeFor(x);
+    const place = sure || probableFor(x);
     if (!place || x.st.status === 'retire') return;
+    const probable = !sure;
     const { g, f } = x;
     const status = trackOf(x.key).status || '';
     const verdict = verdictButtons((value, reason) => onStatus(x.key, value, undefined, reason ? { reason, priceAt: f.price } : undefined), { price: !!f.price });
     x.popupTags = el('div', { class: 'imx-tags' });
     x.applyPopup = verdict.apply;
+    // Point probable : la bulle dit que l'adresse est à vérifier, et la confirme d'un geste.
+    let confirm = null;
+    if (probable) {
+      const here = el('button', { type: 'button', class: 'imx-btn imx-btn-sm imx-btn-primary' }, UI.icon('check', 14), 'C’est ici');
+      here.addEventListener('click', () => setPlace(x, { address: place.address, lat: place.lat, lon: place.lon, by: 'piste' }));
+      confirm = el(
+        'div',
+        null,
+        el('div', { class: 'imx-meta' }, 'Adresse probable : logement du registre des DPE qui ressemble le plus à l’annonce. Compare la façade avec les photos.'),
+        el('div', { class: 'imx-actions' }, UI.linkButton(UI.links.streetView(place.lat, place.lon), 'Street View', { iconName: 'eye' }), here)
+      );
+    }
     x.marker = placeListing({
       layer: layers.biens,
       markers,
@@ -321,6 +339,7 @@ async function loadAnnonces(ctx, body) {
       price: f.price,
       status,
       fresh: isFresh(x),
+      probable,
       title: place.address || f.title || '',
       row: x.row,
       focus,
@@ -329,7 +348,8 @@ async function loadAnnonces(ctx, body) {
         { class: 'imx-pin-popup' },
         f.photo ? el('img', { class: 'imx-pin-photo', src: f.photo, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }) : null,
         priceHead(f),
-        el('div', { class: 'imx-meta' }, [factsLine(f), place.address, place.by === 'registre' ? null : 'adresse choisie par toi'].filter(Boolean).join(' · ')),
+        el('div', { class: 'imx-meta' }, [factsLine(f), probable ? `${place.address} (probable)` : place.address, place.by === 'registre' || probable ? null : 'adresse choisie par toi'].filter(Boolean).join(' · ')),
+        confirm,
         x.popupTags,
         verdict.node,
         sourceLinks(g)
@@ -382,9 +402,13 @@ async function loadAnnonces(ctx, body) {
       if (onlyToPlace) list.scrollIntoView({ block: 'start' });
     });
     const n = todo.length;
+    // Biens à confirmer déjà posés en pointillé sur leur adresse probable, comptés à part.
+    const m = todo.filter((x) => probableFor(x)).length;
+    const what = `${n} annonce${n > 1 ? 's' : ''} sans adresse sûre`;
+    const dashed = m ? (m === n ? ', toutes en pointillé sur leur adresse probable' : `, dont ${m} en pointillé sur leur adresse probable`) : '';
     alertBox.replaceChildren(
       UI.icon('pin', 16),
-      el('div', null, `${n} annonce${n > 1 ? 's' : ''} sans point sur la carte. Vérifie les adresses possibles sur Street View, ou saisis la bonne.`),
+      el('div', null, `${what}${dashed}. Vérifie les adresses possibles sur Street View, ou saisis la bonne.`),
       button
     );
   };

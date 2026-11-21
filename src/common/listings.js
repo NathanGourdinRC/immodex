@@ -216,6 +216,19 @@ function placeOf(f, track) {
   return null;
 }
 
+// Adresse probable d'un bien sans adresse sûre : la meilleure piste du robot, quand elle est seule
+// ou devant les autres, avec ses coordonnées. Le bien a ainsi un point sur la carte (en pointillé,
+// à confirmer d'un « C'est ici ») au lieu de rester invisible. Pistes à égalité (quatre maisons de
+// 102 m² en D/D, 70 points chacune) : pas de point, il tomberait au hasard sur l'une d'elles.
+// « Je ne le trouve pas » (`place.none`) : pas de point non plus.
+function probablePlaceOf(f, track) {
+  if (placeOf(f, track) || (track && track.place && track.place.none)) return null;
+  const [top, second] = f.leads || [];
+  if (!top || top.lat == null || top.lon == null) return null;
+  if (second && (second.score || 0) >= (top.score || 0)) return null;
+  return { address: top.address, lat: top.lat, lon: top.lon, by: 'probable', score: top.score || 0 };
+}
+
 // Bien encore en vente, ni écarté ni laissé sans point (« introuvable »), et sans point.
 function needsPlace(f, track, st) {
   if (st.status === 'retire' || (track && track.status === 'ecarte')) return false;
@@ -352,4 +365,4 @@ function negotiationText(n) {
   return `Écart médian entre le premier prix relevé et le prix signé : ${n.median} % (${n.count} ventes reliées${how}). Le prix affiché comprend souvent les honoraires d’agence, que le prix de l’acte n’inclut pas.`;
 }
 
-export { LISTINGS_ENDPOINT, SOURCE_LABELS, UNOPENED_SINCE, addressKey, placeOf, needsPlace, isIncomplete, urlKey, trackingKeyOf, linkedKeys, groupUrls, saleOf, negotiation, negotiationText, shortPrice, fetchListings, groupListings, listingFacts, statusOf, robotSeenAt, isUnopened, sameProperty };
+export { LISTINGS_ENDPOINT, SOURCE_LABELS, UNOPENED_SINCE, addressKey, placeOf, probablePlaceOf, needsPlace, isIncomplete, urlKey, trackingKeyOf, linkedKeys, groupUrls, saleOf, negotiation, negotiationText, shortPrice, fetchListings, groupListings, listingFacts, statusOf, robotSeenAt, isUnopened, sameProperty };

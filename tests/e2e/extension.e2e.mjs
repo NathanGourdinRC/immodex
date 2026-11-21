@@ -561,7 +561,7 @@ test('fil : biens sans point, pistes vérifiées sur Street View, adresse choisi
   await page.locator('#subtitle').filter({ hasNotText: 'Modifier' }).waitFor({ timeout: 5000 });
   await openFil();
   const alert = page.locator('.imx-to-place');
-  await alert.filter({ hasText: /2 annonces sans point sur la carte/ }).waitFor({ timeout: 10000 });
+  await alert.filter({ hasText: /2 annonces sans adresse sûre/ }).waitFor({ timeout: 10000 });
   // Page pas encore lue : comptée dans la ligne du robot, ni carte ni bien à placer.
   assert.match(await page.locator('.imx-meta').filter({ hasText: /Dernier passage du robot/ }).textContent(), /1 autre annonce attend qu’il lise sa page/);
   assert.equal(await page.locator('.imx-annonce').filter({ hasText: /277\s000/ }).count(), 0);
@@ -574,7 +574,7 @@ test('fil : biens sans point, pistes vérifiées sur Street View, adresse choisi
   await bar.locator('button:has-text("Afficher")').click();
   assert.ok(await incomplete.isVisible());
   assert.match(await incomplete.textContent(), /pièces non précisées/);
-  await alert.filter({ hasText: /3 annonces sans point sur la carte/ }).waitFor({ timeout: 5000 });
+  await alert.filter({ hasText: /3 annonces sans adresse sûre/ }).waitFor({ timeout: 5000 });
   // Gardée, elle ne fait plus partie des masquées ; le second appui l'y remet.
   await incomplete.locator('button:has-text("Garder")').click();
   await bar.waitFor({ state: 'hidden', timeout: 5000 });
@@ -582,20 +582,20 @@ test('fil : biens sans point, pistes vérifiées sur Street View, adresse choisi
   await bar.waitFor({ state: 'visible', timeout: 5000 });
   await bar.locator('button:has-text("Masquer")').click();
   assert.ok(await incomplete.isHidden());
-  await alert.filter({ hasText: /2 annonces sans point sur la carte/ }).waitFor({ timeout: 5000 });
+  await alert.filter({ hasText: /2 annonces sans adresse sûre/ }).waitFor({ timeout: 5000 });
   // Ville mal lue sur la page (Maes) : la carte montre la commune de l'annonce.
   assert.match(await page.locator('.imx-annonce').filter({ hasText: /450\s000/ }).textContent(), /Wambrechies · adresse non retrouvée/);
   const deleuCard = page.locator('.imx-annonce').filter({ hasText: /312\s000/ });
   // Écarté (carte affichée sans pistes au chargement suivant), puis gardé de nouveau : le bien
   // rejoint les biens à placer, pistes comprises.
   await deleuCard.locator('button:has-text("Écarter")').click();
-  await alert.filter({ hasText: /1 annonce sans point sur la carte/ }).waitFor({ timeout: 5000 });
+  await alert.filter({ hasText: /1 annonce sans adresse sûre/ }).waitFor({ timeout: 5000 });
   await openFil();
-  await alert.filter({ hasText: /1 annonce sans point sur la carte/ }).waitFor({ timeout: 10000 });
+  await alert.filter({ hasText: /1 annonce sans adresse sûre/ }).waitFor({ timeout: 10000 });
   await page.click('button:has-text("Afficher les écartées")');
   assert.equal(await deleuCard.locator('.imx-lead').count(), 0);
   await deleuCard.locator('button:has-text("Garder")').click();
-  await alert.filter({ hasText: /2 annonces sans point sur la carte/ }).waitFor({ timeout: 5000 });
+  await alert.filter({ hasText: /2 annonces sans adresse sûre/ }).waitFor({ timeout: 5000 });
   assert.equal(await deleuCard.locator('.imx-lead').count(), 2);
   // Barre « Mon tri » : « Mes gardées » réduit le Fil aux biens gardés, « Tout le Fil » le rend.
   const triBar = page.locator('.imx-tri-bar');
@@ -620,7 +620,7 @@ test('fil : biens sans point, pistes vérifiées sur Street View, adresse choisi
   await deleu.filter({ hasText: /19 Rue Rubens 59118 Wambrechies · adresse choisie par toi/ }).waitFor({ timeout: 5000 });
   assert.equal(await pins(), 2);
   assert.ok(await deleu.isVisible());
-  await alert.filter({ hasText: /1 annonce sans point sur la carte/ }).waitFor({ timeout: 5000 });
+  await alert.filter({ hasText: /1 annonce sans adresse sûre/ }).waitFor({ timeout: 5000 });
   // Adresse saisie : cherchée dans la commune du bien.
   const maes = page.locator('.imx-annonce').filter({ hasText: /450\s000/ });
   await maes.locator('.imx-lead-input input').fill('8 rue de la gare');
@@ -634,7 +634,42 @@ test('fil : biens sans point, pistes vérifiées sur Street View, adresse choisi
   await page.waitForFunction(() => document.querySelectorAll('.imx-price-pin:not(.is-legend)').length === 3, null, { timeout: 10000 });
   assert.ok(await alert.isHidden());
   await deleu.locator('.imx-placed-by-you button:has-text("Annuler")').click();
-  await alert.filter({ hasText: /1 annonce sans point sur la carte/ }).waitFor({ timeout: 5000 });
+  await alert.filter({ hasText: /1 annonce sans adresse sûre/ }).waitFor({ timeout: 5000 });
   assert.equal(await pins(), 2);
+  await page.close();
+});
+
+// Avant : un bien sans adresse sûre n'avait aucun point tant que Nathan ne cliquait pas « C'est
+// ici », même avec une piste nette (1 286 biens invisibles sur la carte). Sa meilleure piste, seule
+// ou devant les autres, lui donne un point en pointillé, confirmé d'un geste dans sa bulle.
+test('fil : piste nette, point en pointillé sur l’adresse probable, confirmé depuis sa bulle', async () => {
+  const now = Date.now();
+  const DAY = 24 * 3600 * 1000;
+  const lead = (address, lat, score) => ({ address, lat, lon: 3.04, score, count: 1, surface: 108, date: '2025-11-27', diffs: [] });
+  const listings = [
+    { id: 'paruvendu:/immobilier/vente/maison/probable-e2e', source: 'paruvendu', url: 'https://www.paruvendu.fr/immobilier/vente/maison/probable-e2e', insee: '59636', type: 'maison', missed: 0, removedAt: null, detail: true, lastSeen: now - DAY, firstSeen: now - 5 * DAY, price: 595000, prices: [], surface: 108, pieces: 4, energyClass: 'D', energyConsumption: 205, gesEmission: 40, leads: [lead('78 Rue Pasteur 59118 Wambrechies', 50.6866, 72), lead('3 Rue Neuve 59118 Wambrechies', 50.688, 60)] },
+  ];
+  const page = await context.newPage();
+  await page.route('https://immodex.vercel.app/api/listings**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, listings, sources: {}, lastRun: now - DAY }) }));
+  await page.route('https://immodex.vercel.app/api/dvf**', (route) => route.fulfill({ status: 503, body: 'indisponible' }));
+  await page.route('https://geo.api.gouv.fr/**', (route) => route.fulfill({ status: 503, body: 'indisponible' }));
+  await page.goto(`chrome-extension://${extId}/src/dashboard/dashboard.html`);
+  await page.click('#zone-tabs button:has-text("Wambrechies")');
+  await page.click('.imx-views button:has-text("Fil")');
+  const card = page.locator('.imx-annonce').filter({ hasText: /595\s000/ });
+  await card.waitFor({ timeout: 30000 });
+  assert.match(await card.textContent(), /adresse probable : 78 Rue Pasteur 59118 Wambrechies, point en pointillé à confirmer/);
+  await page.waitForSelector('.imx-price-pin.is-probable:not(.is-legend)', { timeout: 10000 });
+  assert.match(await page.textContent('.imx-to-place'), /1 annonce sans adresse sûre, toutes en pointillé sur leur adresse probable/);
+  // Bulle : adresse probable, Street View sur la piste, « C'est ici » qui confirme.
+  await card.locator('.imx-meta').first().click();
+  const popup = page.locator('.leaflet-popup-content');
+  await popup.filter({ hasText: /78 Rue Pasteur 59118 Wambrechies \(probable\)/ }).waitFor({ timeout: 10000 });
+  assert.match(await popup.locator('a:has-text("Street View")').getAttribute('href'), /viewpoint=50\.686600,3\.040000/);
+  await popup.locator('button:has-text("C’est ici")').click();
+  await card.filter({ hasText: /78 Rue Pasteur 59118 Wambrechies · adresse choisie par toi/ }).waitFor({ timeout: 5000 });
+  // Confirmé : point plein, plus de bien à placer.
+  await page.waitForFunction(() => document.querySelectorAll('.imx-price-pin:not(.is-legend)').length === 1 && !document.querySelector('.imx-price-pin.is-probable:not(.is-legend)'), null, { timeout: 5000 });
+  assert.ok(await page.locator('.imx-to-place').isHidden());
   await page.close();
 });
