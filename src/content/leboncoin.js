@@ -25,6 +25,14 @@
     return ex.deepFind(nextData, (n) => n && typeof n === 'object' && (n.attributes || n.list_id) && (n.subject || n.title));
   }
 
+  // Annonce du bloc de données, si c'est bien celle de l'adresse affichée. Après une navigation
+  // interne du site, le bloc reste celui de la première annonce ouverte.
+  function currentAd() {
+    const ad = findAd(readNextData());
+    if (ad && ad.list_id && !location.pathname.includes(String(ad.list_id))) return null;
+    return ad;
+  }
+
   function attributesToMap(attributes) {
     const map = {};
     if (!Array.isArray(attributes)) return map;
@@ -208,30 +216,45 @@
   // comme les pages SeLoger. Rien n'est demandé au site : seule la page affichée est lue.
   const LBC_TYPES = { 1: 'maison', 2: 'appartement' };
   const sentToFil = new Set();
+  // `ad` : bloc de données de la page (__NEXT_DATA__) s'il existe. Sans lui (page servie
+  // autrement), l'annonce est construite avec ce que la page affiche, comme la recherche Immodex
+  // qui relit alors les étiquettes : sans ce repli, rien ne partait, sans aucun message.
   function cardForFil(ad, payload) {
-    if (!ad || !payload || payload.kind !== 'dpe') return null;
+    if (!payload || payload.kind !== 'dpe') return null;
     if (!payload.dateRange && payload.energyConsumption == null) return null;
+    // Annonce de vente seulement : une location n'a rien à faire dans le Fil.
+    const m = location.pathname.match(/^\/ad\/ventes_immobilieres\/(\d+)/);
+    if (!m) return null;
     // Navigation interne du site : le bloc de données peut encore être celui de l'annonce d'avant.
-    if (ad.list_id && !location.pathname.includes(String(ad.list_id))) return null;
-    const attr = (key) => (ad.attributes || []).find((x) => x.key === key)?.value;
-    const type = LBC_TYPES[attr('real_estate_type')];
-    // Ventes immobilières seulement (catégorie 9) : une location n'a rien à faire dans le Fil.
-    if (!type || String(ad.category_id) !== '9') return null;
+    if (ad && ad.list_id && String(ad.list_id) !== m[1]) ad = null;
+    const attr = (key) => (ad && Array.isArray(ad.attributes) ? ad.attributes.find((x) => x.key === key)?.value : null);
+    if (ad && ad.category_id != null && String(ad.category_id) !== '9') return null;
+    const title = (ad && ad.subject) || document.querySelector('h1')?.textContent?.trim() || document.title || '';
+    const type = LBC_TYPES[attr('real_estate_type')] || (payload.buildingType === 'maison' || payload.buildingType === 'appartement' ? payload.buildingType : null) || (/\bmaison\b/i.test(title) ? 'maison' : /\bappartement\b/i.test(title) ? 'appartement' : null);
+    if (!type) return null;
     const number = (v) => {
       const n = Number(String(Array.isArray(v) ? v[0] : v ?? '').replace(/[^\d.]/g, ''));
       return Number.isFinite(n) && n > 0 ? n : null;
     };
+    let price = ad ? number(ad.price) : null;
+    if (!price) {
+      try {
+        price = window.__immodexGeneric?.extractPrice(document, 'vente') || null;
+      } catch {
+        price = null;
+      }
+    }
     return {
-      url: ad.url || `${location.origin}${location.pathname}`,
-      price: number(ad.price),
-      title: ad.subject || null,
+      url: `${location.origin}${m[0]}`,
+      price,
+      title: title.slice(0, 160) || null,
       type,
       detail: {
         surface: payload.surface ?? number(attr('square')),
         pieces: number(attr('rooms')),
         chambres: number(attr('bedrooms')),
         terrain: number(attr('land_plot_surface')),
-        photo: ad.images?.urls?.[0] || null,
+        photo: (ad && ad.images?.urls?.[0]) || null,
         postal: payload.postal || null,
         city: payload.city || null,
         energyClass: payload.energyClass || null,
@@ -244,13 +267,17 @@
   }
   function sendToFil(payload) {
     try {
-      const card = cardForFil(findAd(readNextData()), payload);
+      const card = cardForFil(currentAd(), payload);
       if (!card) return;
       // Une fois par annonce et par date : la même page rechargée ne renvoie rien.
       const once = `${card.url}|${JSON.stringify(card.detail.dateRange)}|${card.detail.energyConsumption}`;
       if (sentToFil.has(once)) return;
       sentToFil.add(once);
-      chrome.runtime.sendMessage({ type: 'LIST_CARDS', source: 'leboncoin', cards: [card] }).catch(() => {});
+      // Trace dans la console de la page (F12) : l'envoi ne se voit pas autrement.
+      chrome.runtime
+        .sendMessage({ type: 'LIST_CARDS', source: 'leboncoin', cards: [card] })
+        .then((res) => console.log('[immodex] annonce envoyée au Fil', res && res.ok ? `(reçue, ${res.added ? 'nouvelle' : 'déjà connue'})` : `: refus, ${(res && res.error) || 'sans réponse'}`, card.detail.dateRange))
+        .catch((err) => console.warn('[immodex] envoi au Fil impossible :', String((err && err.message) || err)));
     } catch {
       // Extension rechargée pendant la visite, ou page sans bloc de données : rien à envoyer.
     }
@@ -325,9 +352,11 @@
     }
   }
 
-  // Extracteur exposé à « Analyser cette page » (lecture générique) du popup.
+  // Extracteur exposé à « Analyser cette page » (lecture générique) du popup, et lecture envoyée
+  // au Fil. Bloc de données d'une autre annonce (navigation interne du site) : ignoré, la page
+  // affichée fait foi.
   window.__immodexSiteExtract = () => {
-    const ad = findAd(readNextData());
+    const ad = currentAd();
     let payload = ad ? extractFromAd(ad) : null;
     if (!payload || (!payload.surface && !payload.energyClass)) {
       const fallback = extractFromDom();
@@ -337,13 +366,20 @@
   };
 
   // Description qui donne la date du DPE : envoyée au Fil dès l'ouverture de la page, sans clic.
+  // Relancé toutes les 2 s (ensureButton) tant que la page n'est pas lisible : une page qui se
+  // dessine après coup est lue dès que la surface ou la lettre du DPE apparaît.
   let autoSentFor = null;
   function autoSend() {
     if (autoSentFor === location.href) return;
-    const ad = findAd(readNextData());
-    if (!ad) return;
+    let payload = null;
+    try {
+      payload = window.__immodexSiteExtract();
+    } catch {
+      payload = null;
+    }
+    if (!payload || (!payload.surface && !payload.energyClass)) return;
     autoSentFor = location.href;
-    sendToFil(extractFromAd(ad));
+    sendToFil(payload);
   }
 
   function ensureButton() {

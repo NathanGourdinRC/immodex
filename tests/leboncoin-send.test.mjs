@@ -68,3 +68,34 @@ test('location, ou bloc de données d’une autre annonce (navigation interne) :
   assert.equal((await openAd({ ...AD, body, category_id: '10' })).sent.length, 0);
   assert.equal((await openAd({ ...AD, body }, { path: '/ad/ventes_immobilieres/999' })).sent.length, 0);
 });
+
+// Page servie sans le bloc __NEXT_DATA__ : la recherche Immodex relit les étiquettes affichées
+// (et trouvait 100/100), mais l'envoi au Fil exigeait le bloc et ne partait jamais, sans message.
+test('page sans bloc de données : l’annonce part quand même, construite avec ce que la page affiche', async () => {
+  const html = `<html><head><meta property="product:price:amount" content="344000"></head><body>
+    <h1>Maison 4 pièces 102 m²</h1>
+    <div data-qa-id="criteria_item_square">Surface habitable 102 m²</div>
+    <div data-qa-id="criteria_item_energy_rate">D</div>
+    <div data-qa-id="criteria_item_ges">D</div>
+    <div data-qa-id="adview_location_informations">Marquette-lez-Lille 59520</div>
+    <div data-qa-id="adview_description_container">Belle maison. DPE réalisé le 14/05/2026.</div>
+  </body></html>`;
+  const dom = new JSDOM(html, { url: 'https://www.leboncoin.fr/ad/ventes_immobilieres/3280694365?utm=x', runScripts: 'outside-only', virtualConsole: new VirtualConsole() });
+  const w = dom.window;
+  const sent = [];
+  w.chrome = { runtime: { sendMessage: async (m) => (sent.push(JSON.parse(JSON.stringify(m))), { ok: true }) } };
+  w.__immodexOverlay = { mountListingButton() {}, onNavigate() {}, closeCard() {} };
+  w.setInterval = () => 0;
+  w.eval(extractCode);
+  w.eval(src('src/common/generic-extract.js'));
+  w.eval(pageCode);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  const cards = sent.filter((m) => m.type === 'LIST_CARDS');
+  assert.equal(cards.length, 1);
+  const [card] = cards[0].cards;
+  assert.equal(card.url, 'https://www.leboncoin.fr/ad/ventes_immobilieres/3280694365');
+  assert.equal(card.type, 'maison');
+  assert.equal(card.price, 344000);
+  assert.deepEqual(card.detail.dateRange, { gte: '2026-05-14', lte: '2026-05-14', precision: 'day' });
+  assert.deepEqual([card.detail.surface, card.detail.postal, card.detail.energyClass], [102, '59520', 'D']);
+});
