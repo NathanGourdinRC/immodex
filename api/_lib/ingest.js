@@ -22,6 +22,16 @@ const bounded = (v, min, max) => {
   return v != null && Number.isFinite(n) && n >= min && n <= max ? Math.round(n) : null;
 };
 const TYPES = new Set(['maison', 'appartement', 'terrain', 'immeuble']);
+// Date du DPE lue dans la description de l'annonce (ou saisie par Nathan dans l'extension) :
+// { gte, lte } en AAAA-MM-JJ, un jour, un mois ou une année. Dans le registre, elle départage les
+// logements de même surface et de mêmes lettres (+30 points pour le bon).
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+function dateRangeOf(v) {
+  if (!v || typeof v !== 'object' || !ISO_DAY.test(v.gte) || !ISO_DAY.test(v.lte) || v.gte > v.lte) return null;
+  if (v.gte < '2006-01-01' || v.lte > '2100-12-31') return null;
+  const precision = ['day', 'month', 'year'].includes(v.precision) ? v.precision : null;
+  return precision ? { gte: v.gte, lte: v.lte, precision } : { gte: v.gte, lte: v.lte };
+}
 // « Villeneuve-d'Ascq » s'écrit aussi « Villeneuve-dAscq » sur les sites.
 const nameKey = (s) => placeSlug(String(s).replace(/['’]/g, ''));
 const sameName = (a, b) => nameKey(a) === nameKey(b);
@@ -53,17 +63,25 @@ function cleanCard(raw, source) {
       energyConsumption: bounded(d.energyConsumption, 1, 1500),
       gesEmission: bounded(d.gesEmission, 1, 500),
       constructionYear: bounded(d.constructionYear, 1000, 2100),
+      dateRange: dateRangeOf(d.dateRange),
     },
   };
 }
 
-// Annonce déjà connue dont la carte apporte pour la première fois la consommation du diagnostic :
-// elle est complétée et son adresse cherchée tout de suite dans le registre des DPE. Une adresse
-// déjà sûre n'est pas remise en cause. Registre muet : l'annonce reste à chercher par le prochain
-// passage du robot (`lookupVersion` effacée).
+// La carte apporte de quoi mieux chercher l'adresse que ce que l'annonce connue avait : la
+// consommation du diagnostic, ou la date du DPE (pages Leboncoin : les listes n'ont que les lettres,
+// et quatre maisons de 102 m² en D/D restaient à égalité sans la date).
+const bringsLookup = (entry, detail) => (detail.energyConsumption != null && entry.energyConsumption == null) || (!!detail.dateRange && !entry.dateRange);
+
+// Annonce déjà connue complétée par sa page (bringsLookup) : son adresse est cherchée tout de suite
+// dans le registre des DPE. Une adresse déjà sûre n'est pas remise en cause. Registre muet :
+// l'annonce reste à chercher par le prochain passage du robot (`lookupVersion` effacée).
 async function enrich(entry, detail, lookup) {
-  if (detail.energyConsumption == null || entry.energyConsumption != null) return false;
-  for (const f of ['energyConsumption', 'gesEmission', 'constructionYear', 'gesClass', 'energyClass']) if (detail[f] != null) entry[f] = detail[f];
+  if (!bringsLookup(entry, detail)) return false;
+  if (detail.energyConsumption != null && entry.energyConsumption == null) {
+    for (const f of ['energyConsumption', 'gesEmission', 'constructionYear', 'gesClass', 'energyClass']) if (detail[f] != null) entry[f] = detail[f];
+  }
+  if (detail.dateRange && !entry.dateRange) entry.dateRange = detail.dateRange;
   if (entry.addressConfidence === 'haute') return true;
   delete entry.lookupVersion;
   delete entry.lookupTries;
@@ -135,10 +153,10 @@ async function handleIngest({ syncKey, body, redis, now = Date.now(), lookup = n
       const r = mergeCard(listings, source, insee, card, now);
       r.entry.pushed = true;
       // Annonce nouvelle : sa carte est déjà dans sa fiche. Annonce connue : seulement si la carte
-      // apporte la consommation qui lui manquait.
+      // apporte la consommation ou la date du DPE qui lui manquait.
       const hadAddress = !!r.entry.address;
       if (r.isNew) {
-        const run = card.detail.energyConsumption != null ? askLookup() : null;
+        const run = card.detail.energyConsumption != null || card.detail.dateRange ? askLookup() : null;
         if (run) {
           const found = await withTimeout(Promise.resolve(run({ ...r.entry })).catch(() => null), LOOKUP_MS);
           if (found) {
@@ -146,7 +164,7 @@ async function handleIngest({ syncKey, body, redis, now = Date.now(), lookup = n
             r.entry.lookupVersion = LOOKUP_VERSION;
           }
         }
-      } else await enrich(r.entry, card.detail, card.detail.energyConsumption != null && r.entry.energyConsumption == null ? askLookup() : null);
+      } else await enrich(r.entry, card.detail, bringsLookup(r.entry, card.detail) ? askLookup() : null);
       if (!hadAddress && r.entry.address) addressed++;
       touched.push(r.entry);
       seen++;

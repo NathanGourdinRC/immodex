@@ -41,10 +41,25 @@
           city,
           energyClass: letter(attr('energy_rate')),
           gesClass: letter(attr('ges')),
+          // Date du DPE, quand le bloc de la recherche donne la description de l'annonce : elle
+          // départage les logements de même surface et de mêmes lettres dans le registre.
+          ...withDate(dateRangeOfText(ad.body)),
         },
       });
     }
     return cards;
+  }
+  const withDate = (dateRange) => (dateRange ? { dateRange } : {});
+  // Lecteur de dates de l'extension (src/common/extract.js, chargé avant ce script) ; absent
+  // ailleurs (tests, robot) : pas de date.
+  function dateRangeOfText(text) {
+    const ex = typeof window !== 'undefined' ? window.__immodexExtract : null;
+    if (!ex || typeof text !== 'string' || !text) return null;
+    try {
+      return ex.parseDateRange(ex.extractDateFromText(text)) || null;
+    } catch {
+      return null;
+    }
   }
   // Carte dessinée : « 439 500 € … Maison · 6 pièces · 93m² Terrain : 120 m² … Située à Marcq-en-Baroeul
   // 59700 Mairie. » La carte contient aussi sa feuille de style : retirée avant de lire le texte.

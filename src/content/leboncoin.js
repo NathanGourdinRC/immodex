@@ -200,6 +200,62 @@
     return null;
   }
 
+  // ─── Envoi au Fil ───
+  // Les pages de résultats (lecture guidée) ne donnent que les lettres du DPE : quatre maisons de
+  // 102 m² en D/D restent à égalité dans le registre, et le bien n'a pas de point sur la carte.
+  // La page de l'annonce sait souvent plus : la date du DPE (description, ou saisie par Nathan) et
+  // parfois ses chiffres. Elle est envoyée au Fil, qui cherche aussitôt l'adresse (api/_lib/ingest.js),
+  // comme les pages SeLoger. Rien n'est demandé au site : seule la page affichée est lue.
+  const LBC_TYPES = { 1: 'maison', 2: 'appartement' };
+  const sentToFil = new Set();
+  function cardForFil(ad, payload) {
+    if (!ad || !payload || payload.kind !== 'dpe') return null;
+    if (!payload.dateRange && payload.energyConsumption == null) return null;
+    // Navigation interne du site : le bloc de données peut encore être celui de l'annonce d'avant.
+    if (ad.list_id && !location.pathname.includes(String(ad.list_id))) return null;
+    const attr = (key) => (ad.attributes || []).find((x) => x.key === key)?.value;
+    const type = LBC_TYPES[attr('real_estate_type')];
+    // Ventes immobilières seulement (catégorie 9) : une location n'a rien à faire dans le Fil.
+    if (!type || String(ad.category_id) !== '9') return null;
+    const number = (v) => {
+      const n = Number(String(Array.isArray(v) ? v[0] : v ?? '').replace(/[^\d.]/g, ''));
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+    return {
+      url: ad.url || `${location.origin}${location.pathname}`,
+      price: number(ad.price),
+      title: ad.subject || null,
+      type,
+      detail: {
+        surface: payload.surface ?? number(attr('square')),
+        pieces: number(attr('rooms')),
+        chambres: number(attr('bedrooms')),
+        terrain: number(attr('land_plot_surface')),
+        photo: ad.images?.urls?.[0] || null,
+        postal: payload.postal || null,
+        city: payload.city || null,
+        energyClass: payload.energyClass || null,
+        gesClass: payload.gesClass || null,
+        energyConsumption: payload.energyConsumption ?? null,
+        gesEmission: payload.gesEmission ?? null,
+        dateRange: payload.dateRange || null,
+      },
+    };
+  }
+  function sendToFil(payload) {
+    try {
+      const card = cardForFil(findAd(readNextData()), payload);
+      if (!card) return;
+      // Une fois par annonce et par date : la même page rechargée ne renvoie rien.
+      const once = `${card.url}|${JSON.stringify(card.detail.dateRange)}|${card.detail.energyConsumption}`;
+      if (sentToFil.has(once)) return;
+      sentToFil.add(once);
+      chrome.runtime.sendMessage({ type: 'LIST_CARDS', source: 'leboncoin', cards: [card] }).catch(() => {});
+    } catch {
+      // Extension rechargée pendant la visite, ou page sans bloc de données : rien à envoyer.
+    }
+  }
+
   async function runLookup(payload) {
     STATE.lastPayload = payload;
     try {
@@ -208,6 +264,8 @@
         ui.showError(response?.error || 'Erreur inconnue', payload);
         return;
       }
+      // Date saisie par Nathan (ou lue dans la description) : le Fil en profite aussi.
+      sendToFil(payload);
       if (payload.kind === 'land' || response.result?.kind === 'land') {
         ui.showLandResult(payload, response.result, () => openOverride(payload));
       } else {
@@ -278,8 +336,19 @@
     return payload;
   };
 
+  // Description qui donne la date du DPE : envoyée au Fil dès l'ouverture de la page, sans clic.
+  let autoSentFor = null;
+  function autoSend() {
+    if (autoSentFor === location.href) return;
+    const ad = findAd(readNextData());
+    if (!ad) return;
+    autoSentFor = location.href;
+    sendToFil(extractFromAd(ad));
+  }
+
   function ensureButton() {
     ui.mountListingButton(onButtonClick);
+    autoSend();
   }
 
   function init() {

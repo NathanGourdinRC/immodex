@@ -238,3 +238,46 @@ test('au plus 5 adresses cherchées par envoi, les autres attendent le robot', a
   assert.equal(r.added, 7);
   assert.equal(r.addressed, 5);
 });
+
+// ─── Date du DPE lue sur la page d'une annonce Leboncoin : l'adresse sort ───
+
+// Cas réel (Marquette-lez-Lille, 21/11/2026) : maison de 102 m² en D/D connue par sa carte de liste.
+// Quatre logements du registre ont la même surface et les mêmes lettres (70 points chacun) : pas de
+// point sur la carte. La date du DPE, dans la description de l'annonce, n'en laisse qu'un.
+const LBC = 'https://www.leboncoin.fr/ad/ventes_immobilieres/3280694365';
+const lbcCard = (detail = {}) => ({ url: LBC, type: 'maison', price: 344000, title: 'Maison 4 pièces 102 m²', detail: { surface: 102, pieces: 4, chambres: 2, postal: '59700', city: 'Marcq-en-Baroeul', energyClass: 'D', gesClass: 'D', ...detail } });
+const DPE_DAY = { gte: '2026-05-14', lte: '2026-05-14', precision: 'day' };
+const lbcSeen = (redis) => listingsOf(redis, '59378').then((m) => [...m.values()][0]);
+
+test('annonce Leboncoin connue par sa liste : la page apporte la date du DPE, l’adresse est cherchée avec', async () => {
+  const redis = await setup();
+  await handleIngest({ syncKey: KEY, redis, now: NOW, body: { source: 'leboncoin', cards: [lbcCard()] } });
+  // Le robot l'avait déjà cherchée sans la date : quatre pistes à égalité.
+  const [stored] = [...(await listingsOf(redis, '59378')).values()];
+  Object.assign(stored, { lookupVersion: 3, leads: [{ address: '8 Rue de la Station', lat: 50.67, lon: 3.07, score: 70 }] });
+  await redis.command(['HSET', 'imx:scan:59378:l', stored.id, JSON.stringify(stored)]);
+  const asked = [];
+  const lookup = async (l) => (asked.push(l), { ...FOUND, address: '8 Rue de la Station 59520 Marquette-lez-Lille' });
+  const r = await handleIngest({ syncKey: KEY, redis, now: NOW + 1000, lookup, body: { source: 'leboncoin', cards: [lbcCard({ dateRange: DPE_DAY })] } });
+  assert.equal(r.addressed, 1);
+  assert.equal(asked.length, 1);
+  assert.deepEqual(asked[0].dateRange, DPE_DAY, 'la recherche part avec la date');
+  const l = await lbcSeen(redis);
+  assert.equal(l.address, '8 Rue de la Station 59520 Marquette-lez-Lille');
+  assert.deepEqual(l.dateRange, DPE_DAY);
+  assert.equal(l.leads, null);
+  // La même page revue : rien de neuf, pas de nouvelle recherche.
+  await handleIngest({ syncKey: KEY, redis, now: NOW + 2000, lookup, body: { source: 'leboncoin', cards: [lbcCard({ dateRange: DPE_DAY })] } });
+  assert.equal(asked.length, 1);
+});
+
+test('date du DPE reçue : mal formée, à l’envers ou absurde, elle est ignorée', async () => {
+  const redis = await setup();
+  let calls = 0;
+  const lookup = async () => (calls++, null);
+  for (const dateRange of [{ gte: '14/05/2026', lte: '14/05/2026' }, { gte: '2026-06-01', lte: '2026-05-01' }, { gte: '1990-01-01', lte: '1990-12-31' }, 'hier']) {
+    await handleIngest({ syncKey: KEY, redis, now: NOW, lookup, body: { source: 'leboncoin', cards: [lbcCard({ dateRange })] } });
+  }
+  assert.equal(calls, 0);
+  assert.equal((await lbcSeen(redis)).dateRange, null);
+});

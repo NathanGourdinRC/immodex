@@ -181,3 +181,19 @@ test('autre site que Leboncoin : pas d’informations de recherche', () => {
   dom.window.eval(code);
   assert.equal(dom.window.__immodexListExtract.searchInfo(dom.window.document), null);
 });
+
+// La lecture guidée de Leboncoin tire la date du DPE de la description, quand le bloc de la
+// recherche la donne : elle départage les logements de même surface et de mêmes lettres.
+test('Leboncoin : date du DPE tirée de la description de l’annonce, si la page la donne', () => {
+  const extractCode = readFileSync(fileURLToPath(new URL('../src/common/extract.js', import.meta.url)), 'utf8');
+  const ad = (body) => ({ ...lbcAd, body });
+  const html = lbcData([ad('Belle maison. DPE réalisé le 14/05/2026, classe D.'), { ...ad('Sans date.'), list_id: 2, url: 'https://www.leboncoin.fr/ad/ventes_immobilieres/2' }]);
+  const dom = new JSDOM(html, { url: 'https://www.leboncoin.fr/recherche?category=9', runScripts: 'outside-only', virtualConsole: new VirtualConsole() });
+  dom.window.eval(extractCode);
+  dom.window.eval(code);
+  const { cards } = JSON.parse(JSON.stringify(dom.window.__immodexListExtract.extractList(dom.window.document)));
+  assert.deepEqual(cards[0].detail.dateRange, { gte: '2026-05-14', lte: '2026-05-14', precision: 'day' });
+  assert.equal(cards[1].detail.dateRange, undefined);
+  // Sans le lecteur de dates (robot, autre page) : pas de date, rien ne casse.
+  assert.equal(read(html, "https://www.leboncoin.fr/recherche?category=9").cards[0].detail.dateRange, undefined);
+});
