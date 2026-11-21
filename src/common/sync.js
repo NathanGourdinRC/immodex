@@ -154,8 +154,13 @@ function createSync({ storage, endpoint = SYNC_ENDPOINT, fetchImpl = (...args) =
     }
   }
 
-  async function writeState(patch) {
-    const state = { ...(await readState()), ...patch };
+  // Écrit l'état de l'espace `key` seulement s'il est toujours celui de l'appareil. Une synchro dure
+  // le temps de ses appels au serveur : si la synchro a été arrêtée ou un autre espace rejoint entre
+  // temps, sa fin ne doit ni recréer un état sans clé ni poser son curseur sur le nouvel espace.
+  async function writeState(patch, key) {
+    const current = await readState();
+    if (current.key !== key) return null;
+    const state = { ...current, ...patch };
     await storage.set({ [SYNC_STATE_KEY]: state });
     return state;
   }
@@ -266,7 +271,7 @@ function createSync({ storage, endpoint = SYNC_ENDPOINT, fetchImpl = (...args) =
         }
         applied += await applyRemote(res.items || [], shadow);
         cursor = res.rev;
-        await writeState({ cursor, shadow });
+        await writeState({ cursor, shadow }, state.key);
         if (!res.more) return;
         res = null;
       }
@@ -289,11 +294,11 @@ function createSync({ storage, endpoint = SYNC_ENDPOINT, fetchImpl = (...args) =
         sent += batch.length;
         await pullFrom(res);
       }
-      await writeState({ lastSync: now(), lastError: null });
+      await writeState({ lastSync: now(), lastError: null }, state.key);
       return { ok: true, paired: true, applied, sent };
     } catch (err) {
       const message = String((err && err.message) || err);
-      await writeState({ cursor, shadow, lastError: message, lastErrorAt: now() }).catch(() => {});
+      await writeState({ cursor, shadow, lastError: message, lastErrorAt: now() }, state.key).catch(() => {});
       return { ok: false, paired: true, applied, sent, error: message };
     }
   }

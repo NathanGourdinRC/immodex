@@ -260,6 +260,42 @@ test('erreur réseau : message lisible, état gardé pour la fois suivante', asy
   assert.ok(storage.dump()[SYNC_STATE_KEY].key);
 });
 
+// Une synchro en cours ne doit écrire que dans l'espace avec lequel elle a commencé : si la clé
+// disparaît (synchro arrêtée) ou change (autre espace rejoint) pendant l'appel au serveur, sa fin ne
+// touche plus à l'état. Avant, elle relisait l'état puis le réécrivait : une clé effacée revenait sans
+// clé mais avec l'ancien curseur, et la clé posée entre-temps pouvait être écrasée.
+test('synchro arrêtée ou espace changé pendant un appel : la fin de l’ancienne synchro ne touche plus à l’état', async () => {
+  for (const change of ['disable', 'enable']) {
+    const storage = memArea({ [ZONES_KEY]: [zone('z1', 'Sévrier', clock)] });
+    let release;
+    const gate = new Promise((r) => (release = r));
+    let calls = 0;
+    const sync = createSync({
+      storage,
+      fetchImpl: async () => {
+        calls++;
+        await gate;
+        return { ok: false, status: 503, json: async () => ({ ok: false }) };
+      },
+    });
+    await sync.enable();
+    const running = sync.sync();
+    while (!calls) await new Promise((r) => setTimeout(r, 1));
+    const other = newKey();
+    if (change === 'disable') await sync.disable();
+    else await sync.enable(other);
+    release();
+    const r = await running;
+    assert.equal(r.ok, false);
+    const state = storage.dump()[SYNC_STATE_KEY];
+    if (change === 'disable') assert.deepEqual(state, {}, 'synchro arrêtée : rien n’est réécrit');
+    else {
+      assert.equal(state.key, other);
+      assert.equal(state.lastError, null, 'l’erreur de l’ancien espace n’est pas posée sur le nouveau');
+    }
+  }
+});
+
 test('fusion d’annonces indépendante de l’ordre', () => {
   const a = { ...sighting('u', [{ price: 1, at: 1 }], 10), dpeId: 'X' };
   const b = { ...sighting('u', [{ price: 2, at: 5 }], 20), fp: { postal: '74320', surface: 95, energyClass: 'C' } };
