@@ -491,3 +491,23 @@ test('annonces du Fil : toujours une réponse fraîche, jamais la copie du navig
   assert.equal(asked.url, 'https://immodex.vercel.app/api/listings?insee=59527,59386');
   assert.equal(asked.opts.cache, 'no-store');
 });
+
+// Cas réel (Saint-André-lez-Lille, 21/11/2026) : Leboncoin annonce « terrain 1 m² » pour une maison
+// de 122 m² ; ParuVendu donne 4 ou 8 m² à d'autres. Une erreur de lecture, comptée comme inconnue.
+test('terrain faux (moins de 10 m²) : ignoré pour la fiche, les critères et le regroupement', async () => {
+  const { checkCriteria } = await import('../src/common/zones.js');
+  const lbc = base({ id: 'leboncoin:/3312497339', source: 'leboncoin', url: 'https://www.leboncoin.fr/ad/ventes_immobilieres/3312497339', insee: '59527', surface: 122, pieces: 4, chambres: 3, terrain: 1, energyClass: 'D', price: 423500 });
+  const [g] = groupListings([lbc]);
+  assert.equal(listingFacts(g).terrain, null);
+  // Recherche avec un terrain minimum : le bien n'est plus exclu, le terrain est dit inconnu.
+  const check = checkCriteria(listingFacts(g), { type: 'maison', terrainMin: 100 });
+  assert.equal(check.ok, true);
+  assert.equal(check.unknown.length, 1);
+  // Une autre annonce du même bien donne le vrai terrain : une seule carte, avec ce terrain.
+  const other = base({ id: 'seloger:/x', source: 'seloger', url: 'https://www.seloger.com/x', insee: '59527', surface: 122, pieces: 4, chambres: 3, terrain: 180, energyClass: 'D', price: 423500 });
+  const groups = groupListings([lbc, other]);
+  assert.equal(groups.length, 1);
+  assert.equal(listingFacts(groups[0]).terrain, 180);
+  // Une vraie petite cour (18 m², annoncée par trois sites) reste.
+  assert.equal(listingFacts(groupListings([{ ...lbc, terrain: 18 }])[0]).terrain, 18);
+});

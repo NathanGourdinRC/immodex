@@ -24,6 +24,13 @@ const addressKey = (a) =>
     .replace(/\s+/g, ' ')
     .trim();
 
+// Terrain lu sur l'annonce, sauf s'il est manifestement faux : moins de 10 m² (« terrain 1 m² » sur
+// Leboncoin, 4 ou 8 m² sur ParuVendu) est une erreur de lecture, pas une cour. Compté comme inconnu :
+// il n'exclut plus le bien d'une recherche avec un terrain minimum, et ne coupe plus un bien en deux
+// cartes face aux annonces qui donnent le vrai terrain. Les vraies petites cours (18 m²) restent.
+const MIN_TERRAIN = 10;
+const terrainOf = (l) => (l && l.terrain != null && l.terrain >= MIN_TERRAIN ? l.terrain : null);
+
 const close = (a, b, tolerance) => a != null && b != null && Math.abs(a - b) <= tolerance;
 
 // Deux valeurs connues des deux côtés et différentes (une valeur absente ne contredit rien).
@@ -39,7 +46,9 @@ function contradicts(a, b, ignoreTerrain = false) {
   if (differs(a.surface, b.surface, 1)) return true;
   if (differs(a.chambres, b.chambres) || differs(a.pieces, b.pieces)) return true;
   // Le terrain est arrondi ou mal lu selon les sites : 10 % de marge.
-  if (!ignoreTerrain && a.terrain != null && b.terrain != null && differs(a.terrain, b.terrain, 0.1 * Math.max(a.terrain, b.terrain))) return true;
+  const ta = terrainOf(a);
+  const tb = terrainOf(b);
+  if (!ignoreTerrain && ta != null && tb != null && differs(ta, tb, 0.1 * Math.max(ta, tb))) return true;
   // Une lettre de DPE connue des deux côtés et différente (E d'un côté, C de l'autre) : deux biens.
   if (a.energyClass && b.energyClass && a.energyClass !== b.energyClass) return true;
   return false;
@@ -49,14 +58,16 @@ function contradicts(a, b, ignoreTerrain = false) {
 // `contradicts`). Sert à choisir le bon groupe quand plusieurs conviennent.
 function agreements(a, b) {
   let n = 0;
-  if (a.terrain != null && b.terrain != null && !differs(a.terrain, b.terrain, 0.1 * Math.max(a.terrain, b.terrain))) n++;
+  const ta = terrainOf(a);
+  const tb = terrainOf(b);
+  if (ta != null && tb != null && !differs(ta, tb, 0.1 * Math.max(ta, tb))) n++;
   for (const f of ['energyClass', 'pieces', 'chambres']) if (a[f] != null && a[f] !== '' && a[f] === b[f]) n++;
   if (a.price && a.price === b.price) n++;
   return n;
 }
 
 // Nombre de détails que l'annonce renseigne : plus il est grand, plus elle ancre son groupe.
-const richness = (l) => ['terrain', 'energyClass', 'pieces', 'chambres'].filter((f) => l[f] != null && l[f] !== '').length;
+const richness = (l) => (terrainOf(l) != null ? 1 : 0) + ['energyClass', 'pieces', 'chambres'].filter((f) => l[f] != null && l[f] !== '').length;
 
 // Annonce nue : ni détail ni chiffres de DPE, seulement le prix et la surface (les pages
 // Superimmo, qui reprennent les annonces des agences). Elle ne peut ni confirmer ni contredire.
@@ -96,7 +107,7 @@ function fitsGroup(l, g) {
   // Le groupe (réuni par le DPE) contient déjà deux terrains en désaccord : les sites lisent le
   // terrain différemment pour ce bien (45 m² pour les uns, 775 m² pour les autres). Le terrain
   // ne prouve plus rien ici, sinon il refuserait chaque annonce qui ne dit pas comme tous les membres.
-  const terrains = g.listings.map((m) => m.terrain).filter((t) => t != null);
+  const terrains = g.listings.map(terrainOf).filter((t) => t != null);
   const terrainUnreliable = terrains.length > 1 && differs(Math.max(...terrains), Math.min(...terrains), 0.1 * Math.max(...terrains));
   // Groupe ancré par au moins une annonce détaillée : une annonce nue de la même source qu'un
   // autre membre nu y entre quand même (Superimmo garde en ligne l'ancien prix et le nouveau,
@@ -180,6 +191,8 @@ function listingFacts(g) {
   const prices = (live.length ? live : g.listings).map((l) => l.price).filter(Boolean);
   const fields = ['type', 'surface', 'pieces', 'chambres', 'terrain', 'garage', 'title', 'photo', 'postal', 'city', 'address', 'lat', 'lon', 'energyClass'];
   const facts = Object.fromEntries(fields.map((f) => [f, first(g, f)]));
+  // Terrain : celui de la première annonce qui en donne un vrai (terrainOf).
+  facts.terrain = g.listings.map(terrainOf).find((t) => t != null) ?? null;
   return {
     ...facts,
     price: prices.length ? Math.min(...prices) : null,
