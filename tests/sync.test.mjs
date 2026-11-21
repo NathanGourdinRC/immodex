@@ -329,6 +329,41 @@ test('synchro arrêtée pendant un appel : les données de l’ancien espace ne 
   assert.deepEqual(storage.dump()[SYNC_STATE_KEY], {});
 });
 
+// Le cas le plus serré : l'arrêt arrive entre le moment où la synchro vérifie la clé et celui où
+// elle écrit. chrome.storage ne sait pas faire les deux d'un coup ; les gestes passent donc un par un.
+test('arrêt pile entre la vérification de la clé et l’écriture : l’état reste vide', async () => {
+  const base = memArea({ [ZONES_KEY]: [zone('z1', 'Sévrier', clock)] });
+  let armed = false;
+  let stopping = null;
+  let sync;
+  // Lecture de l'état prise avant l'arrêt, rendue après : l'arrêt s'est glissé entre les deux.
+  const storage = {
+    async get(keys) {
+      const snapshot = await base.get(keys);
+      const list = typeof keys === 'string' ? [keys] : keys;
+      if (armed && list.includes(SYNC_STATE_KEY)) {
+        armed = false;
+        stopping = sync.disable();
+        await new Promise((r) => setTimeout(r, 5));
+      }
+      return snapshot;
+    },
+    set: (obj) => base.set(obj),
+  };
+  sync = createSync({
+    storage,
+    fetchImpl: async () => {
+      armed = true;
+      return { ok: false, status: 503, json: async () => ({ ok: false }) };
+    },
+  });
+  await sync.enable();
+  const r = await sync.sync();
+  await stopping;
+  assert.equal(r.ok, false);
+  assert.deepEqual(base.dump()[SYNC_STATE_KEY], {}, 'la synchro arrêtée ne revient pas');
+});
+
 test('fusion d’annonces indépendante de l’ordre', () => {
   const a = { ...sighting('u', [{ price: 1, at: 1 }], 10), dpeId: 'X' };
   const b = { ...sighting('u', [{ price: 2, at: 5 }], 20), fp: { postal: '74320', surface: 95, energyClass: 'C' } };

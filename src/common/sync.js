@@ -147,6 +147,16 @@ class SpaceChanged extends Error {}
 function createSync({ storage, endpoint = SYNC_ENDPOINT, fetchImpl = (...args) => fetch(...args), now = () => Date.now() }) {
   let running = null;
   let again = false;
+  // Verrou : les gestes qui vérifient la clé puis écrivent (étape de synchro, activation, arrêt)
+  // passent un par un. chrome.storage ne sait pas « vérifier puis écrire » d'un seul coup : sans
+  // cela, un arrêt glissé entre les deux serait écrasé par la synchro. Tous ces gestes passent par
+  // cet objet (un seul, dans le service worker), le verrou en mémoire suffit donc.
+  let lock = Promise.resolve();
+  function exclusive(fn) {
+    const result = lock.then(fn);
+    lock = result.catch(() => {});
+    return result;
+  }
 
   async function readState() {
     try {
@@ -167,10 +177,12 @@ function createSync({ storage, endpoint = SYNC_ENDPOINT, fetchImpl = (...args) =
   }
 
   // Écrit l'état de l'espace `key`, s'il est toujours celui de l'appareil.
-  async function writeState(patch, key) {
-    const state = { ...(await checkSpace(key)), ...patch };
-    await storage.set({ [SYNC_STATE_KEY]: state });
-    return state;
+  function writeState(patch, key) {
+    return exclusive(async () => {
+      const state = { ...(await checkSpace(key)), ...patch };
+      await storage.set({ [SYNC_STATE_KEY]: state });
+      return state;
+    });
   }
 
   async function call(key, body) {
@@ -248,10 +260,12 @@ function createSync({ storage, endpoint = SYNC_ENDPOINT, fetchImpl = (...args) =
       }
     }
     if (changed) {
-      await checkSpace(key);
       const patch = {};
       for (const [kind, map] of maps) patch[COLLECTIONS[kind].storageKey] = COLLECTIONS[kind].build(map, stored[COLLECTIONS[kind].storageKey]);
-      await storage.set(patch);
+      await exclusive(async () => {
+        await checkSpace(key);
+        await storage.set(patch);
+      });
     }
     return changed;
   }
@@ -342,14 +356,16 @@ function createSync({ storage, endpoint = SYNC_ENDPOINT, fetchImpl = (...args) =
   // Sans clé : nouvel espace (l'extension). Avec une clé : rejoindre l'espace (le téléphone).
   async function enable(key = newKey()) {
     if (!KEY_PATTERN.test(key)) throw new Error('clé de synchro invalide');
-    const state = await readState();
-    if (state.key !== key) await storage.set({ [SYNC_STATE_KEY]: { key, cursor: 0, shadow: {}, pairedAt: now(), lastSync: null, lastError: null } });
+    await exclusive(async () => {
+      const state = await readState();
+      if (state.key !== key) await storage.set({ [SYNC_STATE_KEY]: { key, cursor: 0, shadow: {}, pairedAt: now(), lastSync: null, lastError: null } });
+    });
     return status();
   }
 
   // Arrête la synchro sur cet appareil ; ses données locales restent.
   async function disable() {
-    await storage.set({ [SYNC_STATE_KEY]: {} });
+    await exclusive(() => storage.set({ [SYNC_STATE_KEY]: {} }));
     return status();
   }
 
