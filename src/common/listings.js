@@ -39,16 +39,17 @@ const differs = (x, y, tolerance = 0) => x != null && y != null && Math.abs(x - 
 // Preuve que ce sont deux biens : un détail connu des deux annonces et incompatible. Les
 // annonces d'un même bien disent la même chose sur les chambres, les pièces et le terrain ;
 // deux maisons voisines de même surface et de prix proche, non.
-// `ignoreTerrain` : le terrain n'est pas un indice fiable pour ce bien (voir fitsGroup).
-function contradicts(a, b, ignoreTerrain = false) {
+// `ignore` : détails qui ne sont pas des indices fiables pour ce bien (voir unreliableOf).
+const NONE = new Set();
+function contradicts(a, b, ignore = NONE) {
   if (a.insee !== b.insee) return true;
   if (a.type && b.type && a.type !== b.type) return true;
   if (differs(a.surface, b.surface, 1)) return true;
-  if (differs(a.chambres, b.chambres) || differs(a.pieces, b.pieces)) return true;
+  if ((!ignore.has('chambres') && differs(a.chambres, b.chambres)) || (!ignore.has('pieces') && differs(a.pieces, b.pieces))) return true;
   // Le terrain est arrondi ou mal lu selon les sites : 10 % de marge.
   const ta = terrainOf(a);
   const tb = terrainOf(b);
-  if (!ignoreTerrain && ta != null && tb != null && differs(ta, tb, 0.1 * Math.max(ta, tb))) return true;
+  if (!ignore.has('terrain') && ta != null && tb != null && differs(ta, tb, 0.1 * Math.max(ta, tb))) return true;
   // Une lettre de DPE connue des deux côtés et différente (E d'un côté, C de l'autre) : deux biens.
   if (a.energyClass && b.energyClass && a.energyClass !== b.energyClass) return true;
   return false;
@@ -90,12 +91,36 @@ function redoneDpe(a, b) {
 // (probable). Deux DPE aux chiffres différents : probable seulement si redoneDpe le permet.
 function sameProperty(a, b) {
   if (a.insee !== b.insee) return null;
+  // Les deux annonces ont été reliées par le robot au même DPE du registre (`dpeId`, posé avec une
+  // adresse sûre) : même logement, même quand le site n'affiche pas les chiffres du DPE (Leboncoin,
+  // iad) ou dit 6 pièces quand un autre en dit 5. Sans cela, une maison de Wasquehal se coupait
+  // en quatre cartes, trois d'entre elles posées au même point. Surface à 1 m² près, comme pour
+  // les chiffres du DPE : un groupe aux surfaces écartées (108 et 105 m²) refuserait ensuite les
+  // autres annonces de chacune.
+  // Chiffres du DPE affichés des deux côtés : eux seuls décident (même numéro de DPE mais 167 et
+  // 169 kWh, 710 000 et 439 000 € : deux biens, ou un DPE mal attribué à l'un des deux).
   if (a.energyConsumption != null && b.energyConsumption != null) {
     if (a.energyConsumption === b.energyConsumption && a.gesEmission === b.gesEmission && close(a.surface, b.surface, 1)) return 'sure';
     return redoneDpe(a, b) ? 'probable' : null;
   }
+  if (a.dpeId && a.dpeId === b.dpeId && close(a.surface, b.surface, 1)) return 'sure';
   if (a.type === b.type && close(a.surface, b.surface, 1) && a.price && b.price && Math.abs(a.price - b.price) <= 0.05 * Math.max(a.price, b.price) && !contradicts(a, b)) return 'probable';
   return null;
+}
+
+// Détails sur lesquels les membres d'un groupe (réuni par le DPE) sont déjà en désaccord : les sites
+// les lisent différemment pour ce bien (terrain de 45 m² pour les uns, 775 m² pour les autres ;
+// 5 pièces chez Deleu, 6 chez Citya). Ils ne prouvent plus rien ici, sinon ils refuseraient
+// chaque annonce qui ne dit pas comme tous les membres.
+function unreliableOf(g) {
+  const out = new Set();
+  const spread = (values, tolerance) => {
+    const v = values.filter((x) => x != null);
+    return v.length > 1 && differs(Math.max(...v), Math.min(...v), tolerance(Math.max(...v)));
+  };
+  if (spread(g.listings.map(terrainOf), (max) => 0.1 * max)) out.add('terrain');
+  for (const f of ['pieces', 'chambres']) if (spread(g.listings.map((m) => m[f]), () => 0)) out.add(f);
+  return out;
 }
 
 // `l` peut rejoindre le groupe `g` s'il ne contredit aucun de ses membres : sans cela, une
@@ -104,11 +129,7 @@ function sameProperty(a, b) {
 // deux annonces en ligne de la même source (une source publie un bien une fois, une annonce
 // retirée puis republiée reste reliée).
 function fitsGroup(l, g) {
-  // Le groupe (réuni par le DPE) contient déjà deux terrains en désaccord : les sites lisent le
-  // terrain différemment pour ce bien (45 m² pour les uns, 775 m² pour les autres). Le terrain
-  // ne prouve plus rien ici, sinon il refuserait chaque annonce qui ne dit pas comme tous les membres.
-  const terrains = g.listings.map(terrainOf).filter((t) => t != null);
-  const terrainUnreliable = terrains.length > 1 && differs(Math.max(...terrains), Math.min(...terrains), 0.1 * Math.max(...terrains));
+  const unreliable = unreliableOf(g);
   // Groupe ancré par au moins une annonce détaillée : une annonce nue de la même source qu'un
   // autre membre nu y entre quand même (Superimmo garde en ligne l'ancien prix et le nouveau,
   // 249 000 puis 239 000 €, et une page par agence). Entre annonces nues seules, la règle
@@ -123,10 +144,14 @@ function fitsGroup(l, g) {
     if (how === 'sure') return true;
     // Deux DPE différents : deux biens, sauf DPE refait ou relu (redoneDpe, alors « probable »).
     if (l.energyConsumption != null && m.energyConsumption != null && !how) return false;
-    if (contradicts(l, m, terrainUnreliable)) return false;
+    if (contradicts(l, m, unreliable)) return false;
     // Le prix doit rester à 5 % de chaque membre, pas seulement du voisin (sinon 420 k€ → 400 k€ → 389 k€ s'enchaînent).
     if (priceRefs.has(m) && l.price && m.price && Math.abs(l.price - m.price) > 0.05 * Math.max(l.price, m.price)) return false;
     if (anchored && bare(l) && bare(m)) return true;
+    // Membre relié par le robot au DPE du groupe (`dpeId`) : sa présence ne prouve pas que l'annonce
+    // est un autre bien (trois annonces Leboncoin d'une même maison à Marquette, celle reliée au DPE
+    // dit 2 chambres, les autres 3). Les autres contrôles (détails, prix à 5 %) tiennent toujours.
+    if (m.dpeId) return true;
     return !(l.source === m.source && !l.removedAt && !m.removedAt) || twins(l, m);
   });
 }
@@ -152,8 +177,10 @@ function groupListings(listings) {
   // annonce pauvre en détails prenait la place de la bonne et laissait celle-ci seule, ou réunissait
   // deux maisons jumelles). D'abord les annonces avec DPE, qui forment des groupes solides ; puis
   // les plus riches en détails (terrain, classe, pièces, chambres) ; à égalité la plus ancienne.
+  // Une annonce reliée par le robot à un DPE du registre (`dpeId`) compte comme une annonce avec DPE.
+  const solid = (l) => l.energyConsumption != null || !!l.dpeId;
   const ordered = [...listings].sort(
-    (a, b) => (b.energyConsumption != null) - (a.energyConsumption != null) || richness(b) - richness(a) || a.firstSeen - b.firstSeen || (a.url < b.url ? -1 : a.url > b.url ? 1 : 0)
+    (a, b) => solid(b) - solid(a) || richness(b) - richness(a) || a.firstSeen - b.firstSeen || (a.url < b.url ? -1 : a.url > b.url ? 1 : 0)
   );
   for (const l of ordered) {
     // Meilleur groupe : celui qui partage le DPE de l'annonce (sûr) avant un simple air de

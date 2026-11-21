@@ -511,3 +511,55 @@ test('terrain faux (moins de 10 m²) : ignoré pour la fiche, les critères et l
   // Une vraie petite cour (18 m², annoncée par trois sites) reste.
   assert.equal(listingFacts(groupListings([{ ...lbc, terrain: 18 }])[0]).terrain, 18);
 });
+
+// Cas réel (Wasquehal, 26 Rue Coli, 21/11/2026) : une maison publiée sur dix sites. Les sources ne
+// s'accordent ni sur les pièces (5 chez Deleu, 6 ailleurs) ni sur le terrain (100 ou 176 m²), et
+// Leboncoin et iad n'affichent pas les chiffres du DPE. Le robot les a reliées au même DPE du registre
+// (`dpeId`) : une seule carte, placée, au lieu de quatre dont trois au même point.
+test('même DPE retrouvé par le robot : un seul bien, même sans les chiffres du DPE sur la page', () => {
+  const house = { insee: '59646', price: 365000, energyClass: 'C', gesClass: 'A', chambres: 4 };
+  const dpe = { dpeId: '2659E2685320A', address: '26 Rue Coli 59290 Wasquehal', lat: 50.68, lon: 3.14, addressConfidence: 'haute' };
+  const kwh = { energyConsumption: 135, gesEmission: 4 };
+  const mk = (source, n, o) => base({ id: `${source}:/${n}`, source, url: `https://${source}.example/${n}`, ...house, ...o });
+  const listings = [
+    mk('lesiteimmo', 1, { surface: 103, pieces: 6, terrain: null, ...kwh, ...dpe }),
+    mk('citya', 2, { surface: 103, pieces: 6, terrain: 100, ...kwh, ...dpe }),
+    mk('deleu', 3, { surface: 102, pieces: 5, terrain: null, ...kwh, ...dpe }),
+    mk('paruvendu', 4, { surface: 103, pieces: 6, terrain: 176, ...kwh, ...dpe }),
+    // Leboncoin et iad : lettres seulement, reliées au DPE par le robot (adresse sûre).
+    mk('leboncoin', 5, { surface: 103, pieces: 6, terrain: 176, chambres: null, ...dpe }),
+    mk('iad', 6, { surface: 103, pieces: 6, terrain: null, ...dpe }),
+    // Autre annonce Leboncoin du même bien, sans adresse retrouvée.
+    mk('leboncoin', 7, { surface: 103, pieces: 6, terrain: 100 }),
+  ];
+  const orders = [listings, [...listings].reverse(), [listings[4], listings[6], listings[5], ...listings.slice(0, 4)], [listings[6], listings[2], listings[4], listings[0], listings[5], listings[1], listings[3]]];
+  for (const order of orders) {
+    const groups = groupListings(order);
+    assert.equal(groups.length, 1, order.map((l) => l.id).join(' '));
+    assert.equal(placeOf(listingFacts(groups[0]), null).address, '26 Rue Coli 59290 Wasquehal');
+  }
+});
+
+test('même DPE retrouvé : les chiffres affichés des deux côtés et la surface décident toujours', () => {
+  const mk = (source, o) => base({ id: `${source}:/x`, source, url: `https://${source}.example/x`, insee: '59368', energyClass: 'C', gesClass: 'C', dpeId: '2259E2934830K', ...o });
+  // Cas réel (La Madeleine) : même numéro de DPE, mais 169 et 167 kWh, 439 000 et 710 000 € : deux cartes.
+  assert.equal(groupListings([mk('paruvendu', { surface: 120, price: 439000, energyConsumption: 169, gesEmission: 5 }), mk('seloger', { surface: 120, price: 710000, energyConsumption: 167, gesEmission: 5 })]).length, 2);
+  // Cas réel (Wambrechies) : même DPE, mais 108 et 105 m² : le numéro seul ne les réunit pas.
+  assert.equal(groupListings([mk('maes', { surface: 108, price: 259000 }), mk('deleu', { surface: 105, price: 259000 })]).length, 2);
+});
+
+// Cas réel (Marquette-lez-Lille, 8 Rue de la Station) : trois annonces Leboncoin d'une même maison.
+// Celle reliée au DPE par le robot dit 2 chambres, les autres 3 : les trois restent sur la carte du bien.
+test('même source : une annonce reliée au DPE du groupe n’en chasse pas les autres annonces du bien', () => {
+  const house = { insee: '59386', surface: 102, pieces: 4, chambres: 3, energyClass: 'D', gesClass: 'D' };
+  const dpe = { dpeId: '2659E1310869N', address: '8 Rue de la Station 59520 Marquette-lez-Lille', lat: 50.67, lon: 3.06, addressConfidence: 'haute' };
+  const mk = (source, n, o) => base({ id: `${source}:/${n}`, source, url: `https://${source}.example/${n}`, ...house, ...o });
+  const listings = [
+    mk('fnaim', 1, { price: 345000, energyConsumption: 216, gesEmission: 50, ...dpe }),
+    mk('seloger', 2, { price: 344000, terrain: 490, energyConsumption: 216, gesEmission: 50, ...dpe }),
+    mk('leboncoin', 3, { price: 344000, chambres: 2, ...dpe }),
+    mk('leboncoin', 4, { price: 344000, terrain: 490 }),
+    mk('leboncoin', 5, { price: 345000 }),
+  ];
+  for (const order of [listings, [...listings].reverse()]) assert.equal(groupListings(order).length, 1);
+});
