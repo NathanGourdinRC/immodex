@@ -31,8 +31,14 @@ const DETAIL_FIELDS = ['surface', 'pieces', 'chambres', 'terrain', 'garage', 'ph
 // prenait par exemple le terrain d'un bien similaire en bas de page) est relue une fois.
 // Version 3 : DPE des pages Maes (lettre, valeurs, date) et date du DPE pour l'adresse.
 const READER_VERSION = 3;
+// Version propre à une source, quand seul son lecteur change : ses annonces sont relues une fois,
+// pas les milliers d'annonces des autres sites (le robot poli lit une page toutes les 5 s par site).
+// ParuVendu 4 : les autres annonces de l'agence, sous la fiche, ne donnent plus leur surface
+// (366 annonces sur 1 244 lues de travers le 21/11/2026, le même bien coupé en deux cartes).
+const SOURCE_READER_VERSION = { paruvendu: 4 };
+const readerVersionOf = (sourceId) => Math.max(READER_VERSION, SOURCE_READER_VERSION[sourceId] || 0);
 // (Annonce reçue de l'extension ou du robot local, `pushed` : son site refuse le robot, jamais lue.)
-const needsReading = (l) => !l.removedAt && !l.pushed && (!l.detail || (l.readerVersion || 1) < READER_VERSION);
+const needsReading = (l) => !l.removedAt && !l.pushed && (!l.detail || (l.readerVersion || 1) < readerVersionOf(l.source));
 // Version de la recherche d'adresse : une annonce lue, sans adresse sûre, cherchée par une
 // version plus ancienne est cherchée de nouveau dans le registre des DPE, sans relire sa page.
 // Version 2 : pistes d'adresse gardées (vérifiées par Nathan) et adresse sûre par immeuble.
@@ -156,7 +162,7 @@ function mergeCard(listings, source, insee, card, t) {
     return { entry: l, isNew: false };
   }
   const entry = { id, source: source.id, url: card.url, insee, type: card.type, title: card.title, price: card.price, prices: card.price ? [{ at: t, price: card.price }] : [], firstSeen: t, lastSeen: t, missed: 0, removedAt: null, detail: false };
-  if (card.detail) Object.assign(entry, card.detail, { detail: true, readAt: t, readerVersion: READER_VERSION });
+  if (card.detail) Object.assign(entry, card.detail, { detail: true, readAt: t, readerVersion: readerVersionOf(source.id) });
   listings.set(id, entry);
   return { entry, isNew: true };
 }
@@ -390,7 +396,7 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
             // Abandonnée : jamais redemandée, même par une version plus récente du lecteur.
             if (!l.detail) l.readAt = now();
             l.detail = true;
-            l.readerVersion = READER_VERSION;
+            l.readerVersion = readerVersionOf(l.source);
           }
           if (l.detail) await saveListings(redis, item.insee, [l]);
           continue;
@@ -403,7 +409,7 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
           if (src && src.pagePlace === false) Object.assign(d, { postal: null, city: null });
           // Ce que la page ne dit pas est effacé : une valeur d'une lecture plus ancienne était fausse.
           for (const f of DETAIL_FIELDS) l[f] = d[f] != null && d[f] !== '' ? d[f] : null;
-          l.readerVersion = READER_VERSION;
+          l.readerVersion = readerVersionOf(l.source);
           if (d.title) l.title = d.title;
           if (d.buildingType) l.type = d.buildingType;
           if (l.price == null && d.price) {
@@ -419,7 +425,7 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
         // première lecture est celle de l'arrivée du bien dans le Fil (badge « nouveau »).
         if (!l.detail) l.readAt = now();
         l.detail = true;
-        l.readerVersion = READER_VERSION;
+        l.readerVersion = readerVersionOf(l.source);
         await saveListings(redis, item.insee, [l]);
       }
     })

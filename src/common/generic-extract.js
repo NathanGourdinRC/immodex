@@ -163,7 +163,10 @@
   // leurs surfaces et DPE fausseraient la lecture de l'annonce.
   const OTHER_LISTINGS =
     '[class*="similar" i], [class*="similaire" i], [class*="related" i], [class*="recommend" i], [class*="suggest" i], ' +
-    '[id*="similar" i], [id*="similaire" i], [class*="other-ad" i], [class*="autres-annonces" i], footer';
+    '[id*="similar" i], [id*="similaire" i], [class*="other-ad" i], [class*="autres-annonces" i], ' +
+    // ParuVendu : « autodetailmob_autresvehconcess », les autres annonces de l'agence sous la
+    // fiche (« 82 m² habitables ») ; sa surface passait avant celle du titre (91 m²).
+    '[class*="autresveh" i], footer';
   // Carrousels : en général d'autres biens ou des photos, mais certains sites
   // (La Boîte Immo « sliderV2 ») y mettent toute la fiche. On les garde alors.
   const CAROUSELS = '[class*="carousel" i], [class*="slider" i], [class*="swiper" i]';

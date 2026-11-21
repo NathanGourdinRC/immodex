@@ -202,6 +202,19 @@ test('annonces similaires et vignettes : leurs DPE et surfaces sont ignorés', (
   assert.equal(r.energyConsumption, null);
 });
 
+test('ParuVendu : les autres annonces de l’agence sous la fiche ne donnent pas leur surface', () => {
+  // Page réelle du 21/11/2026 (Pérenchies, 91 m²) : l'encart « autodetailmob_autresvehconcess »
+  // montre une autre maison « 82 m² habitables », lue avant le titre ; même bien coupé en deux cartes.
+  const r = extract(
+    page(`<div id="maindetail"><h1 id="detail_h1">Vente Maison 5 pièces 91 m² Perenchies (59840)</h1>
+      <p>Caractéristiques principales Nombre de pièces 5 pièces Surface 91m2 environ</p>
+      <p>${'Description de la maison mise en vente. '.repeat(20)}</p>
+      <div class="autodetailmob_autresvehconcess mt-8"><a href="/immobilier/vente/maison/1288629945A1KIVHMN000">
+        Maison Individuelle type plain pied - 3 chambres - jardin - 82 m² habitables (120m² utiles) Perenchies (59840) 259 000 €</a></div></div>`)
+  );
+  assert.equal(r.surface, 91);
+});
+
 test('Safti : petite surface, classe lue dans « consommation énergétique excessive : classe E »', () => {
   const r = extract(page(`<h1>Appartement 16 m² Lille (59000)</h1><p>388kWh/m².an 15*kgCO₂/m².an</p><p>Logement à consommation énergétique excessive : classe E</p>`));
   assert.equal(r.energyClass, 'E');

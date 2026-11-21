@@ -510,6 +510,24 @@ test('annonce lue par un ancien lecteur : relue une seule fois, les valeurs faus
   assert.equal(w.asked.filter((u) => u.endsWith('/annonce/a1')).length, 1);
 });
 
+test('lecteur changé pour ParuVendu seul : ses annonces relues une fois, pas celles des autres sites', async () => {
+  const redis = fakeRedis();
+  const sources = [makeSource('paruvendu'), makeSource('beta')];
+  const w = world({ 'https://paruvendu.test/vente/59636': results('paruvendu', [['p1', '441 500 €']]), 'https://beta.test/vente/59636': results('beta', [['b1', '300 000 €']]) });
+  await withSearch(redis, w.now());
+  const old = (src, id, surface) => ({ id: `${src}:/annonce/${id}`, source: src, url: `https://${src}.test/annonce/${id}`, insee: '59636', type: 'maison', price: 300000, prices: [], firstSeen: 1, lastSeen: 1, missed: 0, removedAt: null, detail: true, readAt: 1, readerVersion: 3, surface });
+  // p1 : 108 m² lus dans l'encart des autres annonces de l'agence ; la page dit 100 m².
+  await saveListings(redis, '59636', [old('paruvendu', 'p1', 108), old('beta', 'b1', 90)]);
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources, readListingImpl });
+  const l = await listingsOf(redis, '59636');
+  assert.equal(l.get('paruvendu:/annonce/p1').surface, 100);
+  assert.equal(l.get('beta:/annonce/b1').surface, 90);
+  assert.ok(!w.asked.some((u) => u.endsWith('/annonce/b1')));
+  w.advance(47 * HOUR);
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources, readListingImpl });
+  assert.equal(w.asked.filter((u) => u.endsWith('/annonce/p1')).length, 1);
+});
+
 test('page illisible : marquée lue avec la version du lecteur, jamais remise en file', async () => {
   const redis = fakeRedis();
   const w = world({ 'https://alpha.test/vente/59636': results('alpha', [['a1', '300 000 €']]), 'https://beta.test/vente/59636': results('beta', []) });
