@@ -63,7 +63,9 @@ const priceHead = (f, back) =>
     el('s', { class: `imx-was${back ? '' : ' imx-hidden'}` }, back ? UI.priceText(back.was) : ''),
     f.price && f.surface ? el('span', { class: 'imx-ppm' }, ` · ${num(Math.round(f.price / f.surface))} €/m²`) : null
   );
-const sourceLinks = (g) => el('div', { class: 'imx-actions' }, g.listings.map((l) => UI.linkButton(l.url, SOURCE_LABELS[l.source] || l.source, { iconName: 'external' })));
+// Une annonce retirée le dit sur son bouton : sa page n'existe souvent plus.
+const sourceLinks = (g) =>
+  el('div', { class: 'imx-actions' }, g.listings.map((l) => UI.linkButton(l.url, `${SOURCE_LABELS[l.source] || l.source}${l.removedAt ? ' · retirée' : ''}`, { iconName: 'external' })));
 
 // Carte du Fil d'un bien. `where` : point du bien (placeOf), commune de l'annonce et choix
 // d'adresse (onPlace). Rend la carte et la fonction qui remet ses boutons Garder / Écarter à jour.
@@ -85,7 +87,8 @@ function annonceRow(g, key, f, st, track, unknown, onStatus, now, where) {
         // Adresse probable (meilleure piste du registre) : point en pointillé sur la carte.
         !where.place && where.probable && st.status !== 'retire' ? `adresse probable : ${where.probable.address}, point en pointillé à confirmer` : null,
         !where.place && !where.probable && st.status !== 'retire' && !(track.place && track.place.none) ? 'adresse non retrouvée, pas de point sur la carte' : null,
-        days ? `en ligne depuis ${days} jour${days > 1 ? 's' : ''}` : 'vu aujourd’hui',
+        // Bien retiré : la date du retrait (la dernière de ses annonces), plus « en ligne depuis ».
+        st.status === 'retire' ? `retiré le ${UI.day(Math.max(...g.listings.map((l) => l.removedAt)))}` : days ? `en ligne depuis ${days} jour${days > 1 ? 's' : ''}` : 'vu aujourd’hui',
         g.listings.length > 1 ? `${g.listings.length} sources` : null,
       ]
         .filter(Boolean)

@@ -48,6 +48,29 @@ const LOOKUP_VERSION = 3;
 const needsLookup = (l) => !l.removedAt && l.detail && (!l.address || !/^\d/.test(l.address)) && (l.lookupVersion || 1) < LOOKUP_VERSION;
 const LOOKUP_TRIES = 3; // registre muet (délai, panne) trois passages de suite : abandon
 
+// Annonce disparue : la page d'une annonce en ligne qui manque à l'appel (absente une fois d'une
+// liste lue en entier, ou sans nouvelle depuis 7 jours : liste incomplète, site lu par morceaux)
+// est ouverte, au plus une fois tous les 2 jours. Sans cela, le retrait attend deux tours sans
+// elle (4 jours au mieux), 3 semaines sur certains sites, et jamais sur une liste incomplète.
+const PAGE_CHECK_MS = RESULTS_EVERY;
+const QUIET_MS = 7 * DAY;
+const needsCheck = (l, source, t) =>
+  !l.removedAt && !l.pushed && !!source && !source.local && ((l.missed || 0) >= 1 || t - l.lastSeen >= QUIET_MS) && t - (l.pageCheckedAt || 0) >= PAGE_CHECK_MS;
+
+// Page introuvable (404, 410) ou renvoyée vers une page qui n'est pas une annonce du site (liste,
+// accueil, page d'erreur) : l'annonce n'existe plus. Tout le reste (page en ligne, refus, erreur
+// du serveur, robots.txt) ne prouve rien.
+function isGone(res, source, url) {
+  if (res.blocked || res.disallowed) return false;
+  if (res.status === 404 || res.status === 410) return true;
+  if (!res.ok || !res.url) return false;
+  const asked = new URL(url);
+  const final = new URL(res.url);
+  const trim = (p) => p.replace(/\/+$/, '');
+  if (final.host === asked.host && trim(final.pathname) === trim(asked.pathname)) return false;
+  return !source.isListing(final);
+}
+
 const idOf = (source, url) => {
   const u = new URL(url);
   return `${source.id}:${u.pathname}${source.keepSearch ? u.search : ''}`;
@@ -488,6 +511,55 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
     meta._sales = { lastCheck: start };
     await saveSourceMeta(redis, commune.code, meta);
   }
+
+  // Pages des annonces qui manquent à l'appel (needsCheck), après les nouvelles annonces et les
+  // ventes DVF : une page par adresse, qui vaut pour toutes ses copies (une par commune). Les
+  // jamais vérifiées d'abord, puis les plus anciennement vues ; un site à la fois par file.
+  const checks = new Map(); // adresse de la page → { source, copies: [{ insee, l }] }
+  for (const commune of communes) {
+    const listings = await listingsFor(commune.code);
+    for (const l of listings.values()) {
+      const source = sources.find((s) => s.id === l.source);
+      if (!needsCheck(l, source, now())) continue;
+      if (!checks.has(l.url)) checks.set(l.url, { source, copies: [] });
+      checks.get(l.url).copies.push({ insee: commune.code, l });
+    }
+  }
+  const checksByHost = new Map();
+  const order = (c) => [c.copies[0].l.pageCheckedAt || 0, Math.max(...c.copies.map((x) => x.l.lastSeen))];
+  for (const [url, c] of [...checks].sort(([, a], [, b]) => order(a)[0] - order(b)[0] || order(a)[1] - order(b)[1])) {
+    const host = new URL(url).host;
+    if (!checksByHost.has(host)) checksByHost.set(host, []);
+    checksByHost.get(host).push([url, c]);
+  }
+  await Promise.all(
+    [...checksByHost.values()].map(async (items) => {
+      for (const [url, { source, copies }] of items) {
+        if (now() >= detailsDeadline) return;
+        const res = await fetcher.get(url, { deadline: detailsDeadline });
+        // Temps écoulé : rien n'est noté, la page sera vérifiée au passage suivant.
+        if (res.late) return;
+        if (res.blocked) {
+          // Refus : la source compte un échec, plus rien n'est demandé à ce site pendant ce passage.
+          refusedSources.add(source.id);
+          return;
+        }
+        const t = now();
+        const gone = isGone(res, source, url);
+        if (gone) summary.gone = (summary.gone || 0) + 1;
+        const byInsee = new Map();
+        for (const { insee, l } of copies) {
+          l.pageCheckedAt = t;
+          if (gone) {
+            l.removedAt = t;
+            summary.removed++;
+          }
+          byInsee.set(insee, [...(byInsee.get(insee) || []), l]);
+        }
+        for (const [insee, ls] of byInsee) await saveListings(redis, insee, ls);
+      }
+    })
+  );
 
   // Annonces déjà lues dont l'adresse a été cherchée par une version plus ancienne : de
   // nouveau, dans le temps restant (registre des DPE seulement, aucune page d'agence), après

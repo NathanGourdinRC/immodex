@@ -412,6 +412,9 @@ test('fil : annonces scannées, nouveautés, baisses et retraits, Garder', async
   const freshBefore = await page.locator('.imx-annonce.is-fresh').count();
   assert.match(text, /Prix baissé de 20\s000\s€/);
   assert.match(text, /Retiré/);
+  // Bien retiré : la date du retrait à la place de « en ligne depuis », et son bouton le dit.
+  assert.match(text, /retiré le \d\d\/\d\d\/\d{4}/);
+  assert.match(text, /Lesiteimmo · retirée/);
   // Annonce retirée reliée à sa vente DVF : prix signé et écart au premier prix relevé.
   assert.match(text, /Vendue 315\s000\s€ le 01\/10\/2026, 5 % sous le premier prix relevé \(lien probable\)/);
   // Prix au m² de chaque bien : 389 000 € pour 120 m².

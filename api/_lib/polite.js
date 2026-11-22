@@ -72,7 +72,8 @@ function createPoliteFetcher({ fetchImpl = fetch, now = Date.now, sleep = (ms) =
         redirect: 'follow',
         signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(timeoutMs) : undefined,
       });
-      return { ok: res.ok, status: res.status, html: await res.text() };
+      // `url` : adresse finale après les renvois (une annonce retirée renvoie souvent vers une liste).
+      return { ok: res.ok, status: res.status, url: res.url || url, html: await res.text() };
     } catch {
       return { ok: false, status: 0, html: '' };
     }
