@@ -6,6 +6,7 @@ import { createSync, SYNCED_STORAGE_KEYS } from '../common/sync.js';
 import { initLbcTour, lbcTourMessage } from './lbc-tour-runner.js';
 import { initSelogerTour, selogerTourMessage } from './seloger-tour-runner.js';
 import { sendCards } from './ingest-client.js';
+import { backfillFil } from './fil-backfill.js';
 
 const history = createHistoryStore(chrome.storage.local);
 const properties = createPropertyStore(chrome.storage.local);
@@ -39,6 +40,10 @@ runSync({ minAgeMs: 5 * 60 * 1000 });
 initLbcTour();
 // Tournée quotidienne de SeLoger (11 h), pour les adresses : voir seloger-tour-runner.js.
 initSelogerTour();
+// Recherches Leboncoin de l'historique : leur date du DPE repart au Fil (voir fil-backfill.js).
+backfillFil({ history, storage: chrome.storage.local, send: sendCards })
+  .then((r) => r && r.sent && console.log(`[immodex] rattrapage du Fil : ${r.sent} recherche(s) renvoyée(s), ${r.addressed} adresse(s) trouvée(s)`))
+  .catch((e) => console.warn('[immodex] rattrapage du Fil remis à plus tard :', String((e && e.message) || e)));
 // Critères envoyés par « Modifier les champs » depuis une annonce, relus par le popup.
 const PREFILL_KEY = 'immodex.prefill.v1';
 const PREFILL_TTL_MS = 10 * 60 * 1000;

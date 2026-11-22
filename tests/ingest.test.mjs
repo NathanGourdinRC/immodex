@@ -281,3 +281,32 @@ test('date du DPE reçue : mal formée, à l’envers ou absurde, elle est ignor
   assert.equal(calls, 0);
   assert.equal((await lbcSeen(redis)).dateRange, null);
 });
+
+// Rattrapage depuis l'historique de l'extension (src/background/fil-backfill.js) : la date du DPE
+// complète l'annonce connue et donne son adresse, sans créer d'annonce ni en ranimer une retirée.
+test('rattrapage (onlyKnown) : la date complète une annonce connue, une annonce inconnue n’est pas créée', async () => {
+  const redis = await setup();
+  await handleIngest({ syncKey: KEY, redis, now: NOW, body: { source: 'leboncoin', cards: [card({ detail: { ...card().detail, energyClass: 'D', gesClass: 'D' } })] } });
+  // Annonce retirée entre-temps : la date la complète, elle reste retirée.
+  const listings = await listingsOf(redis, '59378');
+  const [known] = [...listings.values()];
+  known.removedAt = NOW + 500;
+  await redis.command(['HSET', keys.listings('59378'), known.id, JSON.stringify(known)]);
+  const dated = (url) => ({ url, type: 'maison', price: null, title: 'Maison 5 pièces 120 m²', detail: { surface: 120, postal: '59700', city: 'Marcq-en-Barœul', energyClass: 'D', gesClass: 'D', dateRange: { gte: '2026-06-17', lte: '2026-06-17', precision: 'day' } } });
+  const asked = [];
+  const r = await handleIngest({
+    syncKey: KEY,
+    redis,
+    now: NOW + 1000,
+    lookup: async (l) => (asked.push(l), FOUND),
+    body: { source: 'leboncoin', onlyKnown: true, cards: [dated(card().url), dated('https://www.leboncoin.fr/ad/ventes_immobilieres/3100000099')] },
+  });
+  assert.deepEqual(r, { seen: 1, added: 0, ignored: 1, addressed: 1, skipped: ['https://www.leboncoin.fr/ad/ventes_immobilieres/3100000099'] });
+  assert.equal(asked[0].dateRange.gte, '2026-06-17');
+  const after = [...(await listingsOf(redis, '59378')).values()];
+  assert.equal(after.length, 1);
+  assert.equal(after[0].address, FOUND.address);
+  assert.equal(after[0].removedAt, NOW + 500);
+  assert.equal(after[0].lastSeen, NOW);
+  assert.equal(after[0].price, 500000);
+});

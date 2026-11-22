@@ -4,7 +4,7 @@
 import { HttpError, KEY_PATTERN, spaceOf } from '../sync.js';
 import { sourceById, listingUrl, placeSlug } from './sources.js';
 import { keys, listingsOf, saveListings, sourceMetaOf, saveSourceMeta, activeCommunes } from './scan-store.js';
-import { mergeCard, withTimeout, LOOKUP_VERSION, LOOKUP_MS } from './scan-run.js';
+import { mergeCard, idOf, withTimeout, LOOKUP_VERSION, LOOKUP_MS } from './scan-run.js';
 
 const MAX_CARDS = 200;
 // Adresses cherchées tout de suite par appel : le reste attend le prochain passage du robot.
@@ -146,6 +146,30 @@ async function handleIngest({ syncKey, body, redis, now = Date.now(), lookup = n
   let addressed = 0;
   let lookups = 0;
   const askLookup = () => (lookup && lookups++ < MAX_LOOKUPS ? lookup : null);
+  // Rattrapage de l'extension (`onlyKnown`) : recherches de l'historique, faites parfois il y a
+  // plusieurs jours. Elles complètent une annonce déjà connue (date du DPE) sans rien d'autre :
+  // ni annonce créée (pas de prix dans l'historique), ni annonce remise en vente ou dite revue.
+  // `skipped` : les annonces inconnues du Fil, que l'extension pourra renvoyer plus tard.
+  if (body.onlyKnown === true) {
+    const skipped = [];
+    for (const [insee, cards] of byCommune) {
+      const listings = await listingsOf(redis, insee);
+      const touched = [];
+      for (const card of cards) {
+        const entry = listings.get(idOf(source, card.url));
+        if (!entry) {
+          skipped.push(card.url);
+          continue;
+        }
+        const hadAddress = !!entry.address;
+        if (await enrich(entry, card.detail, bringsLookup(entry, card.detail) ? askLookup() : null)) touched.push(entry);
+        if (!hadAddress && entry.address) addressed++;
+        seen++;
+      }
+      if (touched.length) await saveListings(redis, insee, touched);
+    }
+    return { seen, added: 0, ignored: ignored + skipped.length, addressed, skipped };
+  }
   for (const [insee, cards] of byCommune) {
     const listings = await listingsOf(redis, insee);
     const touched = [];

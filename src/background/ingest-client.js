@@ -13,14 +13,16 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // `insee` : commune où le bien a été lu, quand l'envoyeur la connaît (la tournée SeLoger ouvre les
 // annonces de communes précises) ; sinon le serveur la déduit de la ville de chaque carte.
-export async function sendCards({ source, cards, insee }, { delays = RETRY_DELAYS_MS } = {}) {
+// `onlyKnown` : rattrapage depuis l'historique (fil-backfill.js), qui ne fait que compléter les
+// annonces déjà connues du Fil ; `skipped` liste alors celles qu'il ne connaît pas.
+export async function sendCards({ source, cards, insee, onlyKnown = false }, { delays = RETRY_DELAYS_MS } = {}) {
   const stored = await chrome.storage.local.get(SYNC_STATE_KEY);
   const key = stored[SYNC_STATE_KEY] && stored[SYNC_STATE_KEY].key;
   if (!key) throw new Error('synchro non activée');
   const request = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-    body: JSON.stringify(insee ? { source, insee, cards } : { source, cards }),
+    body: JSON.stringify({ source, cards, ...(insee ? { insee } : {}), ...(onlyKnown ? { onlyKnown: true } : {}) }),
   };
   let res = null;
   for (let attempt = 0; !res; attempt++) {
@@ -34,5 +36,5 @@ export async function sendCards({ source, cards, insee }, { delays = RETRY_DELAY
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) throw new Error(data.error || `erreur ${res.status}`);
-  return { seen: data.seen, added: data.added, addressed: data.addressed || 0, ignored: data.ignored || 0 };
+  return { seen: data.seen, added: data.added, addressed: data.addressed || 0, ignored: data.ignored || 0, skipped: Array.isArray(data.skipped) ? data.skipped : [] };
 }
