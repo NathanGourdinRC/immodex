@@ -37,11 +37,14 @@ test('rattrapage : par paquets de 5, une annonce acceptée n’est plus renvoyé
   const calls = [];
   const send = async (body) => (calls.push(body), { addressed: 1, skipped: body.cards.some((c) => c.url.endsWith('/106')) ? ['https://www.leboncoin.fr/ad/ventes_immobilieres/106'] : [] });
   const r = await backfillFil({ history, storage, send, now: NOW });
-  assert.deepEqual(r, { sent: 7, addressed: 2 });
+  assert.deepEqual(r, { sent: 7, addressed: 2, unknown: 1, inHistory: 7 });
   assert.deepEqual(calls.map((c) => c.cards.length), [5, 2]);
   assert.ok(calls.every((c) => c.onlyKnown === true && c.source === 'leboncoin'));
   // Moins de 6 heures plus tard : rien.
-  assert.deepEqual(await backfillFil({ history, storage, send, now: NOW + 3600 * 1000 }), { skipped: 'recent' });
+  const recent = await backfillFil({ history, storage, send, now: NOW + 3600 * 1000 });
+  assert.equal(recent.skipped, 'recent');
+  // Résultat du passage gardé, relisible plus tard.
+  assert.deepEqual(recent.last, { at: NOW, inHistory: 7, sent: 7, addressed: 2, unknown: 1 });
   // Passage suivant : seule l'annonce inconnue du Fil repart.
   calls.length = 0;
   await backfillFil({ history, storage, send, now: NOW + 7 * 3600 * 1000 });
@@ -56,4 +59,16 @@ test('rattrapage : synchro non activée, rien n’est noté et le prochain réve
   };
   await assert.rejects(backfillFil({ history, storage, send, now: NOW }), /synchro non activée/);
   assert.equal(storage.data[STATE_KEY], undefined);
+});
+
+test('rattrapage relancé à la main : sans attendre 6 heures, toutes les recherches repartent', async () => {
+  const history = { list: async () => [entry(1), entry(2)] };
+  const storage = memory();
+  const calls = [];
+  const send = async (body) => (calls.push(body), { addressed: 0, skipped: [] });
+  await backfillFil({ history, storage, send, now: NOW });
+  calls.length = 0;
+  const r = await backfillFil({ history, storage, send, now: NOW + 60 * 1000, force: true });
+  assert.equal(r.sent, 2);
+  assert.equal(calls.length, 1);
 });

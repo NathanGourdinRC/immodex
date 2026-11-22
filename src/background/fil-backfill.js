@@ -53,22 +53,30 @@ function cardsFromHistory(entries) {
 // `send` : sendCards d'ingest-client.js. Une annonce acceptée par le Fil n'est plus renvoyée ;
 // une annonce qu'il ne connaît pas encore (`skipped`) l'est au passage suivant, tant qu'elle est
 // dans l'historique (le robot ou la tournée Leboncoin a pu la lire entre-temps).
-async function backfillFil({ history, storage, send, now = Date.now() }) {
+// `force` : relancé à la main (immodexRattrapage() dans la console du service worker), sans attendre
+// 6 heures et en renvoyant aussi les recherches déjà acceptées.
+async function backfillFil({ history, storage, send, now = Date.now(), force = false }) {
   const stored = (await storage.get(STATE_KEY))[STATE_KEY] || {};
-  if (stored.lastRun && now - stored.lastRun < EVERY_MS) return { skipped: 'recent' };
-  const sent = new Set(stored.sent || []);
-  const todo = cardsFromHistory(await history.list()).filter((c) => !sent.has(keyOf(c)));
+  if (!force && stored.lastRun && now - stored.lastRun < EVERY_MS) return { skipped: 'recent', lastRun: stored.lastRun, last: stored.last || null };
+  const sent = new Set(force ? [] : stored.sent || []);
+  const all = cardsFromHistory(await history.list());
+  const todo = all.filter((c) => !sent.has(keyOf(c)));
   let addressed = 0;
+  let unknown = 0;
   for (let i = 0; i < todo.length; i += BATCH) {
     const cards = todo.slice(i, i + BATCH);
     // Synchro non activée, réseau coupé : rien n'est noté, nouvel essai au prochain réveil.
     const r = await send({ source: 'leboncoin', cards, onlyKnown: true });
-    const unknown = new Set(r.skipped || []);
-    for (const c of cards) if (!unknown.has(c.url)) sent.add(keyOf(c));
+    const notInFil = new Set(r.skipped || []);
+    for (const c of cards) if (!notInFil.has(c.url)) sent.add(keyOf(c));
     addressed += r.addressed || 0;
+    unknown += notInFil.size;
   }
-  await storage.set({ [STATE_KEY]: { lastRun: now, sent: [...sent].slice(-MAX_SENT) } });
-  return { sent: todo.length, addressed };
+  // `last` : résultat du passage, gardé pour être relu (le message de la console se perd quand
+  // elle est ouverte après le démarrage de l'extension).
+  const last = { at: now, inHistory: all.length, sent: todo.length, addressed, unknown };
+  await storage.set({ [STATE_KEY]: { lastRun: now, sent: [...sent].slice(-MAX_SENT), last } });
+  return { sent: todo.length, addressed, unknown, inHistory: all.length };
 }
 
 export { backfillFil, cardsFromHistory, STATE_KEY };

@@ -41,9 +41,26 @@ initLbcTour();
 // Tournée quotidienne de SeLoger (11 h), pour les adresses : voir seloger-tour-runner.js.
 initSelogerTour();
 // Recherches Leboncoin de l'historique : leur date du DPE repart au Fil (voir fil-backfill.js).
-backfillFil({ history, storage: chrome.storage.local, send: sendCards })
-  .then((r) => r && r.sent && console.log(`[immodex] rattrapage du Fil : ${r.sent} recherche(s) renvoyée(s), ${r.addressed} adresse(s) trouvée(s)`))
-  .catch((e) => console.warn('[immodex] rattrapage du Fil remis à plus tard :', String((e && e.message) || e)));
+// Le résultat est toujours écrit, même quand rien n'est parti. Relancer à la main : taper
+// immodexRattrapage() dans la console du service worker (chrome://extensions, lien « service worker »).
+function runBackfill(force = false) {
+  return backfillFil({ history, storage: chrome.storage.local, send: sendCards, force })
+    .then((r) => {
+      if (r.skipped === 'recent') {
+        const last = r.last ? ` : ${r.last.sent} renvoyée(s) sur ${r.last.inHistory}, ${r.last.addressed} adresse(s) trouvée(s), ${r.last.unknown} inconnue(s) du Fil` : '';
+        console.log(`[immodex] rattrapage du Fil déjà fait le ${new Date(r.lastRun).toLocaleString('fr-FR')}${last}. immodexRattrapage() le relance.`);
+      } else {
+        console.log(`[immodex] rattrapage du Fil : ${r.inHistory} recherche(s) Leboncoin avec date ou chiffres du DPE dans l'historique, ${r.sent} renvoyée(s), ${r.addressed} adresse(s) trouvée(s), ${r.unknown} inconnue(s) du Fil`);
+      }
+      return r;
+    })
+    .catch((e) => {
+      console.warn('[immodex] rattrapage du Fil remis à plus tard :', String((e && e.message) || e));
+      return { error: String((e && e.message) || e) };
+    });
+}
+self.immodexRattrapage = () => runBackfill(true);
+runBackfill();
 // Critères envoyés par « Modifier les champs » depuis une annonce, relus par le popup.
 const PREFILL_KEY = 'immodex.prefill.v1';
 const PREFILL_TTL_MS = 10 * 60 * 1000;
