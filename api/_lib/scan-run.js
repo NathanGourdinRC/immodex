@@ -479,6 +479,53 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
     })
   );
 
+  // Ventes DVF des annonces retirées depuis 1 à 18 mois : une vérification par mois et par
+  // commune (DVF paraît deux fois par an, avec 6 à 12 mois de retard). Un lien probable est
+  // revu à chaque vérification : une vente publiée plus tard peut le rendre douteux.
+  // En même temps que les pages d'annonce : elles ne demandent rien aux sites d'agence. (Avant
+  // le 23/11/2026 : après les lectures ; une file de 431 pages ParuVendu à relire prenait tout
+  // le passage, aucune vente n'était cherchée.)
+  const findingSales = (async () => {
+    for (const commune of communes) {
+      if (now() >= detailsDeadline) break;
+      const meta = metas.get(commune.code) || {};
+      if (start - ((meta._sales && meta._sales.lastCheck) || 0) < SALES_CHECK_MS) continue;
+      const listings = await listingsFor(commune.code);
+      const isSure = (l) => l.sale && l.sale.how === 'sure';
+      const waiting = [...listings.values()].filter((l) => l.removedAt && !isSure(l) && start - l.removedAt >= 30 * DAY && start - l.removedAt <= 18 * 30 * DAY);
+      if (!waiting.length) continue;
+      let sales;
+      try {
+        sales = await withTimeout(loadSales(commune.code, null), 20000);
+      } catch (err) {
+        console.error('[scan] ventes DVF injoignables', commune.code, err && err.message);
+      }
+      if (!sales) continue;
+      const found = new Map(waiting.map((l) => [l, matchSale(l, sales)]));
+      // Adresses des biens qui réclament chaque vente (liens sûrs déjà posés compris). Deux
+      // annonces du même bien (deux sites) ont la même adresse ; deux adresses : doute.
+      const claims = new Map();
+      const claim = (sale, l) => {
+        if (!claims.has(sale.id)) claims.set(sale.id, new Set());
+        claims.get(sale.id).add(String(l.address).toLowerCase());
+      };
+      for (const l of listings.values()) if (isSure(l) && l.sale.id) claim(l.sale, l);
+      for (const [l, sale] of found) if (sale) claim(sale, l);
+      for (const [l, sale] of found) {
+        const keep = sale && (sale.how === 'sure' || claims.get(sale.id).size === 1) ? sale : null;
+        if (JSON.stringify(keep) === JSON.stringify(l.sale || null)) continue;
+        if (keep) l.sale = keep;
+        else delete l.sale;
+        await saveListings(redis, commune.code, [l]);
+        if (keep) summary.sold = (summary.sold || 0) + 1;
+      }
+      meta._sales = { lastCheck: start };
+      await saveSourceMeta(redis, commune.code, meta);
+    }
+  })();
+  // Une erreur est renvoyée au moment du `await`, pas signalée comme oubliée avant.
+  findingSales.catch(() => {});
+
   await Promise.all(
     [...byHost.values()].map(async (byUrl) => {
       for (const item of [...byUrl.values()].flat()) {
@@ -548,47 +595,8 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
     })
   );
   await checking;
+  await findingSales;
   await writeQueue(redis, remaining);
-
-  // Ventes DVF des annonces retirées depuis 1 à 18 mois : une vérification par mois et par
-  // commune (DVF paraît deux fois par an, avec 6 à 12 mois de retard). Un lien probable est
-  // revu à chaque vérification : une vente publiée plus tard peut le rendre douteux.
-  for (const commune of communes) {
-    if (now() - start >= budgetMs) break;
-    const meta = metas.get(commune.code) || {};
-    if (start - ((meta._sales && meta._sales.lastCheck) || 0) < SALES_CHECK_MS) continue;
-    const listings = await listingsFor(commune.code);
-    const isSure = (l) => l.sale && l.sale.how === 'sure';
-    const waiting = [...listings.values()].filter((l) => l.removedAt && !isSure(l) && start - l.removedAt >= 30 * DAY && start - l.removedAt <= 18 * 30 * DAY);
-    if (!waiting.length) continue;
-    let sales;
-    try {
-      sales = await withTimeout(loadSales(commune.code, null), 20000);
-    } catch (err) {
-      console.error('[scan] ventes DVF injoignables', commune.code, err && err.message);
-    }
-    if (!sales) continue;
-    const found = new Map(waiting.map((l) => [l, matchSale(l, sales)]));
-    // Adresses des biens qui réclament chaque vente (liens sûrs déjà posés compris). Deux
-    // annonces du même bien (deux sites) ont la même adresse ; deux adresses : doute.
-    const claims = new Map();
-    const claim = (sale, l) => {
-      if (!claims.has(sale.id)) claims.set(sale.id, new Set());
-      claims.get(sale.id).add(String(l.address).toLowerCase());
-    };
-    for (const l of listings.values()) if (isSure(l) && l.sale.id) claim(l.sale, l);
-    for (const [l, sale] of found) if (sale) claim(sale, l);
-    for (const [l, sale] of found) {
-      const keep = sale && (sale.how === 'sure' || claims.get(sale.id).size === 1) ? sale : null;
-      if (JSON.stringify(keep) === JSON.stringify(l.sale || null)) continue;
-      if (keep) l.sale = keep;
-      else delete l.sale;
-      await saveListings(redis, commune.code, [l]);
-      if (keep) summary.sold = (summary.sold || 0) + 1;
-    }
-    meta._sales = { lastCheck: start };
-    await saveSourceMeta(redis, commune.code, meta);
-  }
 
   // Annonces déjà lues dont l'adresse a été cherchée par une version plus ancienne : de
   // nouveau, dans le temps restant (registre des DPE seulement, aucune page d'agence), après

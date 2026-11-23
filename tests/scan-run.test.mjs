@@ -584,6 +584,25 @@ test('annonce retirée : sa vente DVF est cherchée une fois par mois et posée 
   assert.equal(calls, 1);
 });
 
+// Cas réel du 23/11/2026 : 431 pages ParuVendu à relire occupaient chaque passage jusqu'au bout,
+// et les ventes DVF, cherchées après les lectures, ne l'étaient jamais.
+test('longue file de pages à lire : la vente DVF d’une annonce retirée est cherchée quand même', async () => {
+  const redis = fakeRedis();
+  // 100 nouvelles annonces à lire (500 s à 5 s la page, pour 240 s de passage).
+  const many = Array.from({ length: 100 }, (_, i) => [`n${i}`, '200 000 €']);
+  const w = world({ 'https://alpha.test/vente/59636': results('alpha', many), 'https://beta.test/vente/59636': results('beta', []) });
+  await withSearch(redis, w.now());
+  const removedAt = w.now() - 60 * DAY;
+  await saveListings(redis, '59636', [retired('r1', '9 Rue X 59118 Wambrechies', removedAt)]);
+  let calls = 0;
+  const loadSales = async () => (calls++, [saleX('v', isoDay(removedAt + 40 * DAY))]);
+  const summary = await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl, loadSales });
+  assert.equal(calls, 1);
+  assert.equal((await listingsOf(redis, '59636')).get('alpha:/annonce/r1').sale.how, 'probable');
+  // Les nouvelles annonces sont lues aussi, celles qui restent attendent le passage suivant.
+  assert.ok(summary.details > 10);
+});
+
 // Annonce retirée de la rue X, prête pour la vérification mensuelle des ventes.
 const retired = (id, address, removedAt) => ({ id: `alpha:/annonce/${id}`, source: 'alpha', url: `https://alpha.test/annonce/${id}`, insee: '59636', type: 'maison', address, price: 480000, prices: [{ at: removedAt - 90 * DAY, price: 490000 }], surface: 110, terrain: 300, firstSeen: removedAt - 90 * DAY, lastSeen: removedAt, missed: 2, removedAt, detail: true, readerVersion: 2 });
 const isoDay = (t) => new Date(t).toISOString().slice(0, 10);
