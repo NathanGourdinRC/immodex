@@ -366,6 +366,11 @@ test('lot 2 : adresses des listes (KW sous « /fr », Kaio, notaires, Arthurimmo
   assert.deepEqual(sourceById('drhouse').listUrls(VDA, 'maison'), ['https://www.drhouse-immo.com/annonces/vente/maison/villeneuve-d-ascq-59491']);
   assert.deepEqual(sourceById('immosens').listUrls(MARCQ, 'maison'), ['https://www.immosens.fr/vente-maison-marcq-en-baroeul.htm']);
   assert.deepEqual(sourceById('barnes').listUrls(MARCQ, 'maison'), ['https://www.barnes-lille.com/fr/vente/marcq-en-baroeul.html']);
+  // Fiches Barnes : ancienne et nouvelle adresse (23/11/2026), pas la liste par type.
+  const barnes = (p) => sourceById('barnes').isListing(new URL(`https://www.barnes-lille.com${p}`));
+  assert.equal(barnes('/fr/vente/lambersart/87293910'), true);
+  assert.equal(barnes('/fr/vente/lambersart/ref-87293910.html'), true);
+  assert.equal(barnes('/fr/vente/lambersart/maison.html'), false);
 });
 
 test('lot 2 : listes de toute l’agence, commune lue dans l’adresse de la fiche (même écrite « villeneuve-dascq »)', () => {

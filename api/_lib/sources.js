@@ -880,7 +880,9 @@ const SOURCES = [
     communeInUrl: true,
     listUrls: (c) => [`https://www.barnes-lille.com/fr/vente/${slugOf(c.nom)}.html`],
     pageUrl: () => null,
-    isListing: (u) => /^\/fr\/vente\/[a-z0-9-]+\/\d+$/.test(u.pathname),
+    // Fiches : /fr/vente/lambersart/87293910, devenues /fr/vente/lambersart/ref-87293910.html vers
+    // le 23/11/2026 (l'ancienne adresse renvoie vers la nouvelle).
+    isListing: (u) => /^\/fr\/vente\/[a-z0-9-]+\/(\d+|ref-\d+\.html)$/.test(u.pathname),
     typeOf: (url, text) => guessType(text),
   },
   {

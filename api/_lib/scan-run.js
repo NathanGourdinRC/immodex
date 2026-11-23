@@ -68,8 +68,18 @@ function isGone(res, source, url) {
   const final = new URL(res.url);
   const trim = (p) => p.replace(/\/+$/, '');
   if (final.host === asked.host && trim(final.pathname) === trim(asked.pathname)) return false;
+  // Adresse nouvelle qui garde le numéro de l'annonce : la même annonce a déménagé (Barnes,
+  // /87293910 devenu /ref-87293910.html le 23/11/2026). 6 chiffres au moins : un code postal
+  // (5 chiffres) repris dans l'adresse d'une liste ne compte pas.
+  const ids = asked.pathname.match(/\d{6,}/g) || [];
+  if (ids.some((id) => (final.pathname + final.search).includes(id))) return false;
   return !source.isListing(final);
 }
+// Version de la règle ci-dessus, gardée sur l'annonce retirée (`goneRule`). Une annonce retirée par
+// une version plus ancienne (retrait et vérification à la même heure) est remise en ligne et
+// vérifiée de nouveau. Version 2 : une adresse qui garde le numéro de l'annonce n'est pas un retrait.
+const GONE_RULE = 2;
+const removedByOldRule = (l) => !!l.removedAt && l.removedAt === l.pageCheckedAt && (l.goneRule || 1) < GONE_RULE;
 
 const idOf = (source, url) => {
   const u = new URL(url);
@@ -416,6 +426,15 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
   const checks = new Map(); // adresse de la page → { source, copies: [{ insee, l }] }
   for (const commune of communes) {
     const listings = await listingsFor(commune.code);
+    const repaired = [];
+    for (const l of listings.values()) {
+      if (removedByOldRule(l)) {
+        l.removedAt = null;
+        delete l.pageCheckedAt;
+        repaired.push(l);
+      }
+    }
+    if (repaired.length) await saveListings(redis, commune.code, repaired);
     for (const l of listings.values()) {
       const source = sources.find((s) => s.id === l.source);
       if (!needsCheck(l, source, now())) continue;
@@ -450,6 +469,7 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
           l.pageCheckedAt = t;
           if (gone) {
             l.removedAt = t;
+            l.goneRule = GONE_RULE;
             summary.removed++;
           }
           byInsee.set(insee, [...(byInsee.get(insee) || []), l]);

@@ -115,6 +115,38 @@ test('renvoi vers une page qui n’est pas une annonce : retirée ; vers une ann
   assert.equal(toListing.listings.get('alpha:/annonce/a2').removedAt, null);
 });
 
+// Barnes, 23/11/2026 : /fr/vente/lambersart/87293910 renvoie vers .../ref-87293910.html, la même
+// annonce sous sa nouvelle adresse (430 000 €, en ligne). Le numéro de l'annonce est gardé.
+test('renvoi vers une adresse qui garde le numéro de l’annonce : déménagée, pas retirée', async () => {
+  const redis = fakeRedis();
+  const w = world({ 'https://alpha.test/vente/59636': results([['a1', '300 000 €'], ['87293910', '430 000 €']]) });
+  await withSearch(redis, w.now());
+  await scan(redis, w);
+  w.advance(47 * HOUR);
+  w.pages['https://alpha.test/vente/59636'] = results([['a1', '300 000 €']]);
+  w.gone['https://alpha.test/annonce/87293910'] = { status: 200, url: 'https://alpha.test/vente/lambersart/ref-87293910.html' };
+  await scan(redis, w);
+  assert.equal((await listingsOf(redis, '59636')).get('alpha:/annonce/87293910').removedAt, null);
+});
+
+test('renvoi vers une liste qui ne garde que le code postal : retirée', async () => {
+  const { listings } = await missingOnce({ status: 200, url: 'https://alpha.test/vente/maison/lambersart-59130/' });
+  assert.ok(listings.get('alpha:/annonce/a2').removedAt > 0);
+});
+
+test('annonce retirée par la première règle (renvoi déménagé compris) : remise en ligne et vérifiée de nouveau', async () => {
+  const redis = fakeRedis();
+  const w = world({ 'https://alpha.test/vente/59636': results([['a1', '300 000 €']]) }, { 'https://alpha.test/annonce/87293910': { status: 200, url: 'https://alpha.test/vente/lambersart/ref-87293910.html' } });
+  await withSearch(redis, w.now());
+  const t = w.now();
+  // Retirée le 23/11 par la règle du 22/11 : retrait et vérification à la même heure, sans `goneRule`.
+  await saveListings(redis, '59636', [{ id: 'alpha:/annonce/87293910', source: 'alpha', url: 'https://alpha.test/annonce/87293910', insee: '59636', type: 'maison', price: 430000, prices: [], firstSeen: t - 20 * DAY, lastSeen: t - 10 * DAY, missed: 0, removedAt: t - HOUR, pageCheckedAt: t - HOUR, detail: true, readerVersion: 3 }]);
+  await scan(redis, w);
+  const l = (await listingsOf(redis, '59636')).get('alpha:/annonce/87293910');
+  assert.equal(l.removedAt, null);
+  assert.ok(l.pageCheckedAt > t - HOUR);
+});
+
 test('refus du site ou erreur sur la page vérifiée : rien de conclu', async () => {
   for (const answer of [{ blocked: true }, { status: 503 }]) {
     const { listings } = await missingOnce(answer);
