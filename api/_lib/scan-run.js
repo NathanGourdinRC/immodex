@@ -408,6 +408,57 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
     byUrl.get(item.url).push(item);
   }
   const pageRead = new Map(); // adresse de la page → réponse déjà reçue pendant ce passage
+  // Pages des annonces qui manquent à l'appel (needsCheck), en même temps que les pages des
+  // nouvelles annonces : sur un même site, le robot poli alterne une page de chaque (5 s entre
+  // deux). Attendre la fin des lectures ne marchait pas : une longue file (431 pages ParuVendu à
+  // relire le 23/11/2026) prenait tout le passage. Une page par adresse, qui vaut pour toutes ses
+  // copies (une par commune) ; les jamais vérifiées d'abord, puis les plus anciennement vues.
+  const checks = new Map(); // adresse de la page → { source, copies: [{ insee, l }] }
+  for (const commune of communes) {
+    const listings = await listingsFor(commune.code);
+    for (const l of listings.values()) {
+      const source = sources.find((s) => s.id === l.source);
+      if (!needsCheck(l, source, now())) continue;
+      if (!checks.has(l.url)) checks.set(l.url, { source, copies: [] });
+      checks.get(l.url).copies.push({ insee: commune.code, l });
+    }
+  }
+  const checksByHost = new Map();
+  const order = (c) => [c.copies[0].l.pageCheckedAt || 0, Math.max(...c.copies.map((x) => x.l.lastSeen))];
+  for (const [url, c] of [...checks].sort(([, a], [, b]) => order(a)[0] - order(b)[0] || order(a)[1] - order(b)[1])) {
+    const host = new URL(url).host;
+    if (!checksByHost.has(host)) checksByHost.set(host, []);
+    checksByHost.get(host).push([url, c]);
+  }
+  const checking = Promise.all(
+    [...checksByHost.values()].map(async (items) => {
+      for (const [url, { source, copies }] of items) {
+        if (now() >= detailsDeadline) return;
+        const res = await fetcher.get(url, { deadline: detailsDeadline });
+        // Temps écoulé : rien n'est noté, la page sera vérifiée au passage suivant.
+        if (res.late) return;
+        if (res.blocked) {
+          // Refus : la source compte un échec, plus rien n'est demandé à ce site pendant ce passage.
+          refusedSources.add(source.id);
+          return;
+        }
+        const t = now();
+        const gone = isGone(res, source, url);
+        if (gone) summary.gone = (summary.gone || 0) + 1;
+        const byInsee = new Map();
+        for (const { insee, l } of copies) {
+          l.pageCheckedAt = t;
+          if (gone) {
+            l.removedAt = t;
+            summary.removed++;
+          }
+          byInsee.set(insee, [...(byInsee.get(insee) || []), l]);
+        }
+        for (const [insee, ls] of byInsee) await saveListings(redis, insee, ls);
+      }
+    })
+  );
+
   await Promise.all(
     [...byHost.values()].map(async (byUrl) => {
       for (const item of [...byUrl.values()].flat()) {
@@ -420,6 +471,12 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
         const listings = await listingsFor(item.insee);
         const l = listings.get(item.id);
         if (!l || !needsReading(l)) continue;
+        // Page en cours de vérification (annonce qui manque à l'appel) : pas de seconde demande ;
+        // encore en ligne, elle sera lue au passage suivant.
+        if (checks.has(item.url)) {
+          remaining.push(item);
+          continue;
+        }
         const res = pageRead.get(item.url) || (await fetcher.get(item.url, { deadline: detailsDeadline }));
         if (res.ok) pageRead.set(item.url, res);
         if (res.late) {
@@ -470,6 +527,7 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
       }
     })
   );
+  await checking;
   await writeQueue(redis, remaining);
 
   // Ventes DVF des annonces retirées depuis 1 à 18 mois : une vérification par mois et par
@@ -511,55 +569,6 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
     meta._sales = { lastCheck: start };
     await saveSourceMeta(redis, commune.code, meta);
   }
-
-  // Pages des annonces qui manquent à l'appel (needsCheck), après les nouvelles annonces et les
-  // ventes DVF : une page par adresse, qui vaut pour toutes ses copies (une par commune). Les
-  // jamais vérifiées d'abord, puis les plus anciennement vues ; un site à la fois par file.
-  const checks = new Map(); // adresse de la page → { source, copies: [{ insee, l }] }
-  for (const commune of communes) {
-    const listings = await listingsFor(commune.code);
-    for (const l of listings.values()) {
-      const source = sources.find((s) => s.id === l.source);
-      if (!needsCheck(l, source, now())) continue;
-      if (!checks.has(l.url)) checks.set(l.url, { source, copies: [] });
-      checks.get(l.url).copies.push({ insee: commune.code, l });
-    }
-  }
-  const checksByHost = new Map();
-  const order = (c) => [c.copies[0].l.pageCheckedAt || 0, Math.max(...c.copies.map((x) => x.l.lastSeen))];
-  for (const [url, c] of [...checks].sort(([, a], [, b]) => order(a)[0] - order(b)[0] || order(a)[1] - order(b)[1])) {
-    const host = new URL(url).host;
-    if (!checksByHost.has(host)) checksByHost.set(host, []);
-    checksByHost.get(host).push([url, c]);
-  }
-  await Promise.all(
-    [...checksByHost.values()].map(async (items) => {
-      for (const [url, { source, copies }] of items) {
-        if (now() >= detailsDeadline) return;
-        const res = await fetcher.get(url, { deadline: detailsDeadline });
-        // Temps écoulé : rien n'est noté, la page sera vérifiée au passage suivant.
-        if (res.late) return;
-        if (res.blocked) {
-          // Refus : la source compte un échec, plus rien n'est demandé à ce site pendant ce passage.
-          refusedSources.add(source.id);
-          return;
-        }
-        const t = now();
-        const gone = isGone(res, source, url);
-        if (gone) summary.gone = (summary.gone || 0) + 1;
-        const byInsee = new Map();
-        for (const { insee, l } of copies) {
-          l.pageCheckedAt = t;
-          if (gone) {
-            l.removedAt = t;
-            summary.removed++;
-          }
-          byInsee.set(insee, [...(byInsee.get(insee) || []), l]);
-        }
-        for (const [insee, ls] of byInsee) await saveListings(redis, insee, ls);
-      }
-    })
-  );
 
   // Annonces déjà lues dont l'adresse a été cherchée par une version plus ancienne : de
   // nouveau, dans le temps restant (registre des DPE seulement, aucune page d'agence), après

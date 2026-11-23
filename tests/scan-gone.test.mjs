@@ -189,3 +189,22 @@ test('temps écoulé : la vérification attend le passage suivant, rien n’est 
   assert.equal(a2.removedAt, null);
   assert.equal(a2.pageCheckedAt, undefined);
 });
+
+// Cas réel du 23/11/2026 : 431 pages ParuVendu à relire occupaient chaque passage jusqu'au bout,
+// et la vérification, qui attendait la fin de toutes les lectures, ne démarrait jamais.
+test('longue file de pages à lire : la vérification se fait quand même, au même passage', async () => {
+  const redis = fakeRedis();
+  const w = world({ 'https://alpha.test/vente/59636': results([['a1', '300 000 €'], ['a2', '250 000 €']]) });
+  await withSearch(redis, w.now());
+  await scan(redis, w);
+  w.advance(47 * HOUR);
+  // 100 nouvelles annonces à lire (500 s à 5 s la page, pour 240 s de passage), a2 a disparu.
+  const many = Array.from({ length: 100 }, (_, i) => [`n${i}`, '200 000 €']);
+  w.pages['https://alpha.test/vente/59636'] = results([['a1', '300 000 €'], ...many]);
+  w.gone[A2] = { status: 404 };
+  const summary = await scan(redis, w);
+  assert.equal(summary.gone, 1);
+  assert.ok((await listingsOf(redis, '59636')).get('alpha:/annonce/a2').removedAt > 0);
+  // Les nouvelles annonces sont lues aussi, celles qui restent attendent le passage suivant.
+  assert.ok(summary.details > 10);
+});

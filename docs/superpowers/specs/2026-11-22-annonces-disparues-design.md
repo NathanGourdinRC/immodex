@@ -12,7 +12,7 @@ Une maison gardée dans le Fil (ParuVendu, Wambrechies, 420 000 €, 116 m²) af
    - 404 ou 410, ou renvoi vers une page qui n'est pas une annonce du site (`isListing`) : retirée tout de suite.
    - Page encore là, refus du site, robots.txt, erreur, temps écoulé : aucune conclusion, l'ancien mécanisme continue.
    - Jamais pour les sites que le robot ne lit pas (`local`).
-   - Après les pages des nouvelles annonces et les ventes DVF, dans le temps restant ; les annonces jamais vérifiées et les plus anciennement vues d'abord.
+   - En même temps que les pages des nouvelles annonces : sur un même site, le robot poli alterne une page de chaque. (Première version, 22/11 : après les lectures ; une file de 431 pages ParuVendu à relire prenait tout le passage, rien n'était vérifié.) Les annonces jamais vérifiées et les plus anciennement vues d'abord ; une annonce en cours de vérification n'est pas lue en plus.
 2. **Robot poli** (`api/_lib/polite.js`) : la réponse donne l'adresse finale après les renvois (`url`).
 3. **Carte du Fil** (`src/dashboard/annonces.js`) : un bien retiré dit « retiré le 21/11 » au lieu de « en ligne depuis N jours », et le bouton de chaque annonce retirée dit « ParuVendu · retirée ».
 
