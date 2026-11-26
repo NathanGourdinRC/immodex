@@ -36,6 +36,9 @@ function world(pages) {
       // Toute page d'annonce existe, sauf mention contraire.
       const p = pages[url] ?? (url.includes('/annonce/') ? '<html><body>Annonce</body></html>' : null);
       if (p === 'BLOCK') return { ok: false, status: 403, html: '', blocked: true, disallowed: false };
+      // robots.txt injoignable (coupure réseau) ou page vraiment interdite par robots.txt.
+      if (p === 'ROBOTS_DOWN') return { ok: false, status: 0, html: '', blocked: false, disallowed: true, unreachable: true };
+      if (p === 'FORBIDDEN') return { ok: false, status: 0, html: '', blocked: false, disallowed: true };
       if (p == null || p === 'DOWN') return { ok: false, status: 503, html: '', blocked: false, disallowed: false };
       return { ok: true, status: 200, html: p, blocked: false, disallowed: false };
     },
@@ -110,6 +113,54 @@ test('page de résultats en échec : aucune absence comptée pour cette source',
   await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl });
   const [a1] = [...(await listingsOf(redis, '59636')).values()];
   assert.equal(a1.missed, 0);
+});
+
+// Nuit du 26/11/2026 : une coupure d'une minute avait fait attendre 46 h toutes les sources
+// d'une commune (VM1294 des Nouvelles Pépites, en ligne le 24/11, pas vue avant le 28/11).
+test('page de résultats injoignable : la source est reprise au passage suivant, pas 46 h plus tard', async () => {
+  const redis = fakeRedis();
+  const pages = { 'https://alpha.test/vente/59636': 'DOWN', 'https://beta.test/vente/59636': results('beta', [['b1', '410 000 €']]) };
+  const w = world(pages);
+  await withSearch(redis, w.now());
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl });
+  assert.equal((await sourceMetaOf(redis, '59636')).alpha.complete, false);
+  // Une heure plus tard, le site répond : sa liste est lue, celle de beta n'est pas redemandée.
+  w.advance(HOUR);
+  pages['https://alpha.test/vente/59636'] = results('alpha', [['a1', '300 000 €']]);
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl });
+  const urls = [...(await listingsOf(redis, '59636')).values()].map((l) => l.url);
+  assert.ok(urls.includes('https://alpha.test/annonce/a1'));
+  assert.equal(w.asked.filter((u) => u === 'https://beta.test/vente/59636').length, 1);
+  const meta = await sourceMetaOf(redis, '59636');
+  assert.equal(meta.alpha.complete, true);
+  assert.equal(meta.alpha.retries, undefined);
+});
+
+test('robots.txt injoignable : reprise au passage suivant ; page interdite par robots.txt : pas de reprise', async () => {
+  const redis = fakeRedis();
+  const pages = { 'https://alpha.test/vente/59636': 'ROBOTS_DOWN', 'https://beta.test/vente/59636': 'FORBIDDEN' };
+  const w = world(pages);
+  await withSearch(redis, w.now());
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl });
+  w.advance(HOUR);
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl });
+  assert.equal(w.asked.filter((u) => u === 'https://alpha.test/vente/59636').length, 2);
+  assert.equal(w.asked.filter((u) => u === 'https://beta.test/vente/59636').length, 1);
+});
+
+test('page de résultats cassée pour de bon : deux reprises au plus, puis attente normale de 46 h', async () => {
+  const redis = fakeRedis();
+  const w = world({ 'https://alpha.test/vente/59636': 'DOWN', 'https://beta.test/vente/59636': results('beta', []) });
+  await withSearch(redis, w.now());
+  for (let i = 0; i < 5; i++) {
+    await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl });
+    w.advance(HOUR);
+  }
+  // Premier essai et deux reprises, puis plus rien jusqu'au surlendemain.
+  assert.equal(w.asked.filter((u) => u === 'https://alpha.test/vente/59636').length, 3);
+  w.advance(46 * HOUR);
+  await runScan({ redis, fetcher: w.fetcher, now: w.now, sources: SOURCES, readListingImpl });
+  assert.equal(w.asked.filter((u) => u === 'https://alpha.test/vente/59636').length, 4);
 });
 
 test('temps écoulé : la file des pages d’annonce reprend au passage suivant, sans relecture', async () => {

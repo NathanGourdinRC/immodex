@@ -22,6 +22,7 @@ const LOCK_MS = 20 * 60 * 1000;
 const RESULTS_EVERY = 46 * HOUR; // pages de résultats d'une source relues tous les 2 jours
 const RETRY_PAUSED = 7 * 24 * HOUR; // source en pause : nouvel essai une semaine plus tard
 const MAX_PAGES = 5; // par source et par commune, toutes adresses de liste confondues
+const MAX_RETRIES = 2; // reprises d'une liste injoignable avant d'attendre le tour suivant
 const LOOKUP_MS = 8000; // recherche d'adresse ADEME : au-delà, abandonnée
 const KEEP_MS = 3 * 365 * 24 * HOUR;
 const DAY = 24 * HOUR;
@@ -100,6 +101,9 @@ async function readList({ fetchPage, source, listUrl, commune, budget, deadline,
   const allSeen = new Set();
   let complete = true;
   let blocked = false;
+  // `failed` : une page n'a pas pu être obtenue (réseau, erreur du site, robots.txt injoignable).
+  // Ni un refus du site ni une interdiction de robots.txt : ceux-là ne se règlent pas en une heure.
+  let failed = false;
   let nextPage = null;
   for (let n = startPage; ; n++) {
     const url = n === 1 ? listUrl : source.pageUrl(listUrl, n);
@@ -115,6 +119,7 @@ async function readList({ fetchPage, source, listUrl, commune, budget, deadline,
     if (!res.ok) {
       complete = false;
       blocked = blocked || !!res.blocked;
+      failed = failed || (!res.blocked && (!res.disallowed || !!res.unreachable));
       break;
     }
     let found;
@@ -135,7 +140,7 @@ async function readList({ fetchPage, source, listUrl, commune, budget, deadline,
     }
     if (!found.full || !found.all.length) break;
   }
-  return { cards: [...cards.values()], complete, blocked, links: allSeen.size, nextPage };
+  return { cards: [...cards.values()], complete, blocked, failed, links: allSeen.size, nextPage };
 }
 
 // Source `crawl` : plusieurs pages de liste découvertes en lisant les premières (quartiers d'une
@@ -385,7 +390,13 @@ async function runScan({ redis, fetcher, now = Date.now, budgetMs = 240000, sour
             }
           }
           const failures = blocked ? (m.failures || 0) + 1 : 0;
-          if (cycle && cycle.nextPage) {
+          // Liste injoignable (coupure réseau, erreur du site) : pas notée comme lue, elle est
+          // reprise au passage suivant, une heure plus tard, au lieu d'attendre 46 h. Deux
+          // reprises au plus : une page cassée pour de bon n'est pas redemandée toute la nuit.
+          const retry = !resumable && !source.crawl && !blocked && reads.some((r) => r.failed) && (m.retries || 0) < MAX_RETRIES;
+          if (retry) {
+            meta[source.id] = { lastRun: m.lastRun || 0, failures, paused: false, complete: false, retries: (m.retries || 0) + 1 };
+          } else if (cycle && cycle.nextPage) {
             // Tour en cours : la page où reprendre et les annonces déjà vues de la commune.
             meta[source.id] = { lastRun: m.lastRun || 0, failures, paused: failures >= 2, complete: false, cursor: cycle.nextPage, cycleSeen: [...new Set([...cycle.prior, ...seen])], cycleOk: cycle.ok, cycleLinks: cycle.links, ...(source.crawl ? { pending: reads[0].pending, visited: reads[0].visited } : {}) };
           } else meta[source.id] = { lastRun: t, failures, paused: failures >= 2, complete };

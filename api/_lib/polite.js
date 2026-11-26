@@ -97,7 +97,10 @@ function createPoliteFetcher({ fetchImpl = fetch, now = Date.now, sleep = (ms) =
   async function get(url, { deadline = null } = {}) {
     const u = new URL(url);
     if (refused.has(u.host)) return refusal;
-    if (!robotsVerdict(await robotsOf(u), u)) return { ok: false, status: 0, html: '', blocked: false, disallowed: true };
+    const rules = await robotsOf(u);
+    // `unreachable` : robots.txt n'a pas pu être lu (réseau, erreur du site). Ce n'est pas une
+    // interdiction durable : l'appelant peut réessayer plus tard.
+    if (!robotsVerdict(rules, u)) return { ok: false, status: 0, html: '', blocked: false, disallowed: true, unreachable: !rules.ok && !(rules.status >= 400 && rules.status < 500) };
     const r = await onHost(u.host, async () => {
       if (refused.has(u.host)) return null;
       if (deadline != null && now() >= deadline) return { late: true };

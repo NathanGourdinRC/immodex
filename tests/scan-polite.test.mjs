@@ -40,6 +40,7 @@ test('page interdite par robots.txt : jamais demandée', async () => {
   const f = createPoliteFetcher({ fetchImpl: web.fetchImpl, now: clock.now, sleep: clock.sleep });
   const r = await f.get('https://a.fr/prive/x');
   assert.equal(r.disallowed, true);
+  assert.equal(r.unreachable, false); // vraie interdiction : pas de reprise
   assert.ok(!web.calls.some((c) => c.url === 'https://a.fr/prive/x'));
   assert.equal((await f.get('https://a.fr/prive/ok')).html, 'ok');
 });
@@ -91,6 +92,8 @@ test('robots.txt injoignable (erreur serveur) : le site n’est pas lu ; robots.
   const a = await f.get('https://a.fr/x');
   assert.equal(a.ok, false);
   assert.equal(a.disallowed, true);
+  // Injoignable n'est pas interdit : le robot peut réessayer au passage suivant.
+  assert.equal(a.unreachable, true);
   assert.ok(!web.calls.some((c) => c.url === 'https://a.fr/x'));
   assert.equal((await f.get('https://b.fr/x')).ok, true);
 });
