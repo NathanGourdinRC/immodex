@@ -373,6 +373,26 @@ test('lot 2 : adresses des listes (KW sous « /fr », Kaio, notaires, Arthurimmo
   assert.equal(barnes('/fr/vente/lambersart/maison.html'), false);
 });
 
+// La page d'une agence est analysée une fois pour toutes les communes suivies (Vacossin : 3,5 s
+// par commune bloquaient tout le robot, nuits des 25 et 26/11/2026) : chaque commune garde ses
+// annonces, et une page changée est analysée de nouveau.
+test('liste d’agence lue pour plusieurs communes : chacune ses annonces, page changée relue', () => {
+  const LOMME = { code: '59355', nom: 'Lomme', codesPostaux: ['59160'] };
+  const url = 'https://vacossin-associes.notaires.fr/ventes-immobilieres.htm';
+  const src = sourceById('vacossin');
+  const html = page([
+    card('/ventes-immobilieres/annonces/vente-maison-t4-137m2-villeneuve-dascq-59650-9997.htm', '430 000,00 €'),
+    card('/ventes-immobilieres/annonces/vente-maison-t5-93m2-lomme-59160-10138.htm', '250 000,00 €'),
+  ]);
+  assert.deepEqual(readResults(html, url, src, VDA).cards.map((c) => c.price), [430000]);
+  assert.deepEqual(readResults(html, url, src, LOMME).cards.map((c) => c.price), [250000]);
+  assert.deepEqual(readResults(html, url, src, VDA).cards.map((c) => c.price), [430000]);
+  const changed = page([card('/ventes-immobilieres/annonces/vente-maison-t5-93m2-lomme-59160-10138.htm', '240 000,00 €')]);
+  const r = readResults(changed, url, src, LOMME);
+  assert.deepEqual(r.cards.map((c) => c.price), [240000]);
+  assert.equal(r.all.length, 1);
+});
+
 test('lot 2 : listes de toute l’agence, commune lue dans l’adresse de la fiche (même écrite « villeneuve-dascq »)', () => {
   const html = page([
     card('/ventes-immobilieres/annonces/vente-maison-t4-137m2-villeneuve-dascq-59650-9997.htm', '430 000,00 €'),

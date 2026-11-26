@@ -1187,12 +1187,53 @@ function readResults(html, pageUrl, source, commune) {
     }
     return { cards, all: [...seen], full };
   }
+  // Analyse de la page, la même pour toutes les communes, faite une fois : une liste d'agence
+  // (toutes ses communes sur une page) est relue pour chaque commune suivie.
+  const { entries, all } = pageEntries(html, pageUrl, source);
+  const cards = [];
+  for (const { url, card, price, text, code } of entries) {
+    if (!keeps(url, text, source, commune, code)) continue;
+    const detail = source.detailOf ? source.detailOf(url, card, commune) : null;
+    cards.push({ url, price, title: text.slice(0, 160), type: source.typeOf(url, text), ...(detail ? { detail } : {}) });
+  }
+  return { cards, all, full: !!source.pageSize && all.length >= source.pageSize };
+}
+
+// Dernières pages analysées. Lire une page de 600 Ko avec jsdom prend environ 0,4 s, pendant
+// lesquelles le robot ne fait rien d'autre : relue pour sept communes, elle le bloquait des
+// secondes, et les délais des requêtes en cours sur les autres sites expiraient ensemble.
+// Seules des données simples sont gardées, pas la page analysée.
+const PAGE_MEMO_SIZE = 8;
+const pageMemo = new Map();
+function pageEntries(html, pageUrl, source) {
+  // Source qui lit la carte selon la commune (`detailOf`, Superimmo) : une page par commune,
+  // rien à gagner, et la carte (donc la page) resterait en mémoire.
+  if (source.detailOf) return analysePage(html, pageUrl, source);
+  const key = `${source.id}|${pageUrl}`;
+  const hit = pageMemo.get(key);
+  // Même contenu exigé : la page d'un passage suivant (ou d'un test) est analysée de nouveau.
+  if (hit && hit.html === html) return hit.result;
+  const result = analysePage(html, pageUrl, source);
+  pageMemo.delete(key);
+  pageMemo.set(key, { html, result });
+  if (pageMemo.size > PAGE_MEMO_SIZE) pageMemo.delete(pageMemo.keys().next().value);
+  return result;
+}
+
+// Annonces d'une page de résultats avant le tri par commune (adresse, bloc de la carte, prix,
+// texte), biens vendus déjà écartés ; `all` : toutes les annonces de la page.
+function analysePage(html, pageUrl, source) {
   // Source qui répond en JSON (Abrinor) : elle en extrait le HTML de ses cartes.
   const doc = parseHtml(source.htmlOf ? source.htmlOf(html) : html, pageUrl);
   // `doc.baseURI` et non `pageUrl` : une page peut déclarer `<base href="/">` (Nestenn), ses liens
   // relatifs partent alors de la racine du site et non de l'adresse de la page.
-  const keyOf = (a) => listingUrl(a.getAttribute('href'), doc.baseURI, source);
-  const cards = [];
+  // Lu une seule fois : jsdom recalcule `baseURI` à chaque lecture (analyse d'adresse lente), et
+  // `keyOf` sert des dizaines de milliers de fois sur une longue page. Sur les 183 ventes de
+  // Vacossin, 3,5 s par commune bloquaient tout le robot, et les délais des autres sites
+  // tombaient ensemble (nuits des 25 et 26/11/2026).
+  const base = doc.baseURI;
+  const keyOf = (a) => listingUrl(a.getAttribute('href'), base, source);
+  const entries = [];
   // `seen` : toutes les annonces de la page, avant les filtres (commune, biens vendus).
   const seen = new Set();
   for (const a of doc.querySelectorAll('a[href]')) {
@@ -1222,11 +1263,11 @@ function readResults(html, pageUrl, source, commune) {
     const alts = [...card.querySelectorAll('img[alt]')].map((img) => img.getAttribute('alt')).join(' ');
     // Mention portée par un attribut du bloc de la carte (`flagOf`, « Sous compromis ! »).
     if (source.flagOf && UNAVAILABLE.test(source.flagOf(a) || '')) continue;
-    if (UNAVAILABLE.test(alts) || !keeps(url, text, source, commune, source.codeOf ? source.codeOf(a, card) : null)) continue;
-    const detail = source.detailOf ? source.detailOf(url, card, commune) : null;
-    cards.push({ url, price, title: text.slice(0, 160), type: source.typeOf(url, text), ...(detail ? { detail } : {}) });
+    if (UNAVAILABLE.test(alts)) continue;
+    // Code INSEE donné par le site (`codeOf`) ; la carte n'est gardée que pour `detailOf`.
+    entries.push({ url, price, text, code: source.codeOf ? source.codeOf(a, card) : null, card: source.detailOf ? card : null });
   }
-  return { cards, all: [...seen], full: !!source.pageSize && seen.size >= source.pageSize };
+  return { entries, all: [...seen] };
 }
 
 // Sites à lire plus lentement que les autres (`delayMs`) : hôte → délai, pour le client poli.
